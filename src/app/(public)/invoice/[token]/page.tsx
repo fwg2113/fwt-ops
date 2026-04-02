@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
 import InvoiceView from './InvoiceView';
 
@@ -200,7 +201,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
     const resolvedBrands = resolveBrands(transformedDoc, shopConfig, brands, shopModules);
     const { moduleColors, moduleLabels } = buildModuleMaps(shopModules);
 
-    return <InvoiceView document={transformedDoc} shop={shopConfig} resolvedBrands={resolvedBrands} moduleColors={moduleColors} moduleLabels={moduleLabels} />;
+    return <Suspense><InvoiceView document={transformedDoc} shop={shopConfig} resolvedBrands={resolvedBrands} moduleColors={moduleColors} moduleLabels={moduleLabels} /></Suspense>;
   }
 
   const shopId = document.shop_id || 1;
@@ -238,5 +239,5 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
       .eq('id', document.id);
   }
 
-  return <InvoiceView document={document} shop={shopConfig} resolvedBrands={resolvedBrands} moduleColors={moduleColors} moduleLabels={moduleLabels} />;
+  return <Suspense><InvoiceView document={document} shop={shopConfig} resolvedBrands={resolvedBrands} moduleColors={moduleColors} moduleLabels={moduleLabels} /></Suspense>;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader, DashboardCard, Button } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
@@ -34,6 +34,10 @@ interface ShopConfigSlice {
 }
 
 export default function AppointmentsPage() {
+  return <Suspense><AppointmentsPageInner /></Suspense>;
+}
+
+function AppointmentsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedDate, setSelectedDate] = useState(searchParams.get('date') || new Date().toISOString().split('T')[0]);
