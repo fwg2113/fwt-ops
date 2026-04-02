@@ -1,0 +1,925 @@
+/*
+===============================================================================
+  FWT BOOKING SYSTEM - MOBILE-FIRST RESPONSIVE DESIGN
+  1:1 port from legacy Shopify fwt-booking.css
+  Version: 4.0 - Next.js
+===============================================================================
+*/
+
+/* ===== Theme Variables ===== */
+#fwt-booking {
+  /* Brand Colors */
+  --accent: #d61f26;
+  --accent-hover: #b51820;
+
+  /* Light Theme Colors */
+  --bg: #f5f5f5;
+  --card-bg: #ffffff;
+  --text: #1a1a1a;
+  --text-muted: #666666;
+  --border: #e5e5e5;
+  --border-dark: #cccccc;
+
+  /* Button Colors */
+  --button-bg: #ffffff;
+  --button-text: #1a1a1a;
+  --button-border: #d0d0d0;
+  --button-hover: #f8f8f8;
+
+  /* Input Colors */
+  --input-bg: #ffffff;
+  --input-border: #d0d0d0;
+  --input-text: #1a1a1a;
+
+  /* Layout - Mobile First */
+  --section-radius: 12px;
+  --card-radius: 12px;
+  --card-padding: 16px;
+  --button-radius: 12px;
+  --input-radius: 8px;
+
+  /* Typography */
+  --font-size: 16px;
+  --heading-weight: 700;
+  --label-weight: 600;
+}
+
+/* ===== Base Styles ===== */
+#fwt-booking {
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--font-size);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  line-height: 1.5;
+  padding: 12px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+#fwt-booking * {
+  box-sizing: border-box;
+}
+
+/* ===== Cards ===== */
+.fwt-card {
+  background: var(--card-bg);
+  border: 1px solid #e5e5e5;
+  border-radius: var(--card-radius);
+  padding: var(--card-padding);
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+/* ===== Typography ===== */
+#fwt-booking h1 {
+  font-size: 1.5rem;
+  font-weight: var(--heading-weight);
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+#fwt-booking .fwt-sub {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+#fwt-booking .fwt-prompt {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* =============================================================================
+   PILLS & BUTTONS - MOBILE OPTIMIZED
+============================================================================= */
+
+.fwt-pills {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+/* Default: 2 columns on mobile */
+.fwt-pills {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.fwt-pill {
+  background: var(--button-bg);
+  color: var(--button-text);
+  border: 2px solid var(--button-border);
+  border-radius: var(--button-radius);
+  padding: 14px 12px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+.fwt-pill:hover {
+  background: var(--button-hover);
+  border-color: var(--accent);
+}
+
+.fwt-pill.is-selected {
+  border-color: var(--accent);
+  border-width: 3px;
+  background: var(--button-bg);
+}
+
+/* =============================================================================
+   PRIMARY SERVICE PILLS
+============================================================================= */
+
+.fwt-primary-pills {
+  grid-template-columns: 1fr;
+  gap: 12px;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.fwt-primary-pills .pill-wrap {
+  width: 100%;
+}
+
+.fwt-primary-pills .fwt-pill {
+  padding: 16px 20px;
+  font-size: 1rem;
+  font-weight: 600;
+  min-height: 56px;
+}
+
+/* =============================================================================
+   ADD-ON SERVICE PILLS - 2x2 GRID ON MOBILE
+============================================================================= */
+
+.fwt-addon-pills {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.fwt-addon-pills .pill-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 24px;
+}
+
+.fwt-addon-pills .pill-wrap .pill-flag {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.fwt-addon-pills .fwt-pill {
+  width: 100%;
+  padding: 16px 8px;
+  font-size: 0.85rem;
+  min-height: 72px;
+  text-align: center;
+  line-height: 1.3;
+}
+
+/* =============================================================================
+   MOST POPULAR BADGES
+============================================================================= */
+
+.pill-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pill-wrap .fwt-pill {
+  width: 100%;
+}
+
+.pill-flag {
+  background: var(--accent);
+  color: #ffffff;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+/* Shade pills - badge on top */
+.fwt-shades .pill-wrap {
+  padding-top: 0;
+}
+
+.fwt-shades .pill-flag {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 0;
+}
+
+/* Global bottom-center badge */
+.pill-flag.bottom-center {
+  position: absolute !important;
+  top: auto !important;
+  bottom: 0 !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  margin: 0 !important;
+}
+
+/* =============================================================================
+   FILM TYPE CARDS
+============================================================================= */
+
+.film-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  min-height: auto;
+  gap: 0;
+  text-align: center;
+}
+
+.film-pill img,
+.film-pill .film-svg {
+  width: 100%;
+  max-width: none;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Film pills grid - 2 columns on mobile */
+.fwt-films {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 12px !important;
+  margin-bottom: 20px !important;
+}
+
+/* Film pill wrapper */
+.fwt-films .pill-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 28px;
+  padding-bottom: 28px;
+}
+
+/* ALL badges in film section */
+.fwt-films .pill-flag {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+/* SAVE badges - top */
+.fwt-films .pill-flag:not(.bottom-center) {
+  top: 0;
+}
+
+/* MOST POPULAR badge - bottom */
+.fwt-films .pill-flag.bottom-center {
+  top: auto !important;
+  bottom: 0 !important;
+}
+
+/* Film pill button fills available space */
+.fwt-films .film-pill {
+  width: 100%;
+}
+
+/* =============================================================================
+   SHADE BUTTONS
+============================================================================= */
+
+/* Shade pills container - 3 columns on mobile */
+.fwt-shades {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 24px;
+}
+
+/* Shade button BASE styling */
+.fwt-pill[data-shade] {
+  padding: 12px 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  min-height: 52px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #3a3a3a 0%, #555555 100%);
+  color: #ffffff;
+  border-color: #444444;
+}
+
+/* Shade gradients - visual representation of darkness */
+.fwt-pill[data-shade="70%"] {
+  background: rgba(0, 0, 0, 0.1) !important;
+  color: #333333 !important;
+  border-color: rgb(255, 255, 255) !important;
+}
+
+.fwt-pill[data-shade="56%"] {
+  background: rgba(0, 0, 0, 0.34) !important;
+  color: #333333 !important;
+  border-color: rgb(255, 255, 255) !important;
+}
+
+.fwt-pill[data-shade="50%"] {
+  background: rgba(0, 0, 0, 0.4) !important;
+  color: #ffffff !important;
+  border-color: rgb(255, 255, 255) !important;
+}
+
+.fwt-pill[data-shade="40%"] {
+  background: rgba(0, 0, 0, 0.6) !important;
+  color: #ffffff !important;
+  border-color: rgb(255, 255, 255) !important;
+}
+
+.fwt-pill[data-shade="35%"] {
+  background: rgba(0, 0, 0, 0.65) !important;
+  color: #ffffff !important;
+  border-color: rgb(255, 255, 255) !important;
+}
+
+.fwt-pill[data-shade="33%"] {
+  background: rgba(0, 0, 0, 0.67) !important;
+  color: #ffffff !important;
+  border-color: rgb(255, 255, 255) !important;
+}
+
+.fwt-pill[data-shade="22%"] {
+  background: rgba(0, 0, 0, 0.78) !important;
+  color: #ffffff !important;
+  border-color: rgb(255, 255, 255) !important;
+}
+
+.fwt-pill[data-shade="20%"] {
+  background: rgba(0, 0, 0, 0.8) !important;
+  color: #ffffff !important;
+  border-color: rgb(255, 255, 255) !important;
+}
+
+.fwt-pill[data-shade="15%"] {
+  background: rgba(0, 0, 0, 0.85) !important;
+  color: #ffffff !important;
+  border-color: rgb(255, 255, 255) !important;
+}
+
+.fwt-pill[data-shade="5%"] {
+  background: rgba(0, 0, 0, 0.95) !important;
+  color: #ffffff !important;
+  border-color: rgb(255, 255, 255) !important;
+}
+
+/* Selected shade state */
+.fwt-pill[data-shade].is-selected {
+  border-color: var(--accent) !important;
+  border-width: 3px;
+  box-shadow: 0 0 0 2px rgba(214, 31, 38, 0.2);
+}
+
+/* =============================================================================
+   DROPDOWNS/SELECTS
+============================================================================= */
+
+.fwt-select {
+  width: 100%;
+  padding: 14px 16px;
+  background: #ffffff;
+  color: #1a1a1a;
+  border: 1px solid #d0d0d0;
+  border-radius: var(--input-radius);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+.fwt-select:hover,
+.fwt-select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.fwt-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #f5f5f5 !important;
+  color: #999;
+}
+
+/* =============================================================================
+   INPUT FIELDS
+============================================================================= */
+
+#fwt-booking input[type="text"],
+#fwt-booking input[type="email"],
+#fwt-booking input[type="tel"],
+#fwt-booking input[type="date"] {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--input-bg);
+  color: var(--input-text);
+  border: 1px solid var(--input-border);
+  border-radius: var(--input-radius);
+  font-size: 1rem;
+  transition: border-color 0.2s ease;
+}
+
+#fwt-booking input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* =============================================================================
+   TIME SLOTS
+============================================================================= */
+
+.fwt-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.fwt-slot {
+  background: var(--button-bg);
+  color: var(--button-text);
+  border: 2px solid var(--button-border);
+  border-radius: var(--button-radius);
+  padding: 12px 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  min-height: 44px;
+}
+
+.fwt-slot:hover {
+  background: var(--button-hover);
+  border-color: var(--accent);
+}
+
+.fwt-slot.is-selected {
+  background: var(--button-bg);
+  border-color: var(--accent);
+  border-width: 3px;
+}
+
+/* =============================================================================
+   BOOK BUTTON
+============================================================================= */
+
+.fwt-btn {
+  background: var(--accent);
+  color: #ffffff;
+  border: 2px solid var(--accent);
+  padding: 16px 32px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  min-height: 52px;
+}
+
+.fwt-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.fwt-btn:disabled {
+  background: #cccccc;
+  border-color: #cccccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* =============================================================================
+   BADGES
+============================================================================= */
+
+.fwt-badge {
+  background: var(--accent);
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-block;
+  line-height: 1.3;
+}
+
+.fwt-addon-discount-badge {
+  font-size: 0.7rem;
+  padding: 4px 8px;
+  white-space: normal;
+  display: inline;
+  line-height: 1.4;
+}
+
+/* =============================================================================
+   PRICE DISPLAY
+============================================================================= */
+
+.fwt-price {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* =============================================================================
+   DIVIDERS
+============================================================================= */
+
+.fwt-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 16px 0;
+}
+
+/* =============================================================================
+   RESPONSIVE GRID HELPERS
+============================================================================= */
+
+.fwt-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fwt-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+/* =============================================================================
+   LOADING STATE
+============================================================================= */
+
+.fwt-loading {
+  min-height: 150px;
+  position: relative;
+  pointer-events: none;
+}
+
+.fwt-loading::after {
+  content: 'Loading...';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1rem;
+  font-weight: 600;
+  color: #666;
+  animation: fwt-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes fwt-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes fwt-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.loading-blink {
+  animation: fwt-blink 1.5s ease-in-out infinite;
+}
+
+/* =============================================================================
+   MULTI-VEHICLE BUTTONS
+============================================================================= */
+
+.fwt-add-vehicle-btn {
+  font-size: 1rem;
+  padding: 14px 24px;
+  font-weight: 700;
+  width: 100%;
+}
+
+.fwt-no-vehicle-btn {
+  font-size: 0.85rem;
+  padding: 10px 20px;
+  font-weight: 400;
+  opacity: 0.85;
+  width: 100%;
+}
+
+/* =============================================================================
+   SAMEDAY MODE - TIME SLOTS
+============================================================================= */
+
+.fwt-slots.sameday-mode {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.fwt-slots.sameday-mode .fwt-slot {
+  padding: 10px 6px;
+  font-size: 0.85rem;
+}
+
+/* =============================================================================
+   CHECKBOX STYLING
+============================================================================= */
+
+#fwt-booking input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+#fwt-booking input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+/* =============================================================================
+   DISCLAIMER TEXT
+============================================================================= */
+
+.fwt-disclaimer {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* =============================================================================
+   LABELS
+============================================================================= */
+
+#fwt-booking label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: var(--label-weight);
+  color: var(--text);
+}
+
+/* =============================================================================
+   SERVICE TYPE PILLS
+============================================================================= */
+
+.fwt-service-type-pills {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-start;
+}
+
+.fwt-service-type-pills .fwt-pill {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  min-width: auto;
+  padding: 12px 20px;
+}
+
+/* =============================================================================
+   TESLA MODEL 3 OPTIONS
+============================================================================= */
+
+#fwt-booking .tesla-model3-options {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+#fwt-booking .tesla-options-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+/* =============================================================================
+   TABLET BREAKPOINT (768px+)
+============================================================================= */
+
+@media (min-width: 768px) {
+  #fwt-booking {
+    padding: 20px;
+    --card-padding: 24px;
+    --button-radius: 20px;
+  }
+
+  #fwt-booking h1 {
+    font-size: 1.8rem;
+  }
+
+  .fwt-card {
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+
+  /* Primary pills - 2 columns on tablet */
+  .fwt-primary-pills {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 600px;
+  }
+
+  /* Add-on pills - 4 columns on tablet */
+  .fwt-addon-pills {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  .fwt-addon-pills .fwt-pill {
+    font-size: 0.9rem;
+    min-height: 80px;
+    padding: 16px 12px;
+  }
+
+  /* Film cards - 4 columns on tablet */
+  .fwt-films {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  .film-pill {
+    padding: 10px;
+  }
+
+  .film-pill img,
+  .film-pill .film-svg {
+    width: 100%;
+    max-width: none;
+  }
+
+  /* Shade pills - 6 columns on tablet */
+  .fwt-shades {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+  }
+
+  /* Time slots - 5 columns on tablet */
+  .fwt-slots {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+  }
+
+  /* Form grid - 2 columns */
+  .fwt-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Multi-vehicle buttons side by side */
+  .fwt-add-vehicle-btn,
+  .fwt-no-vehicle-btn {
+    width: auto;
+  }
+
+  .fwt-add-vehicle-btn {
+    min-width: 200px;
+  }
+
+  /* Book button not full width */
+  .fwt-btn {
+    width: auto;
+    min-width: 200px;
+  }
+
+  /* Service type pills - single row on tablet */
+  .fwt-service-type-pills {
+    flex-wrap: nowrap;
+    gap: 12px;
+  }
+
+  .fwt-service-type-pills .fwt-pill {
+    padding: 14px 24px;
+  }
+
+  /* Tesla options side by side */
+  #fwt-booking .tesla-options-container {
+    flex-direction: row;
+    justify-content: center;
+    gap: 16px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  #fwt-booking .tesla-options-container .tesla-option {
+    min-width: 250px;
+    max-width: 280px;
+    flex: 0 0 auto;
+  }
+}
+
+/* =============================================================================
+   DESKTOP BREAKPOINT (1024px+)
+============================================================================= */
+
+@media (min-width: 1024px) {
+  /* Add-on pills with more breathing room */
+  .fwt-addon-pills {
+    gap: 16px;
+  }
+
+  .fwt-addon-pills .fwt-pill {
+    min-height: 90px;
+    font-size: 0.95rem;
+  }
+
+  /* Time slots - 6 columns */
+  .fwt-slots {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  .fwt-slots.sameday-mode {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+/* =============================================================================
+   ACCESSIBILITY - FOCUS STATES
+============================================================================= */
+
+.fwt-pill:focus-visible,
+.fwt-slot:focus-visible,
+.fwt-btn:focus-visible,
+.fwt-select:focus-visible,
+#fwt-booking input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* =============================================================================
+   TOUCH DEVICE OPTIMIZATIONS
+============================================================================= */
+
+@media (hover: none) and (pointer: coarse) {
+  .fwt-pill:hover,
+  .fwt-slot:hover,
+  .fwt-btn:hover {
+    transform: none;
+  }
+
+  .fwt-pill,
+  .fwt-slot {
+    min-height: 48px;
+  }
+}
+
+/* =============================================================================
+   PRINT STYLES
+============================================================================= */
+
+@media print {
+  #fwt-booking {
+    background: white;
+    padding: 0;
+  }
+
+  .fwt-card {
+    box-shadow: none;
+    border: 1px solid #ccc;
+  }
+
+  .fwt-btn {
+    display: none;
+  }
+}
+
+/* Force Tesla options to center within primary pills container */
+.fwt-primary-pills:has(.tesla-model3-options) {
+  display: flex !important;
+  justify-content: center !important;
+  max-width: 100% !important;
+}
