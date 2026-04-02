@@ -75,6 +75,38 @@ function minutesToPosition(minutes: number): number {
   return (minutes - TIMELINE_START_HOUR * 60) * PIXELS_PER_MIN;
 }
 
+// Produce a solid dark card background from a module color.
+// Takes the hue from the module color, drops saturation to ~25%, lightness to ~18%.
+// Result: distinct module tones that are dark enough for white text, no transparency.
+function solidCardBg(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0;
+  const d = max - min;
+  if (d > 0) {
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+  // HSL to RGB with fixed S=0.25, L=0.18
+  const s = 0.25, l = 0.18;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h * 6) % 2 - 1));
+  const m = l - c / 2;
+  let r1 = 0, g1 = 0, b1 = 0;
+  const sector = Math.floor(h * 6);
+  if (sector === 0 || sector === 6) { r1 = c; g1 = x; }
+  else if (sector === 1) { r1 = x; g1 = c; }
+  else if (sector === 2) { g1 = c; b1 = x; }
+  else if (sector === 3) { g1 = x; b1 = c; }
+  else if (sector === 4) { r1 = x; b1 = c; }
+  else { r1 = c; b1 = x; }
+  const toHex = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r1)}${toHex(g1)}${toHex(b1)}`;
+}
+
 function formatTime(totalMinutes: number): string {
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
@@ -634,16 +666,16 @@ export default function TimelineView({
                 style={{
                   position: 'absolute', top, left: cardLeft, width: cardWidth, height,
                   display: 'flex',
-                  background: `color-mix(in srgb, ${modColor} 25%, ${COLORS.cardBg} 75%)`,
-                  border: `1px solid ${modColor}80`,
+                  background: solidCardBg(modColor),
+                  border: `1px solid ${modColor}40`,
                   borderRadius: RADIUS.md,
                   overflow: 'hidden',
                   cursor: isDragging ? 'grabbing' : 'grab',
                   zIndex: isInteracting ? 100 : 10,
                   opacity: isDragging ? 0.92 : 1,
                   boxShadow: isDragging
-                    ? `0 8px 24px rgba(0,0,0,0.4), 0 0 20px ${modColor}40`
-                    : `0 0 12px ${modColor}20, 0 0 4px ${modColor}10`,
+                    ? `0 8px 24px rgba(0,0,0,0.4)`
+                    : `0 1px 4px rgba(0,0,0,0.3)`,
                   transition: isInteracting ? 'none' : 'top 0.3s ease, height 0.3s ease, box-shadow 0.2s',
                   userSelect: 'none',
                 }}
