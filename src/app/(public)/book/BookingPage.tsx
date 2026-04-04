@@ -107,8 +107,8 @@ export default function BookingPage() {
         && (bs.state.gcValidation?.chargeDeposit !== false);
 
       if (needsPayment) {
-        // Route through Stripe Checkout
-        const res = await fetch('/api/auto/checkout', {
+        // Route through Square Checkout
+        const res = await fetch('/api/square/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bookingPayload),

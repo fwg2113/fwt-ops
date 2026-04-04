@@ -245,7 +245,7 @@ const RED = 'var(--dash-red, #dc2626)'
 const YELLOW = 'var(--dash-border-accent, rgba(245, 158, 11, 0.35))'
 const YELLOW_SOLID = 'var(--dash-yellow-solid, #f59e0b)'
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname()
   const router = useRouter()
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -415,6 +415,7 @@ export default function Sidebar() {
                   onClick={(e) => {
                     e.preventDefault()
                     router.push(item.href)
+                    onNavigate?.()
                   }}
                   style={{
                     display: 'flex',

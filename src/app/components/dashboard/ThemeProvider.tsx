@@ -84,6 +84,26 @@ export default function DashboardThemeProvider({ children }: { children: React.R
     button:not(:disabled):active {
       transform: scale(0.98);
     }
+
+    /* Mobile responsive foundations */
+    @media (max-width: 768px) {
+      /* Disable hover scale on mobile (causes issues with touch) */
+      button:not(:disabled):hover {
+        transform: none;
+      }
+
+      /* Full-width inputs on mobile */
+      input, select, textarea {
+        font-size: 16px !important; /* Prevents iOS zoom on focus */
+      }
+
+      /* Modal responsive */
+      .modal-overlay > div {
+        width: 95% !important;
+        max-width: 95% !important;
+        max-height: 90vh !important;
+      }
+    }
   `;
 
   return (

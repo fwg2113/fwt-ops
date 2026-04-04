@@ -178,7 +178,7 @@ export default function SignaturePad({
         {/* Signing line */}
         {!hasDrawn && !value && (
           <div style={{
-            position: 'absolute', bottom: 30, left: 20, right: 20,
+            position: 'absolute', bottom: 20, left: 20, right: 20,
             borderBottom: '1px solid #d1d5db', pointerEvents: 'none',
           }}>
             <span style={{ position: 'absolute', right: 0, bottom: 4, fontSize: '0.6rem', color: '#9ca3af' }}>
@@ -222,8 +222,8 @@ export function InitialsPad({
 }) {
   return (
     <SignaturePad
-      width={120}
-      height={60}
+      width={160}
+      height={90}
       label={label}
       value={value}
       onChange={onChange}

@@ -13,11 +13,11 @@ export default function PageHeader({ title, titleAccent, subtitle, actions }: Pr
   return (
     <div style={{
       display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-      marginBottom: SPACING.xxl, flexWrap: 'wrap', gap: SPACING.lg,
+      marginBottom: SPACING.xxl, flexWrap: 'wrap', gap: SPACING.md,
     }}>
-      <div>
+      <div style={{ minWidth: 0 }}>
         <h1 style={{
-          fontSize: FONT.sizePageTitle, fontWeight: FONT.weightBold,
+          fontSize: 'clamp(1.2rem, 4vw, 1.75rem)', fontWeight: FONT.weightBold,
           color: COLORS.textPrimary, margin: 0,
         }}>
           {title}
@@ -35,7 +35,7 @@ export default function PageHeader({ title, titleAccent, subtitle, actions }: Pr
         )}
       </div>
       {actions && (
-        <div style={{ display: 'flex', gap: SPACING.md, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'center', flexWrap: 'wrap' }}>
           {actions}
         </div>
       )}

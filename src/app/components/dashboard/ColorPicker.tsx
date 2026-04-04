@@ -34,7 +34,7 @@ export default function ColorPicker({ value, onChange, label, desc, size = 'md' 
   }
 
   const pickerSize = size === 'sm' ? 28 : 40;
-  const inputWidth = size === 'sm' ? 76 : 86;
+  const inputWidth = size === 'sm' ? 90 : 100;
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: size === 'sm' ? 6 : 10 }}>

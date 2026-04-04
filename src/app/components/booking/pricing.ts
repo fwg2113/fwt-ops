@@ -138,7 +138,15 @@ export function calculateAlaCartePrice(
   const doorServices = ['ALACARTE_DFD', 'ALACARTE_PFD', 'ALACARTE_DRD', 'ALACARTE_PRD'];
   if (doorServices.includes(serviceKey)) {
     const { price: twoFrontPrice } = lookupPrice(vehicle, 'TWO_FRONT_DOORS', filmId, pricing);
-    return Math.round(twoFrontPrice / 2);
+    if (twoFrontPrice > 0) return Math.round(twoFrontPrice / 2);
+
+    // Fallback: derive from FULL_SIDES / window count when TWO_FRONT_DOORS has no pricing
+    const { price: fullSidesPrice } = lookupPrice(vehicle, 'FULL_SIDES', filmId, pricing);
+    if (fullSidesPrice > 0) {
+      const windowCount = vehicle.window_count || 5; // default 5 windows for a standard car
+      return Math.round(fullSidesPrice / windowCount);
+    }
+    return 0;
   }
 
   // Quarter windows and rear window use wildcard pricing

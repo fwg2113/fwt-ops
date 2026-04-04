@@ -278,6 +278,8 @@ export function SendToCustomerModal({
   const [submitting, setSubmitting] = useState(false);
   const [generatedLink, setGeneratedLink] = useState('');
   const [copied, setCopied] = useState(false);
+  const [sendMethod, setSendMethod] = useState<'sms' | 'email' | 'copy'>('copy');
+  const [sentVia, setSentVia] = useState<string | null>(null);
 
   const shopRequiresDeposit = config.shopConfig.require_deposit;
   const shopDepositAmount = config.shopConfig.deposit_amount || 50;
@@ -285,6 +287,10 @@ export function SendToCustomerModal({
   const [depositAmount, setDepositAmount] = useState(shopDepositAmount);
 
   async function handleGenerate() {
+    // Validate send method requirements
+    if (sendMethod === 'sms' && !customerPhone) { alert('Phone number required to send via SMS'); return; }
+    if (sendMethod === 'email' && !customerEmail) { alert('Email required to send via email'); return; }
+
     setSubmitting(true);
     try {
       const res = await fetch('/api/auto/leads', {
@@ -298,12 +304,13 @@ export function SendToCustomerModal({
             film_name: s.filmName, price: s.price, shade_front: s.shadeFront, shade_rear: s.shadeRear,
           })),
           total_price: total, charge_deposit: chargeDeposit,
-          deposit_amount: chargeDeposit ? depositAmount : 0, send_method: 'copy',
+          deposit_amount: chargeDeposit ? depositAmount : 0, send_method: sendMethod,
         }),
       });
       if (res.ok) {
         const data = await res.json();
         setGeneratedLink(data.booking_url);
+        setSentVia(data.sent ? sendMethod : null);
       }
     } catch { /* silent */ }
     setSubmitting(false);
@@ -371,12 +378,37 @@ export function SendToCustomerModal({
           </div>
 
           {/* Customer info */}
-          <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: SPACING.sm }}>Customer info (optional -- for lead tracking)</div>
+          <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: SPACING.sm }}>Customer info</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md, marginBottom: SPACING.md }}>
             <FormField label="Name"><TextInput value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer name" /></FormField>
             <FormField label="Phone"><TextInput value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="(301) 555-1234" /></FormField>
           </div>
           <FormField label="Email"><TextInput value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="email@example.com" /></FormField>
+
+          {/* Send method */}
+          <div style={{ marginTop: SPACING.lg }}>
+            <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textMuted, marginBottom: SPACING.sm, textTransform: 'uppercase', letterSpacing: '0.5px' }}>How to send</div>
+            <div style={{ display: 'flex', gap: SPACING.sm }}>
+              {[
+                { key: 'sms' as const, label: 'SMS', disabled: !customerPhone },
+                { key: 'email' as const, label: 'Email', disabled: !customerEmail },
+                { key: 'copy' as const, label: 'Copy Link', disabled: false },
+              ].map(opt => (
+                <button key={opt.key} onClick={() => !opt.disabled && setSendMethod(opt.key)}
+                  style={{
+                    flex: 1, padding: `${SPACING.sm}px ${SPACING.md}px`, borderRadius: RADIUS.sm,
+                    cursor: opt.disabled ? 'not-allowed' : 'pointer',
+                    opacity: opt.disabled ? 0.4 : 1,
+                    background: sendMethod === opt.key ? COLORS.activeBg : 'transparent',
+                    color: sendMethod === opt.key ? COLORS.red : COLORS.textMuted,
+                    border: `1px solid ${sendMethod === opt.key ? COLORS.red : COLORS.borderInput}`,
+                    fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold,
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </>
       ) : (
         <div style={{ textAlign: 'center', padding: SPACING.lg }}>
@@ -384,8 +416,11 @@ export function SendToCustomerModal({
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
           </svg>
-          <div style={{ fontSize: FONT.sizeLg, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold, marginBottom: SPACING.sm }}>Booking Link Generated</div>
+          <div style={{ fontSize: FONT.sizeLg, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold, marginBottom: SPACING.sm }}>
+            {sentVia === 'sms' ? 'Quote Sent via SMS' : sentVia === 'email' ? 'Quote Sent via Email' : 'Booking Link Generated'}
+          </div>
           <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.lg }}>
+            {sentVia ? `Sent to ${sentVia === 'sms' ? customerPhone : customerEmail}. ` : ''}
             Customer will see their {year} {make} {model} with all services pre-selected.
             {chargeDeposit ? ` $${depositAmount} deposit required to book.` : ' No deposit required.'}
           </div>

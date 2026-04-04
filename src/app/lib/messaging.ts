@@ -61,7 +61,7 @@ export async function sendEmailRaw(
   }
 
   const senderName = fromName || process.env.SHOP_NAME || 'Window Tinting';
-  const senderEmail = fromEmail || process.env.SHOP_EMAIL_FROM || 'noreply@example.com';
+  const senderEmail = fromEmail || process.env.SHOP_EMAIL_FROM || 'onboarding@resend.dev';
   const from = `${senderName} <${senderEmail}>`;
 
   try {

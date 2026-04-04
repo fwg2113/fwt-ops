@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { PageHeader } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 // Shop tabs
 import ShopInfoTab from './tabs/ShopInfoTab';
@@ -43,6 +44,7 @@ interface ShopModule {
 }
 
 export default function SettingsPage() {
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<TabKey>('shop-info');
   const [settingsData, setSettingsData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -160,9 +162,33 @@ export default function SettingsPage() {
     <div>
       <PageHeader title="System" titleAccent="Settings" subtitle="Account" />
 
-      <div style={{ display: 'flex', gap: SPACING.xl, minHeight: 600 }}>
-        {/* Left Sidebar Nav */}
-        <nav style={{
+      {/* Mobile: Tab dropdown */}
+      {isMobile && (
+        <div style={{ marginBottom: SPACING.lg }}>
+          <select
+            value={activeTab}
+            onChange={e => setActiveTab(e.target.value as TabKey)}
+            style={{
+              width: '100%', padding: '12px 16px',
+              background: COLORS.inputBg, color: COLORS.textPrimary,
+              border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
+              fontSize: FONT.sizeSm, fontFamily: 'inherit', cursor: 'pointer',
+            }}
+          >
+            {visibleSections.map(section => (
+              <optgroup key={section.title} label={section.title}>
+                {section.items.map(item => (
+                  <option key={item.key} value={item.key}>{item.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: SPACING.xl, minHeight: isMobile ? 0 : 600 }}>
+        {/* Left Sidebar Nav (desktop only) */}
+        {!isMobile && <nav style={{
           width: 200,
           flexShrink: 0,
           borderRight: `1px solid ${COLORS.border}`,
@@ -226,7 +252,7 @@ export default function SettingsPage() {
               })}
             </div>
           ))}
-        </nav>
+        </nav>}
 
         {/* Content Area */}
         <div style={{ flex: 1, minWidth: 0 }}>

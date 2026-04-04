@@ -21,23 +21,25 @@ export default function DashboardCard({ title, icon, children, actions, noPaddin
     }}>
       {title && (
         <div style={{
-          padding: `${SPACING.lg}px ${SPACING.xxl}px`,
+          padding: `${SPACING.md}px ${SPACING.lg}px`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           borderBottom: `1px solid ${COLORS.border}`,
+          flexWrap: 'wrap', gap: SPACING.sm,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.lg }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, minWidth: 0 }}>
             {icon && (
               <div style={{
-                width: 32, height: 32,
+                width: 28, height: 28,
                 background: COLORS.activeBg,
-                borderRadius: RADIUS.md,
+                borderRadius: RADIUS.sm,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
               }}>
                 {icon}
               </div>
             )}
             <div style={{
-              fontSize: FONT.sizeLg, fontWeight: FONT.weightSemibold,
+              fontSize: FONT.sizeBase, fontWeight: FONT.weightSemibold,
               color: COLORS.textPrimary,
             }}>
               {title}
@@ -46,7 +48,7 @@ export default function DashboardCard({ title, icon, children, actions, noPaddin
           {actions}
         </div>
       )}
-      <div style={noPadding ? {} : { padding: SPACING.xxl }}>
+      <div style={noPadding ? {} : { padding: `${SPACING.lg}px ${SPACING.lg}px` }}>
         {children}
       </div>
     </div>

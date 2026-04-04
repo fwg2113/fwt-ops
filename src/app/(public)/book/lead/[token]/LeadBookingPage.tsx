@@ -36,6 +36,7 @@ interface LeadData {
   charge_deposit: boolean;
   deposit_amount: number;
   status: string;
+  options_mode: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +93,38 @@ export default function LeadBookingPage() {
   const [booking, setBooking] = useState(false);
   const [bookingError, setBookingError] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
+
+  // --- Options mode: customer picks one film per service group ---
+  const [optionSelections, setOptionSelections] = useState<Record<string, number>>({});
+  // { serviceKey: index into that group's options }
+
+  // Group services by service_key for options mode
+  const serviceGroups = useMemo(() => {
+    if (!lead || !lead.options_mode) return [];
+    const groups = new Map<string, { label: string; options: LeadService[] }>();
+    for (const svc of lead.services) {
+      if (!groups.has(svc.service_key)) {
+        groups.set(svc.service_key, { label: svc.label, options: [] });
+      }
+      groups.get(svc.service_key)!.options.push(svc);
+    }
+    return Array.from(groups.entries()).map(([key, group]) => ({ serviceKey: key, ...group }));
+  }, [lead]);
+
+  // Compute selected services (resolved from options) and total
+  const resolvedServices = useMemo(() => {
+    if (!lead) return [];
+    if (!lead.options_mode) return lead.services;
+    // Only include groups where the customer made a selection
+    return serviceGroups
+      .filter(group => optionSelections[group.serviceKey] !== undefined)
+      .map(group => group.options[optionSelections[group.serviceKey]])
+      .filter(Boolean);
+  }, [lead, serviceGroups, optionSelections]);
+
+  const resolvedTotal = useMemo(() => {
+    return resolvedServices.reduce((sum, svc) => sum + (svc?.price || 0), 0);
+  }, [resolvedServices]);
 
   // --- Load lead + config in parallel ---
   useEffect(() => {
@@ -212,8 +245,13 @@ export default function LeadBookingPage() {
     if (phone.replace(/\D/g, '').length < 10) return false;
     if (!selectedDate) return false;
     if (!isHeadsUp && !selectedTime) return false;
+    // Options mode: must have at least one option selected (not necessarily all groups)
+    if (lead.options_mode && serviceGroups.length > 0) {
+      const hasAnySelection = Object.keys(optionSelections).length > 0;
+      if (!hasAnySelection) return false;
+    }
     return true;
-  }, [lead, config, firstName, lastName, phone, email, selectedDate, selectedTime, isHeadsUp]);
+  }, [lead, config, firstName, lastName, phone, email, selectedDate, selectedTime, isHeadsUp, serviceGroups, optionSelections]);
 
   // --- Handle booking ---
   const handleBook = useCallback(async () => {
@@ -232,7 +270,7 @@ export default function LeadBookingPage() {
       classKeys: lead.class_keys || '',
       serviceType: 'tint',
       appointmentType,
-      servicesJson: lead.services.map(s => ({
+      servicesJson: (lead.options_mode ? resolvedServices : lead.services).map(s => ({
         serviceKey: s.service_key,
         label: s.label,
         filmId: s.film_id,
@@ -246,16 +284,16 @@ export default function LeadBookingPage() {
         duration: 60,
         module: 'auto_tint',
       })),
-      subtotal: lead.total_price,
+      subtotal: lead.options_mode ? resolvedTotal : lead.total_price,
       discountCode: null,
       discountType: null,
       discountPercent: 0,
       discountAmount: 0,
       depositPaid: lead.charge_deposit ? lead.deposit_amount : 0,
-      balanceDue: lead.total_price - (lead.charge_deposit ? lead.deposit_amount : 0),
+      balanceDue: (lead.options_mode ? resolvedTotal : lead.total_price) - (lead.charge_deposit ? lead.deposit_amount : 0),
       appointmentDate: selectedDate,
       appointmentTime: isHeadsUp ? null : selectedTime,
-      durationMinutes: lead.services.length * 60,
+      durationMinutes: (lead.options_mode ? resolvedServices : lead.services).length * 60,
       windowStatus: 'never',
       hasAftermarketTint: null,
       additionalInterests: '',
@@ -269,8 +307,8 @@ export default function LeadBookingPage() {
 
     try {
       if (lead.charge_deposit && lead.deposit_amount > 0) {
-        // Route through Stripe Checkout
-        const res = await fetch('/api/auto/checkout', {
+        // Route through Square Checkout
+        const res = await fetch('/api/square/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bookingPayload),
@@ -404,10 +442,13 @@ export default function LeadBookingPage() {
       {themeStyle && <style dangerouslySetInnerHTML={{ __html: themeStyle }} />}
 
       <h1 style={{ margin: '6px 0 10px', fontSize: '1.8rem', textAlign: 'center', fontWeight: 800 }}>
-        Your Appointment
+        {lead.options_mode ? 'Your Tint Options' : 'Your Appointment'}
       </h1>
       <p className="fwt-sub" style={{ textAlign: 'center', marginBottom: 30 }}>
-        Here is what we discussed. Pick a date and time to finalize your booking.
+        {lead.options_mode
+          ? 'Choose your preferred option for each service, then pick a date and time to book.'
+          : 'Here is what we discussed. Pick a date and time to finalize your booking.'
+        }
       </p>
 
       {/* ================================================================ */}
@@ -418,27 +459,93 @@ export default function LeadBookingPage() {
           {lead.vehicle_year} {lead.vehicle_make} {lead.vehicle_model}
         </div>
 
-        {lead.services.map((svc, i) => (
-          <div key={i} style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '12px 0',
-            borderBottom: i < lead.services.length - 1 ? '1px solid #eee' : 'none',
-          }}>
-            <div>
-              <div style={{ fontWeight: 600 }}>{svc.label}</div>
-              {svc.film_name && (
-                <div style={{ fontSize: '0.85rem', color: '#666', marginTop: 2 }}>
-                  {svc.film_name}
-                  {svc.shade_front ? ` -- ${svc.shade_front}` : ''}
-                  {svc.shade_rear ? ` / ${svc.shade_rear}` : ''}
+        {lead.options_mode ? (
+          /* Options mode: customer picks one film per service group */
+          <>
+            <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: 16 }}>
+              Choose your preferred option for each service below.
+            </div>
+            {serviceGroups.map((group, gi) => {
+              const selectedIdx = optionSelections[group.serviceKey] ?? -1;
+              return (
+                <div key={group.serviceKey} style={{ marginBottom: gi < serviceGroups.length - 1 ? 20 : 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 10, color: '#333' }}>
+                    {group.label}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {group.options.map((opt, oi) => {
+                      const isSelected = selectedIdx === oi;
+                      return (
+                        <button
+                          key={oi}
+                          onClick={() => setOptionSelections(prev => {
+                            const next = { ...prev };
+                            if (next[group.serviceKey] === oi) { delete next[group.serviceKey]; }
+                            else { next[group.serviceKey] = oi; }
+                            return next;
+                          })}
+                          style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '14px 16px', borderRadius: 10,
+                            background: isSelected ? '#fef2f2' : '#f9fafb',
+                            border: isSelected ? '2px solid #dc2626' : '2px solid #e5e7eb',
+                            cursor: 'pointer', textAlign: 'left',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{
+                              width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                              border: isSelected ? '6px solid #dc2626' : '2px solid #d1d5db',
+                            }} />
+                            <div>
+                              <div style={{ fontWeight: 600, color: '#1a1a1a', fontSize: '0.95rem' }}>
+                                {opt.film_name || 'Standard'}
+                              </div>
+                              {opt.shade_front && (
+                                <div style={{ fontSize: '0.8rem', color: '#666', marginTop: 2 }}>
+                                  Shade: {opt.shade_front}{opt.shade_rear ? ` / ${opt.shade_rear}` : ''}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ fontWeight: 700, fontSize: '1.1rem', color: isSelected ? '#dc2626' : '#1a1a1a' }}>
+                            ${opt.price}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
-            </div>
-            <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>
-              ${svc.price}
-            </div>
-          </div>
-        ))}
+              );
+            })}
+          </>
+        ) : (
+          /* Normal mode: static service list */
+          <>
+            {lead.services.map((svc, i) => (
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '12px 0',
+                borderBottom: i < lead.services.length - 1 ? '1px solid #eee' : 'none',
+              }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{svc.label}</div>
+                  {svc.film_name && (
+                    <div style={{ fontSize: '0.85rem', color: '#666', marginTop: 2 }}>
+                      {svc.film_name}
+                      {svc.shade_front ? ` -- ${svc.shade_front}` : ''}
+                      {svc.shade_rear ? ` / ${svc.shade_rear}` : ''}
+                    </div>
+                  )}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>
+                  ${svc.price}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
 
         {/* Total */}
         <div style={{
@@ -448,7 +555,7 @@ export default function LeadBookingPage() {
           fontWeight: 800, fontSize: '1.1rem',
         }}>
           <span>Total</span>
-          <span>${Number(lead.total_price).toLocaleString()}</span>
+          <span>${lead.options_mode ? resolvedTotal.toLocaleString() : Number(lead.total_price).toLocaleString()}</span>
         </div>
 
         {/* Deposit info */}
@@ -464,7 +571,7 @@ export default function LeadBookingPage() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
               <span>Balance due at appointment</span>
-              <span style={{ fontWeight: 600 }}>${(Number(lead.total_price) - Number(lead.deposit_amount)).toLocaleString()}</span>
+              <span style={{ fontWeight: 600 }}>${((lead.options_mode ? resolvedTotal : Number(lead.total_price)) - Number(lead.deposit_amount)).toLocaleString()}</span>
             </div>
           </div>
         )}

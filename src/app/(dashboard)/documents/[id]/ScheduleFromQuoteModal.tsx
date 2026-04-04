@@ -128,9 +128,12 @@ export default function ScheduleFromQuoteModal({
       if (!groups.has(key)) groups.set(key, { items: [], totalDuration: 0 })
       const g = groups.get(key)!
       g.items.push(item)
-      const dur = typeof item.custom_fields?.duration_minutes === 'number'
-        ? item.custom_fields.duration_minutes as number
-        : 0
+      const cf = item.custom_fields || {};
+      const dur = typeof cf.duration_minutes === 'number'
+        ? cf.duration_minutes as number
+        : typeof cf.duration === 'number'
+          ? cf.duration as number
+          : 0
       g.totalDuration += dur * item.quantity
     }
     return groups
@@ -291,8 +294,8 @@ export default function ScheduleFromQuoteModal({
         </div>
       </div>
 
-      {/* Mode toggle */}
-      <div style={{
+      {/* Mode toggle -- only show when multiple modules */}
+      {slots.length > 1 && <div style={{
         display: 'flex', alignItems: 'center', gap: SPACING.md,
         marginBottom: SPACING.xl,
       }}>
@@ -334,7 +337,7 @@ export default function ScheduleFromQuoteModal({
             ? 'Slots run back-to-back on the same day'
             : 'Each slot scheduled independently'}
         </span>
-      </div>
+      </div>}
 
       {/* Slot rows */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.lg }}>

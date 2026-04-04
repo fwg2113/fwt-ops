@@ -163,11 +163,21 @@ export default function ServiceLineEditor({ initialLines, vehicleYear, vehicleMa
     return shouldSplit(newServiceKey);
   }, [config, vehicle, newServiceKey]);
 
+  // Filter services to only show ones that have valid pricing for this vehicle
   const availableServiceDefs = useMemo(() => {
     if (!config) return [];
     const existingKeys = new Set(services.map(s => s.serviceKey));
-    return config.services.filter(s => s.enabled && !existingKeys.has(s.service_key)).sort((a, b) => a.sort_order - b.sort_order);
-  }, [config, services]);
+    return config.services.filter(s => {
+      if (!s.enabled || existingKeys.has(s.service_key)) return false;
+      if (!vehicle) return true; // No vehicle yet, show all
+      // Removal services: check if pricing exists with filmId null
+      if (s.service_type === 'removal') {
+        return calculateServicePrice(vehicle, s.service_key, null, config.pricing, config.vehicleClasses) > 0;
+      }
+      // Tint services: check if at least one film has a non-zero price
+      return config.films.some(f => calculateServicePrice(vehicle, s.service_key, f.id, config.pricing, config.vehicleClasses) > 0);
+    }).sort((a, b) => a.sort_order - b.sort_order);
+  }, [config, services, vehicle]);
 
   function confirmAddService() {
     if (!config || !newServiceKey) return;
@@ -200,7 +210,12 @@ export default function ServiceLineEditor({ initialLines, vehicleYear, vehicleMa
   // Grouped service options for dropdowns
   function renderServiceOptions(excludeKey?: string) {
     if (!config) return null;
-    const svcs = config.services.filter(s => s.enabled && s.service_key !== excludeKey);
+    const svcs = config.services.filter(s => {
+      if (!s.enabled || s.service_key === excludeKey) return false;
+      if (!vehicle) return true;
+      if (s.service_type === 'removal') return calculateServicePrice(vehicle, s.service_key, null, config.pricing, config.vehicleClasses) > 0;
+      return config.films.some(f => calculateServicePrice(vehicle, s.service_key, f.id, config.pricing, config.vehicleClasses) > 0);
+    });
     const primary = svcs.filter(s => s.is_primary);
     const addon = svcs.filter(s => s.is_addon);
     const removal = svcs.filter(s => s.service_type === 'removal');

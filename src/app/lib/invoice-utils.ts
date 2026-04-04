@@ -92,14 +92,22 @@ export async function createDocumentFromBooking(
         .from('document_line_items')
         .insert(refreshedRows);
 
-      // Update document totals from current booking
+      // Update document: totals, convert quote to invoice, set checkout type
+      const { data: docNumber } = await supabaseAdmin
+        .rpc('generate_document_number', { p_shop_id: shopId, p_doc_type: 'invoice' });
+
       await supabaseAdmin
         .from('documents')
         .update({
+          doc_type: 'invoice',
+          doc_number: docNumber || existingDoc.doc_number,
+          checkout_type: checkoutType,
           subtotal: booking.subtotal,
           starting_total: booking.subtotal,
           discount_amount: booking.discount_amount,
+          deposit_paid: booking.deposit_paid,
           balance_due: booking.balance_due,
+          status: 'draft',
         })
         .eq('id', existingDoc.id);
     }

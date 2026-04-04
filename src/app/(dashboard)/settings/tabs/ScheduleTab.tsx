@@ -20,8 +20,27 @@ interface Props {
 
 export default function ScheduleTab({ data, onSave, onAdd, onDelete, onRefresh }: Props) {
   const schedule = (data.schedule || []) as ScheduleDay[];
+  const config = (data.shopConfig || {}) as Record<string, unknown>;
   const [saving, setSaving] = useState<string | null>(null);
   const [localSchedule, setLocalSchedule] = useState(schedule);
+
+  // Appointment type colors
+  const defaultTypeColors: Record<string, string> = { dropoff: '#3b82f6', waiting: '#ef4444', headsup_30: '#f59e0b', headsup_60: '#f59e0b' };
+  const [typeColors, setTypeColors] = useState<Record<string, string>>(() => {
+    const saved = config.appointment_type_colors as Record<string, string> | null;
+    return { ...defaultTypeColors, ...saved };
+  });
+  const [savingColors, setSavingColors] = useState(false);
+  const [savedColors, setSavedColors] = useState(false);
+
+  async function saveTypeColors() {
+    setSavingColors(true);
+    await onSave('shop_config', null, { appointment_type_colors: typeColors });
+    setSavingColors(false);
+    setSavedColors(true);
+    setTimeout(() => setSavedColors(false), 2000);
+    onRefresh();
+  }
 
   function updateDay(id: number, field: string, value: unknown) {
     setLocalSchedule(prev => prev.map(d => d.id === id ? { ...d, [field]: value } : d));
@@ -99,6 +118,39 @@ export default function ScheduleTab({ data, onSave, onAdd, onDelete, onRefresh }
               ))}
             </tbody>
           </table>
+        </div>
+      </DashboardCard>
+
+      <DashboardCard title="Appointment Type Colors">
+        <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: SPACING.md }}>
+          Customize the left block color on appointment cards for each type.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: SPACING.md }}>
+          {[
+            { key: 'dropoff', label: 'Drop-Off' },
+            { key: 'waiting', label: 'Waiting' },
+            { key: 'headsup_30', label: 'Heads-Up (30m)' },
+            { key: 'headsup_60', label: 'Heads-Up (60m)' },
+          ].map(type => (
+            <div key={type.key} style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+              <input
+                type="color"
+                value={typeColors[type.key] || '#6b7280'}
+                onChange={e => setTypeColors(prev => ({ ...prev, [type.key]: e.target.value }))}
+                style={{ width: 36, height: 36, border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm, cursor: 'pointer', background: 'none', padding: 2 }}
+              />
+              <div>
+                <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>{type.label}</div>
+                <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, fontFamily: 'monospace' }}>{typeColors[type.key]}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: SPACING.lg }}>
+          <Button variant="primary" onClick={saveTypeColors} disabled={savingColors}
+            style={savedColors ? { background: '#22c55e', borderColor: '#22c55e' } : {}}>
+            {savingColors ? 'Saving...' : savedColors ? 'Saved' : 'Save Colors'}
+          </Button>
         </div>
       </DashboardCard>
     </div>

@@ -15,6 +15,7 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
       .select('*')
       .eq('shop_id', shopId)
       .eq('appointment_date', date)
+      .not('status', 'in', '("pending_payment","cancelled")')
       .order('appointment_time', { ascending: true, nullsFirst: false });
 
     if (error) {

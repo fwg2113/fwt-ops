@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { COLORS, RADIUS, SPACING } from './theme';
 
 interface Props {
@@ -12,6 +12,13 @@ interface Props {
 }
 
 export default function Modal({ title, children, onClose, width = 520, footer }: Props) {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,14 +41,14 @@ export default function Modal({ title, children, onClose, width = 520, footer }:
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         background: 'rgba(0,0,0,0.7)',
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-        padding: SPACING.lg,
+        display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center',
+        padding: isMobile ? 0 : SPACING.lg,
       }}
     >
       <div style={{
         background: '#1d1d1d',
-        borderRadius: `${RADIUS.modal}px ${RADIUS.modal}px 0 0`,
-        maxWidth: width, width: '100%', maxHeight: '90vh',
+        borderRadius: isMobile ? `${RADIUS.modal}px ${RADIUS.modal}px 0 0` : RADIUS.modal,
+        maxWidth: isMobile ? '100%' : width, width: '100%', maxHeight: isMobile ? '95vh' : '90vh',
         overflow: 'auto',
         WebkitOverflowScrolling: 'touch',
         paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
