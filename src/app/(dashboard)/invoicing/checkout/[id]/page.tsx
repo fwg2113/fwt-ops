@@ -6,6 +6,7 @@ import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme'
 import { StatusBadge, Button } from '@/app/components/dashboard';
 import SignaturePad, { InitialsPad } from '@/app/components/SignaturePad';
 import ServiceLineEditor, { type ServiceLine } from '../ServiceLineEditor';
+import CollectPaymentModal from '../CollectPaymentModal';
 import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 
 // ============================================================================
@@ -92,9 +93,11 @@ export default function CounterCheckoutPage() {
   // Payment state
   const [paying, setPaying] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isPaid, setIsPaid] = useState(false);
   const [tipAmount, setTipAmount] = useState('');
   const [discountNote, setDiscountNote] = useState('');
+  const [terminalDeviceId, setTerminalDeviceId] = useState<string | null>(null);
 
   // Checkout add-ons
   const [discountTypes, setDiscountTypes] = useState<Array<{ id: number; name: string; discount_type: string; discount_value: number; applies_to: string; include_warranty: boolean; enabled: boolean }>>([]);
@@ -157,6 +160,16 @@ export default function CounterCheckoutPage() {
       if (configData.checkoutDiscountTypes) setDiscountTypes(configData.checkoutDiscountTypes.filter((d: { enabled: boolean }) => d.enabled));
       if (configData.warrantyProducts) setWarrantyProducts(configData.warrantyProducts.filter((w: { enabled: boolean }) => w.enabled));
       if (configData.warrantyProductOptions) setWarrantyOptions(configData.warrantyProductOptions);
+
+      // Load terminal devices (if Square connected)
+      try {
+        const devRes = await fetch('/api/square/terminal/devices');
+        const devData = await devRes.json();
+        if (devData.devices?.length > 0) {
+          setTerminalDeviceId(devData.devices[0].deviceId);
+        }
+      } catch { /* Square not connected or no devices */ }
+
       setLoading(false);
     }
     load();
@@ -811,31 +824,104 @@ export default function CounterCheckoutPage() {
         {/* ---- 5. PAYMENT ---- */}
         {!isPaid && (
           <div style={{ background: COLORS.cardBg, borderRadius: RADIUS.md, padding: SPACING.lg, border: `1px solid ${COLORS.border}`, opacity: paymentBlocked ? 0.4 : 1, pointerEvents: paymentBlocked ? 'none' : 'auto' }}>
-            <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, marginBottom: SPACING.md }}>Collect Payment</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.sm }}>
-              {cashDiscount > 0 && (
-                <PayBtn label="Cash" amount={cashTotal} detail={`${cashDiscount}% discount`} color="#22c55e" loading={paying && paymentMethod === 'cash'} disabled={paying} onClick={() => handleMarkPaid('cash')} />
-              )}
-              {cashDiscount === 0 && (
-                <PayBtn label="Cash" amount={balanceDue} color="#22c55e" loading={paying && paymentMethod === 'cash'} disabled={paying} onClick={() => handleMarkPaid('cash')} />
-              )}
-              <PayBtn label="Credit Card" amount={cardTotal} detail={ccFee > 0 ? `Incl. ${formatCurrency(ccFee)} fee` : undefined} color="#3b82f6" loading={paying && paymentMethod === 'cc'} disabled={paying} onClick={() => handleMarkPaid('cc')} />
-              {['venmo', 'zelle', 'cashapp'].map(m => (
-                <PayBtn key={m} label={m.charAt(0).toUpperCase() + m.slice(1)} amount={balanceDue} color="#8b5cf6" loading={paying && paymentMethod === m} disabled={paying} onClick={() => handleMarkPaid(m)} />
-              ))}
-            </div>
+            <button
+              onClick={() => setShowPaymentModal(true)}
+              disabled={paying}
+              style={{
+                width: '100%', padding: '16px 24px', borderRadius: RADIUS.md,
+                background: '#22c55e', border: 'none', color: '#fff',
+                fontSize: '1.1rem', fontWeight: 700, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                minHeight: 56,
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+              </svg>
+              Collect Payment -- {formatCurrency(balanceDue)}
+            </button>
+            {cashDiscount > 0 && (
+              <div style={{ fontSize: FONT.sizeXs, color: '#22c55e', textAlign: 'center', marginTop: 6 }}>
+                Cash discount available: {cashDiscount}% off
+              </div>
+            )}
+            {ccFee > 0 && (
+              <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, textAlign: 'center', marginTop: cashDiscount > 0 ? 2 : 6 }}>
+                CC fee applies: {formatCurrency(ccFee)}
+              </div>
+            )}
           </div>
         )}
 
         {/* Paid */}
         {isPaid && (
-          <div style={{ background: COLORS.cardBg, borderRadius: RADIUS.md, padding: SPACING.lg, border: `2px solid ${COLORS.success}`, display: 'flex', alignItems: 'center', gap: SPACING.md }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={COLORS.success} strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            <div>
-              <div style={{ fontSize: FONT.sizeBase, fontWeight: FONT.weightBold, color: COLORS.success }}>Payment Collected</div>
-              <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>via {paymentMethod?.toUpperCase() || inv.payment_method?.toUpperCase() || 'N/A'}</div>
+          <div style={{ background: COLORS.cardBg, borderRadius: RADIUS.md, padding: SPACING.lg, border: `2px solid ${COLORS.success}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.sm }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={COLORS.success} strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <div>
+                <div style={{ fontSize: FONT.sizeBase, fontWeight: FONT.weightBold, color: COLORS.success }}>Payment Collected</div>
+                <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>via {paymentMethod?.toUpperCase() || inv.payment_method?.toUpperCase() || 'N/A'}</div>
+              </div>
             </div>
+            <button
+              onClick={async () => {
+                // Void the payment -- reset document to unpaid
+                await fetch('/api/auto/invoices', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    id: inv.id, status: 'invoiced', payment_method: null,
+                    payment_processor: null, payment_confirmed_at: null,
+                    total_paid: 0, balance_due: inv.subtotal - (inv.discount_amount || 0) - (inv.deposit_paid || 0),
+                    tip_amount: 0,
+                  }),
+                });
+                setIsPaid(false);
+                setPaymentMethod(null);
+              }}
+              style={{
+                width: '100%', padding: '10px', borderRadius: RADIUS.sm,
+                background: 'transparent', border: `1px solid ${COLORS.borderInput}`,
+                color: COLORS.textMuted, fontSize: FONT.sizeXs, cursor: 'pointer',
+                marginTop: SPACING.sm,
+              }}
+            >
+              Void Payment
+            </button>
           </div>
+        )}
+
+        {/* Collect Payment Modal */}
+        {showPaymentModal && (
+          <CollectPaymentModal
+            documentId={inv.id}
+            balanceDue={balanceDue}
+            ccFeePercent={inv.cc_fee_percent || 0}
+            ccFeeFlat={inv.cc_fee_flat || 0}
+            cashDiscountPercent={cashDiscount}
+            tipAmount={parseFloat(tipAmount) || 0}
+            discountNote={discountNote || null}
+            appliedDiscounts={selectedDiscounts.length > 0 ? selectedDiscounts.map(dId => {
+              const d = discountTypes.find(dt => dt.id === dId);
+              if (!d) return null;
+              let amount: number;
+              if (d.discount_type === 'dollar') { amount = d.discount_value; }
+              else { let base = d.applies_to === 'subtotal' ? inv.subtotal : balanceDue; amount = base * d.discount_value / 100; }
+              return { discount_type_id: d.id, name: d.name, discount_type: d.discount_type, discount_value: d.discount_value, amount };
+            }).filter(Boolean) : null}
+            appliedWarranty={selectedWarrantyOption ? (() => {
+              const opt = warrantyOptions.find(o => o.id === selectedWarrantyOption);
+              const prod = warrantyProducts.find(w => opt && w.id === opt.warranty_product_id);
+              return opt && prod ? { warranty_product_id: prod.id, option_id: opt.id, name: prod.name, option_name: opt.name, price: opt.price } : null;
+            })() : null}
+            terminalDeviceId={terminalDeviceId}
+            onPaymentComplete={(payments) => {
+              setShowPaymentModal(false);
+              setIsPaid(true);
+              setPaymentMethod(payments.map(p => p.method).join('+'));
+            }}
+            onClose={() => setShowPaymentModal(false)}
+          />
         )}
 
         {/* Back button */}

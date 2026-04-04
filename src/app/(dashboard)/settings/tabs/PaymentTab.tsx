@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { DashboardCard, Button, FormField, TextInput } from '@/app/components/dashboard';
-import { COLORS, SPACING, FONT } from '@/app/components/dashboard/theme';
+import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 interface Props {
@@ -134,6 +134,173 @@ export default function PaymentTab({ data, onSave, onRefresh }: Props) {
           {saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
         </Button>
       </div>
+
+      {/* Square Terminal Devices */}
+      {squareConnected && (
+        <TerminalDevices />
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// TERMINAL DEVICES — pair and manage Square Terminal hardware
+// ============================================================================
+function TerminalDevices() {
+  const isMobile = useIsMobile();
+  const [devices, setDevices] = useState<Array<{ deviceId: string; name: string; code: string; status: string; model?: string }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [pairing, setPairing] = useState(false);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [pairingCodeId, setPairingCodeId] = useState<string | null>(null);
+  const [pairingName, setPairingName] = useState('Counter Terminal');
+  const [pollCount, setPollCount] = useState(0);
+
+  // Load devices on mount
+  useState(() => {
+    fetch('/api/square/terminal/devices')
+      .then(r => r.json())
+      .then(data => { setDevices(data.devices || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  });
+
+  async function startPairing() {
+    setPairing(true);
+    try {
+      const res = await fetch('/api/square/terminal/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: pairingName }),
+      });
+      const data = await res.json();
+      if (data.code) {
+        setPairingCode(data.code);
+        setPairingCodeId(data.id);
+        // Start polling for pairing completion
+        pollForPairing(data.id);
+      } else {
+        setPairing(false);
+      }
+    } catch {
+      setPairing(false);
+    }
+  }
+
+  function pollForPairing(codeId: string) {
+    let count = 0;
+    const interval = setInterval(async () => {
+      count++;
+      setPollCount(count);
+      try {
+        const res = await fetch(`/api/square/terminal/devices?codeId=${codeId}`);
+        const data = await res.json();
+        if (data.status === 'PAIRED' && data.deviceId) {
+          clearInterval(interval);
+          setDevices(prev => [...prev, { deviceId: data.deviceId, name: data.name || pairingName, code: data.code, status: 'PAIRED' }]);
+          setPairing(false);
+          setPairingCode(null);
+          setPairingCodeId(null);
+        }
+        if (count > 60) { // 2 min timeout
+          clearInterval(interval);
+          setPairing(false);
+          setPairingCode(null);
+        }
+      } catch {
+        // Keep polling
+      }
+    }, 2000);
+  }
+
+  return (
+    <div style={{ marginTop: SPACING.lg }}>
+    <DashboardCard title="Square Terminal Devices">
+      {loading ? (
+        <div style={{ color: COLORS.textMuted, fontSize: FONT.sizeSm }}>Loading devices...</div>
+      ) : (
+        <>
+          {/* Paired devices */}
+          {devices.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.sm, marginBottom: SPACING.lg }}>
+              {devices.map(d => (
+                <div key={d.deviceId} style={{
+                  display: 'flex', alignItems: 'center', gap: SPACING.md,
+                  padding: SPACING.md, borderRadius: RADIUS.sm,
+                  border: `1px solid ${COLORS.border}`, background: 'rgba(34,197,94,0.05)',
+                }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: RADIUS.sm,
+                    background: 'rgba(34,197,94,0.15)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: FONT.sizeSm, fontWeight: 600, color: COLORS.textPrimary }}>{d.name}</div>
+                    <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                      {d.model || 'Square Terminal'} -- {d.deviceId.slice(0, 12)}...
+                    </div>
+                  </div>
+                  <span style={{
+                    padding: '3px 8px', borderRadius: 4, fontSize: FONT.sizeXs, fontWeight: 600,
+                    background: 'rgba(34,197,94,0.15)', color: '#22c55e',
+                  }}>Connected</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.lg }}>
+              No terminals paired yet. Pair a Square Terminal to accept card payments at the counter.
+            </div>
+          )}
+
+          {/* Pairing flow */}
+          {pairingCode ? (
+            <div style={{
+              padding: SPACING.lg, borderRadius: RADIUS.md, textAlign: 'center',
+              background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)',
+            }}>
+              <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.sm }}>
+                Enter this code on your Square Terminal:
+              </div>
+              <div style={{
+                fontSize: '2rem', fontWeight: 800, color: '#3b82f6',
+                letterSpacing: '8px', fontFamily: 'monospace', marginBottom: SPACING.md,
+              }}>
+                {pairingCode}
+              </div>
+              <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                On your Terminal: Settings &gt; Device &gt; General &gt; Device Code
+              </div>
+              <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 4 }}>
+                Waiting for pairing... ({pollCount * 2}s)
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: SPACING.sm, alignItems: isMobile ? 'stretch' : 'flex-end', flexDirection: isMobile ? 'column' : 'row' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>Device Name</label>
+                <input
+                  value={pairingName}
+                  onChange={e => setPairingName(e.target.value)}
+                  placeholder="e.g. Counter Terminal"
+                  style={{
+                    width: '100%', padding: '10px 14px', background: COLORS.inputBg,
+                    color: COLORS.textPrimary, border: `1px solid ${COLORS.borderInput}`,
+                    borderRadius: RADIUS.sm, fontSize: FONT.sizeSm, outline: 'none',
+                  }}
+                />
+              </div>
+              <Button variant="primary" onClick={startPairing} disabled={pairing || !pairingName.trim()}>
+                {pairing ? 'Creating code...' : 'Pair New Terminal'}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    </DashboardCard>
     </div>
   );
 }
