@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { DashboardCard, Button, FormField, TextInput, SelectInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT } from '@/app/components/dashboard/theme';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 interface Props {
   data: Record<string, unknown>;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function ShopInfoTab({ data, onSave, onRefresh }: Props) {
+  const isMobile = useIsMobile();
   const config = data.shopConfig as Record<string, unknown> || {};
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -46,7 +48,7 @@ export default function ShopInfoTab({ data, onSave, onRefresh }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.xl }}>
       <DashboardCard title="Shop Information">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
           <FormField label="Shop Name"><TextInput value={shopName} onChange={e => setShopName(e.target.value)} /></FormField>
           <FormField label="Phone"><TextInput value={shopPhone} onChange={e => setShopPhone(e.target.value)} /></FormField>
           <FormField label="Email"><TextInput value={shopEmail} onChange={e => setShopEmail(e.target.value)} /></FormField>
@@ -66,7 +68,7 @@ export default function ShopInfoTab({ data, onSave, onRefresh }: Props) {
         <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.md }}>
           Service modules (Auto Tint, Flat Glass, etc.) are managed in the Modules tab.
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: SPACING.md }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: SPACING.md }}>
           <Toggle label="Communication" checked={moduleComm} onChange={setModuleComm} />
           <Toggle label="Statistics" checked={moduleStats} onChange={setModuleStats} />
           <Toggle label="Bookkeeping" checked={moduleBookkeeping} onChange={setModuleBookkeeping} />

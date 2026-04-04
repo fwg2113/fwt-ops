@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 import { DashboardCard, Button, StatusBadge } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export default function ServicesTab({ data, onSave, onRefresh }: Props) {
+  const isMobile = useIsMobile();
   const services = (data.services || []) as Service[];
   const films = ((data.films || []) as Film[]).filter(f => f.offered);
   const filmShades = (data.filmShades || []) as FilmShade[];
@@ -178,6 +180,85 @@ export default function ServicesTab({ data, onSave, onRefresh }: Props) {
             return (
               <div key={svc.id}>
                 {/* Service row */}
+                {isMobile ? (
+                  <div style={{
+                    padding: `${SPACING.sm}px 0`,
+                    borderBottom: isExpandedRules ? 'none' : `1px solid ${COLORS.border}`,
+                    opacity: svc.enabled ? 1 : 0.5,
+                  }}>
+                    {/* Mobile row 1: checkbox + name + edit/actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+                      <input type="checkbox" checked={svc.enabled} onChange={() => toggleEnabled(svc)}
+                        style={{ width: 18, height: 18, accentColor: COLORS.red, cursor: 'pointer', flexShrink: 0 }} />
+
+                      {editing === svc.id ? (
+                        <input type="text" value={editLabel} onChange={e => setEditLabel(e.target.value)}
+                          style={{ flex: 1, background: COLORS.inputBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm, padding: '4px 8px', fontSize: FONT.sizeSm }} />
+                      ) : (
+                        <span style={{ flex: 1, fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {svc.label}
+                        </span>
+                      )}
+
+                      {editing === svc.id ? (
+                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                          <Button variant="primary" size="sm" onClick={() => saveEdit(svc)} disabled={saving}>Save</Button>
+                          <Button variant="secondary" size="sm" onClick={() => setEditing(null)}>X</Button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                          <button onClick={() => startEdit(svc)} style={{
+                            background: 'rgba(255,255,255,0.06)', color: COLORS.textMuted,
+                            border: 'none', borderRadius: RADIUS.sm, padding: '4px 10px',
+                            fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, cursor: 'pointer',
+                          }}>
+                            Edit
+                          </button>
+                          {hasTintShades && (
+                            <button onClick={() => expandRules(svc.service_key)} style={{
+                              background: isExpandedRules ? COLORS.activeBg : 'rgba(255,255,255,0.06)',
+                              color: isExpandedRules ? COLORS.red : COLORS.textMuted,
+                              border: `1px solid ${isExpandedRules ? COLORS.red : 'transparent'}`,
+                              borderRadius: RADIUS.sm, padding: '4px 10px',
+                              fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, cursor: 'pointer',
+                            }}>
+                              Rules
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Mobile row 2: service_key + duration + badges */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, marginTop: 4, paddingLeft: 26 }}>
+                      <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, fontFamily: 'monospace' }}>
+                        {svc.service_key}
+                      </span>
+
+                      {editing === svc.id ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <input type="number" value={editDuration} onChange={e => setEditDuration(e.target.value)}
+                            style={{ width: 50, background: COLORS.inputBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm, padding: '4px 6px', fontSize: FONT.sizeXs, textAlign: 'center' }} />
+                          <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>min</span>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                          {svc.duration_minutes}m
+                        </span>
+                      )}
+
+                      <StatusBadge label={svc.service_type} variant={
+                        svc.service_type === 'tint' ? 'info' : svc.service_type === 'removal' ? 'warning' : 'neutral'
+                      } />
+                      {hasTintShades && (
+                        <StatusBadge
+                          label={hasRestrictions ? 'Restricted' : 'All'}
+                          variant={hasRestrictions ? 'warning' : 'neutral'}
+                        />
+                      )}
+                    </div>
+                  </div>
+                ) : (
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: SPACING.md,
                   padding: `${SPACING.sm}px 0`,
@@ -252,6 +333,7 @@ export default function ServicesTab({ data, onSave, onRefresh }: Props) {
                     </div>
                   )}
                 </div>
+                )}
 
                 {/* Expanded shade rules */}
                 {isExpandedRules && (

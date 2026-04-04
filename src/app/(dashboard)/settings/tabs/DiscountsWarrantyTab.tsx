@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { DashboardCard, Button, FormField, TextInput, SelectInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 interface Props {
   data: Record<string, unknown>;
@@ -45,6 +46,7 @@ interface WarrantyOption {
 }
 
 export default function DiscountsWarrantyTab({ data, onSave, onAdd, onDelete, onRefresh }: Props) {
+  const isMobile = useIsMobile();
   const discounts = (data.checkoutDiscountTypes || []) as DiscountType[];
   const warranties = (data.warrantyProducts || []) as WarrantyProduct[];
   const warrantyOptions = (data.warrantyProductOptions || []) as WarrantyOption[];
@@ -202,7 +204,13 @@ export default function DiscountsWarrantyTab({ data, onSave, onAdd, onDelete, on
         }
       >
         <div style={{ marginBottom: SPACING.md }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            alignItems: isMobile ? 'flex-start' : 'center',
+            justifyContent: 'space-between',
+            gap: isMobile ? SPACING.sm : 0,
+          }}>
             <div>
               <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>
                 Enable Add-On Discount
@@ -217,6 +225,7 @@ export default function DiscountsWarrantyTab({ data, onSave, onAdd, onDelete, on
                 width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
                 background: addonDiscountEnabled ? COLORS.red : COLORS.border,
                 position: 'relative', transition: 'background 0.2s',
+                flexShrink: 0,
               }}
             >
               <div style={{
@@ -342,19 +351,36 @@ export default function DiscountsWarrantyTab({ data, onSave, onAdd, onDelete, on
           <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textMuted, textTransform: 'uppercase', marginBottom: SPACING.md }}>
             Add Discount
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: SPACING.sm, marginBottom: SPACING.sm }}>
-            <FormField label="Name"><TextInput value={newDiscountName} onChange={e => setNewDiscountName(e.target.value)} placeholder="Military Discount" /></FormField>
-            <FormField label="Type">
-              <SelectInput value={newDiscountType} onChange={e => setNewDiscountType(e.target.value as 'percent' | 'dollar')}>
-                <option value="percent">Percent (%)</option>
-                <option value="dollar">Dollar ($)</option>
-              </SelectInput>
-            </FormField>
-            <FormField label="Value"><TextInput value={newDiscountValue} onChange={e => setNewDiscountValue(e.target.value)} placeholder="10" type="number" /></FormField>
-          </div>
+          {isMobile ? (
+            <>
+              <div style={{ marginBottom: SPACING.sm }}>
+                <FormField label="Name"><TextInput value={newDiscountName} onChange={e => setNewDiscountName(e.target.value)} placeholder="Military Discount" /></FormField>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.sm, marginBottom: SPACING.sm }}>
+                <FormField label="Type">
+                  <SelectInput value={newDiscountType} onChange={e => setNewDiscountType(e.target.value as 'percent' | 'dollar')}>
+                    <option value="percent">Percent (%)</option>
+                    <option value="dollar">Dollar ($)</option>
+                  </SelectInput>
+                </FormField>
+                <FormField label="Value"><TextInput value={newDiscountValue} onChange={e => setNewDiscountValue(e.target.value)} placeholder="10" type="number" /></FormField>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: SPACING.sm, marginBottom: SPACING.sm }}>
+              <FormField label="Name"><TextInput value={newDiscountName} onChange={e => setNewDiscountName(e.target.value)} placeholder="Military Discount" /></FormField>
+              <FormField label="Type">
+                <SelectInput value={newDiscountType} onChange={e => setNewDiscountType(e.target.value as 'percent' | 'dollar')}>
+                  <option value="percent">Percent (%)</option>
+                  <option value="dollar">Dollar ($)</option>
+                </SelectInput>
+              </FormField>
+              <FormField label="Value"><TextInput value={newDiscountValue} onChange={e => setNewDiscountValue(e.target.value)} placeholder="10" type="number" /></FormField>
+            </div>
+          )}
           <FormField label="Description (optional)"><TextInput value={newDiscountDesc} onChange={e => setNewDiscountDesc(e.target.value)} placeholder="Active duty and veterans" /></FormField>
           {newDiscountType === 'percent' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.sm, marginTop: SPACING.sm }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.sm, marginTop: SPACING.sm }}>
               <FormField label="Apply percentage to">
                 <SelectInput value={newDiscountAppliesTo} onChange={e => setNewDiscountAppliesTo(e.target.value)}>
                   <option value="balance_due">Balance Due (after deposit)</option>
@@ -485,7 +511,7 @@ export default function DiscountsWarrantyTab({ data, onSave, onAdd, onDelete, on
           <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textMuted, textTransform: 'uppercase', marginBottom: SPACING.md }}>
             Add Warranty Product
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: SPACING.sm, marginBottom: SPACING.sm }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: SPACING.sm, marginBottom: SPACING.sm }}>
             <FormField label="Name"><TextInput value={newWarrantyName} onChange={e => setNewWarrantyName(e.target.value)} placeholder="No Fault Warranty" /></FormField>
             <FormField label="Coverage Years"><TextInput value={newWarrantyYears} onChange={e => setNewWarrantyYears(e.target.value)} type="number" /></FormField>
           </div>
@@ -695,6 +721,7 @@ function DiscountRow({ discount, isEditing, onToggle, onEdit, onSave, onDelete }
   onSave: (updates: Record<string, unknown>) => Promise<void>;
   onDelete: () => void;
 }) {
+  const isMobile = useIsMobile();
   const [name, setName] = useState(discount.name);
   const [desc, setDesc] = useState(discount.description || '');
   const [type, setType] = useState(discount.discount_type);
@@ -742,19 +769,36 @@ function DiscountRow({ discount, isEditing, onToggle, onEdit, onSave, onDelete }
       {/* Edit form */}
       {isEditing && (
         <div style={{ padding: `0 ${SPACING.lg}px ${SPACING.lg}px`, borderTop: `1px solid ${COLORS.border}` }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: SPACING.sm, marginTop: SPACING.md }}>
-            <FormField label="Name"><TextInput value={name} onChange={e => setName(e.target.value)} /></FormField>
-            <FormField label="Type">
-              <SelectInput value={type} onChange={e => setType(e.target.value as 'percent' | 'dollar')}>
-                <option value="percent">Percent (%)</option>
-                <option value="dollar">Dollar ($)</option>
-              </SelectInput>
-            </FormField>
-            <FormField label="Value"><TextInput value={value} onChange={e => setValue(e.target.value)} type="number" /></FormField>
-          </div>
+          {isMobile ? (
+            <>
+              <div style={{ marginTop: SPACING.md }}>
+                <FormField label="Name"><TextInput value={name} onChange={e => setName(e.target.value)} /></FormField>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.sm, marginTop: SPACING.sm }}>
+                <FormField label="Type">
+                  <SelectInput value={type} onChange={e => setType(e.target.value as 'percent' | 'dollar')}>
+                    <option value="percent">Percent (%)</option>
+                    <option value="dollar">Dollar ($)</option>
+                  </SelectInput>
+                </FormField>
+                <FormField label="Value"><TextInput value={value} onChange={e => setValue(e.target.value)} type="number" /></FormField>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: SPACING.sm, marginTop: SPACING.md }}>
+              <FormField label="Name"><TextInput value={name} onChange={e => setName(e.target.value)} /></FormField>
+              <FormField label="Type">
+                <SelectInput value={type} onChange={e => setType(e.target.value as 'percent' | 'dollar')}>
+                  <option value="percent">Percent (%)</option>
+                  <option value="dollar">Dollar ($)</option>
+                </SelectInput>
+              </FormField>
+              <FormField label="Value"><TextInput value={value} onChange={e => setValue(e.target.value)} type="number" /></FormField>
+            </div>
+          )}
           <FormField label="Description"><TextInput value={desc} onChange={e => setDesc(e.target.value)} /></FormField>
           {type === 'percent' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.sm, marginTop: SPACING.sm }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.sm, marginTop: SPACING.sm }}>
               <FormField label="Apply percentage to">
                 <SelectInput value={appliesTo} onChange={e => setAppliesTo(e.target.value)}>
                   <option value="balance_due">Balance Due (after deposit)</option>

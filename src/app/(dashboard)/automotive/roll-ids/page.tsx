@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { PageHeader, DashboardCard, Button } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import type { AutoFilm, AutoFilmShade } from '@/app/components/booking/types';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 
 interface RollEntry {
   film_id: number;
@@ -19,6 +20,7 @@ interface ActiveRoll {
 }
 
 export default function RollIdsPage() {
+  const isMobile = useIsMobile();
   const [films, setFilms] = useState<AutoFilm[]>([]);
   const [shades, setShades] = useState<AutoFilmShade[]>([]);
   const [activeRolls, setActiveRolls] = useState<ActiveRoll[]>([]);
@@ -146,7 +148,7 @@ export default function RollIdsPage() {
       {/* Film cards grid */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))',
         gap: SPACING.lg,
       }}>
         {films.map(film => {
@@ -189,15 +191,16 @@ export default function RollIdsPage() {
                         placeholder="Enter Roll ID"
                         style={{
                           flex: 1,
-                          padding: `${SPACING.sm}px ${SPACING.md}px`,
+                          padding: isMobile ? `${SPACING.md}px ${SPACING.md}px` : `${SPACING.sm}px ${SPACING.md}px`,
                           background: COLORS.inputBg,
                           color: COLORS.textPrimary,
                           border: `1px solid ${value ? COLORS.borderAccent : COLORS.borderInput}`,
                           borderRadius: RADIUS.sm,
-                          fontSize: FONT.sizeSm,
+                          fontSize: isMobile ? FONT.sizeBase : FONT.sizeSm,
                           fontFamily: 'monospace',
                           outline: 'none',
                           transition: 'border-color 0.15s',
+                          minHeight: isMobile ? 44 : undefined,
                         }}
                         onFocus={e => e.target.style.borderColor = COLORS.red}
                         onBlur={e => e.target.style.borderColor = value ? COLORS.borderAccent : COLORS.borderInput}

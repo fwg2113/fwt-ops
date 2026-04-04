@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageHeader, DashboardCard, DataTable, StatusBadge, Button } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 
 // ============================================================================
 // TYPES
@@ -97,6 +98,8 @@ function formatDateTime(dateStr: string): string {
 // ============================================================================
 export default function InvoicingPage() {
   const router = useRouter();
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -292,14 +295,17 @@ export default function InvoicingPage() {
 
       {/* Stats Row */}
       <div style={{
-        display: 'flex', gap: SPACING.lg, marginBottom: SPACING.xl, flexWrap: 'wrap',
+        display: 'flex', gap: isMobile ? SPACING.sm : SPACING.lg, marginBottom: SPACING.xl, flexWrap: 'wrap',
+        flexDirection: isMobile ? 'column' : 'row',
       }}>
-        <StatPill label="Total" value={stats.total} />
-        <StatPill label="Unpaid" value={stats.unpaid} color="#f59e0b" />
-        <div style={{ flex: 1 }} />
+        <div style={{ display: 'flex', gap: SPACING.sm }}>
+          <StatPill label="Total" value={stats.total} />
+          <StatPill label="Unpaid" value={stats.unpaid} color="#f59e0b" />
+        </div>
+        {!isMobile && <div style={{ flex: 1 }} />}
         <div style={{
-          display: 'flex', alignItems: 'center', gap: SPACING.lg,
-          fontSize: FONT.sizeBase, color: COLORS.textTertiary,
+          display: 'flex', alignItems: 'center', gap: isMobile ? SPACING.md : SPACING.lg,
+          fontSize: isMobile ? FONT.sizeSm : FONT.sizeBase, color: COLORS.textTertiary,
         }}>
           <span>
             Outstanding: <strong style={{ color: COLORS.warning }}>{formatCurrency(stats.totalOutstanding)}</strong>
@@ -314,7 +320,9 @@ export default function InvoicingPage() {
       <div style={{
         display: 'flex', gap: 4, marginBottom: SPACING.lg,
         background: COLORS.inputBg, borderRadius: RADIUS.md, padding: 4,
-        width: 'fit-content',
+        width: isMobile ? '100%' : 'fit-content',
+        overflowX: isMobile ? 'auto' : 'visible',
+        WebkitOverflowScrolling: 'touch' as any,
       }}>
         {FILTER_TABS.map(tab => {
           const isActive = filter === tab.key;
@@ -358,12 +366,57 @@ export default function InvoicingPage() {
         })}
       </div>
 
-      {/* Invoice Table */}
+      {/* Invoice Table / Mobile Cards */}
       <DashboardCard noPadding>
         {loading ? (
           <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>
             Loading invoices...
           </div>
+        ) : isMobile ? (
+          filtered.length === 0 ? (
+            <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted, fontSize: FONT.sizeSm }}>
+              {filter === 'all' ? 'No invoices yet. Create one from the Appointments page.' : `No ${filter} invoices.`}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {filtered.map((row, idx) => (
+                <div
+                  key={row.id}
+                  onClick={() => setSelectedInvoice(row)}
+                  style={{
+                    padding: `${SPACING.md}px ${SPACING.lg}px`,
+                    borderBottom: idx < filtered.length - 1 ? `1px solid ${COLORS.border}` : 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {/* Row 1: Invoice #, status, balance */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+                      <span style={{ fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>{row.invoice_number}</span>
+                      <StatusBadge
+                        label={STATUS_LABELS[row.status] || row.status}
+                        variant={STATUS_VARIANTS[row.status] || 'neutral'}
+                      />
+                    </div>
+                    <span style={{
+                      fontWeight: FONT.weightBold, fontSize: FONT.sizeSm,
+                      color: row.status === 'paid' ? COLORS.success : row.balance_due > 0 ? COLORS.textPrimary : COLORS.textMuted,
+                    }}>
+                      {row.status === 'paid' ? formatCurrency(0) : formatCurrency(row.balance_due)}
+                    </span>
+                  </div>
+                  {/* Row 2: Customer, vehicle, date */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                      {row.customer_name}
+                      {row.vehicle_year || row.vehicle_make ? ` -- ${[row.vehicle_year, row.vehicle_make, row.vehicle_model].filter(Boolean).join(' ')}` : ''}
+                    </div>
+                    <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, flexShrink: 0, marginLeft: SPACING.sm }}>{formatDate(row.created_at)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         ) : (
           <DataTable
             columns={columns}
@@ -389,6 +442,7 @@ export default function InvoicingPage() {
             setSelectedInvoice(null);
             router.push(`/invoicing/checkout/${invoiceId}`);
           }}
+          isMobile={isMobile}
         />
       )}
     </div>
@@ -425,13 +479,14 @@ function StatPill({ label, value, color }: { label: string; value: number; color
 // ============================================================================
 // INVOICE DETAIL PANEL
 // ============================================================================
-function InvoiceDetailPanel({ invoice, onClose, onMarkPaid, onVoid, onRefresh, onCounterCheckout }: {
+function InvoiceDetailPanel({ invoice, onClose, onMarkPaid, onVoid, onRefresh, onCounterCheckout, isMobile }: {
   invoice: Invoice;
   onClose: () => void;
   onMarkPaid: () => void;
   onVoid: () => void;
   onRefresh: () => void;
   onCounterCheckout: (invoiceId: string) => void;
+  isMobile?: boolean;
 }) {
   const inv = invoice;
   const [sending, setSending] = useState<string | null>(null);
@@ -478,10 +533,10 @@ function InvoiceDetailPanel({ invoice, onClose, onMarkPaid, onVoid, onRefresh, o
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          width: '100%', maxWidth: 480, height: '100vh',
+          width: '100%', maxWidth: isMobile ? '100%' : 480, height: '100vh',
           background: COLORS.pageBg, overflowY: 'auto',
-          borderLeft: `1px solid ${COLORS.borderAccent}`,
-          padding: SPACING.xxl,
+          borderLeft: isMobile ? 'none' : `1px solid ${COLORS.borderAccent}`,
+          padding: isMobile ? SPACING.lg : SPACING.xxl,
         }}
       >
         {/* Header */}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { PageHeader, DashboardCard, Button, DataTable, StatusBadge, Modal, FormField, TextInput, SelectInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 
 interface GiftCertificate {
   id: number;
@@ -38,6 +39,7 @@ interface ServiceDef { service_key: string; label: string; is_primary: boolean; 
 interface FilmDef { id: number; name: string; }
 
 export default function GiftCertificatesPage() {
+  const isMobile = useIsMobile();
   const [gcs, setGcs] = useState<GiftCertificate[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -260,7 +262,7 @@ export default function GiftCertificatesPage() {
 
       {/* Summary Stats */}
       {summary && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: SPACING.md, marginBottom: SPACING.xl }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)', gap: SPACING.md, marginBottom: SPACING.xl }}>
           <QuickStat label="Total" value={summary.total} color={COLORS.textPrimary} />
           <QuickStat label="Active GCs" value={summary.unredeemed} color="#3b82f6" />
           <QuickStat label="Promos" value={summary.promos} color="#f59e0b" />
@@ -270,24 +272,29 @@ export default function GiftCertificatesPage() {
       )}
 
       {/* Filters + Search */}
-      <div style={{ display: 'flex', gap: SPACING.sm, marginBottom: SPACING.lg, flexWrap: 'wrap', alignItems: 'center' }}>
-        {FILTERS.map(f => (
-          <button key={f.key} onClick={() => setFilter(f.key)} style={{
-            padding: '6px 16px', borderRadius: RADIUS.lg, cursor: 'pointer',
-            background: filter === f.key ? COLORS.activeBg : 'transparent',
-            color: filter === f.key ? COLORS.red : COLORS.textTertiary,
-            border: `1px solid ${filter === f.key ? COLORS.red : COLORS.borderInput}`,
-            fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold,
-          }}>
-            {f.label}
-          </button>
-        ))}
-        <div style={{ flex: 1 }} />
+      <div style={{
+        display: 'flex', gap: SPACING.sm, marginBottom: SPACING.lg, flexWrap: 'wrap', alignItems: 'center',
+        flexDirection: isMobile ? 'column' : 'row',
+      }}>
+        <div style={{ display: 'flex', gap: SPACING.sm, flexWrap: 'wrap' }}>
+          {FILTERS.map(f => (
+            <button key={f.key} onClick={() => setFilter(f.key)} style={{
+              padding: isMobile ? '8px 16px' : '6px 16px', borderRadius: RADIUS.lg, cursor: 'pointer',
+              background: filter === f.key ? COLORS.activeBg : 'transparent',
+              color: filter === f.key ? COLORS.red : COLORS.textTertiary,
+              border: `1px solid ${filter === f.key ? COLORS.red : COLORS.borderInput}`,
+              fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold,
+            }}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {!isMobile && <div style={{ flex: 1 }} />}
         <TextInput
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search code, name, phone..."
-          style={{ maxWidth: 250, minHeight: 36, fontSize: FONT.sizeSm }}
+          style={{ maxWidth: isMobile ? '100%' : 250, width: isMobile ? '100%' : undefined, minHeight: 36, fontSize: FONT.sizeSm }}
         />
       </div>
 
@@ -295,6 +302,53 @@ export default function GiftCertificatesPage() {
       <DashboardCard noPadding>
         {loading ? (
           <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>Loading...</div>
+        ) : isMobile ? (
+          filtered.length === 0 ? (
+            <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>No gift certificates found.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {filtered.map((gc, idx) => {
+                const statusLabel = gc.redeemed ? 'Redeemed' : (gc.end_date && new Date(gc.end_date) < new Date()) ? 'Expired' : 'Active';
+                const statusVariant = gc.redeemed ? 'success' as const : (gc.end_date && new Date(gc.end_date) < new Date()) ? 'danger' as const : 'info' as const;
+                return (
+                  <div key={gc.id} style={{
+                    padding: `${SPACING.md}px ${SPACING.lg}px`,
+                    borderBottom: idx < filtered.length - 1 ? `1px solid ${COLORS.border}` : 'none',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xs }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+                        <span style={{ fontWeight: FONT.weightBold, color: COLORS.textPrimary, fontFamily: 'monospace', fontSize: FONT.sizeSm }}>
+                          {gc.gc_code}
+                        </span>
+                        <StatusBadge label={statusLabel} variant={statusVariant} />
+                      </div>
+                      <span style={{ fontWeight: FONT.weightBold, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>
+                        {gc.discount_type === 'dollar' ? `$${gc.amount}` : `${gc.amount}%`}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: FONT.sizeXs, color: COLORS.textSecondary }}>
+                        {gc.customer_name || '--'}
+                      </span>
+                      <button onClick={() => toggleRedeemed(gc)} style={{
+                        background: gc.redeemed ? COLORS.dangerBg : COLORS.successBg,
+                        color: gc.redeemed ? COLORS.danger : COLORS.success,
+                        border: 'none', borderRadius: RADIUS.sm, padding: '6px 12px',
+                        fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, cursor: 'pointer',
+                      }}>
+                        {gc.redeemed ? 'Un-redeem' : 'Redeem'}
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                      {!gc.charge_deposit && <StatusBadge label="No Dep" variant="neutral" />}
+                      {gc.allow_same_day && <StatusBadge label="Same Day" variant="warning" />}
+                      {gc.disable_default_discounts && <StatusBadge label="No Disc" variant="neutral" />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
         ) : (
           <DataTable
             columns={columns}
@@ -319,7 +373,7 @@ export default function GiftCertificatesPage() {
           }
         >
           {/* Basics */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
             <FormField label="Code" required>
               <TextInput value={newCode} onChange={e => setNewCode(e.target.value)} placeholder="e.g., FWT100" style={{ textTransform: 'uppercase' }} />
             </FormField>
@@ -331,7 +385,7 @@ export default function GiftCertificatesPage() {
             </FormField>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
             <FormField label={newType === 'dollar' ? 'Amount ($)' : 'Percentage (%)'} required>
               <TextInput type="number" value={newAmount} onChange={e => setNewAmount(e.target.value)}
                 placeholder={newType === 'dollar' ? '50.00' : '20'} />
@@ -341,7 +395,7 @@ export default function GiftCertificatesPage() {
             </FormField>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
             <FormField label="Valid From">
               <TextInput type="date" value={newStartDate} onChange={e => setNewStartDate(e.target.value)} />
             </FormField>

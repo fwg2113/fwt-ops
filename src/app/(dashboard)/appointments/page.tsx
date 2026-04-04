@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader, DashboardCard, Button } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 import type { Appointment } from './AppointmentCard';
 import { MODULE_LABELS } from './AppointmentCard';
 import EditAppointmentModal from './EditAppointmentModal';
@@ -31,6 +32,7 @@ interface ShopConfigSlice {
   action_buttons_config: { buttons: ActionButtonConfig[] };
   message_templates: Record<string, string>;
   checkout_flow_config: Record<string, unknown>;
+  appointment_type_colors?: Record<string, string>;
 }
 
 export default function AppointmentsPage() {
@@ -40,6 +42,8 @@ export default function AppointmentsPage() {
 function AppointmentsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   const [selectedDate, setSelectedDate] = useState(searchParams.get('date') || new Date().toISOString().split('T')[0]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [summary, setSummary] = useState<DaySummary | null>(null);
@@ -98,6 +102,7 @@ function AppointmentsPageInner() {
             action_buttons_config: data.shopConfig.action_buttons_config || { buttons: DEFAULT_BUTTONS_CONFIG },
             message_templates: data.shopConfig.message_templates || {},
             checkout_flow_config: data.shopConfig.checkout_flow_config || {},
+            appointment_type_colors: data.shopConfig.appointment_type_colors || null,
           });
         }
         if (data.shopModules) {
@@ -269,125 +274,214 @@ function AppointmentsPageInner() {
 
       {/* Date Navigation */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: SPACING.md,
-        marginBottom: SPACING.xl, flexWrap: 'wrap',
+        display: 'flex', flexDirection: isMobile ? 'column' : 'row',
+        alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 10 : SPACING.md,
+        marginBottom: isMobile ? 12 : SPACING.xl, flexWrap: isMobile ? undefined : 'wrap',
       }}>
-        <button onClick={() => navigateDate(-1)} style={{
-          background: 'transparent', border: `1px solid ${COLORS.borderInput}`,
-          color: COLORS.textTertiary, borderRadius: RADIUS.md,
-          padding: '8px 12px', cursor: 'pointer',
-        }}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 2L4 7l5 5"/>
-          </svg>
-        </button>
-
-        <input
-          type="date"
-          value={selectedDate}
-          onChange={e => setSelectedDate(e.target.value)}
-          style={{
-            background: COLORS.inputBg, color: COLORS.textPrimary,
-            border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
-            padding: '8px 16px', fontSize: FONT.sizeBase, cursor: 'pointer', outline: 'none',
-          }}
-        />
-
-        <button onClick={() => navigateDate(1)} style={{
-          background: 'transparent', border: `1px solid ${COLORS.borderInput}`,
-          color: COLORS.textTertiary, borderRadius: RADIUS.md,
-          padding: '8px 12px', cursor: 'pointer',
-        }}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M5 2l5 5-5 5"/>
-          </svg>
-        </button>
-
-        {!isToday && (
-          <button onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])} style={{
-            background: COLORS.activeBg, color: COLORS.red,
-            border: '1px solid transparent', borderRadius: RADIUS.md,
-            padding: '8px 16px', cursor: 'pointer', fontSize: FONT.sizeSm,
-            fontWeight: FONT.weightSemibold,
+        {/* Row 1: Date picker with arrows */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => navigateDate(-1)} style={{
+            background: 'transparent', border: `1px solid ${COLORS.borderInput}`,
+            color: COLORS.textTertiary, borderRadius: RADIUS.md,
+            padding: isMobile ? '12px 14px' : '8px 12px', cursor: 'pointer',
+            flexShrink: 0,
           }}>
-            Today
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 2L4 7l5 5"/>
+            </svg>
           </button>
-        )}
 
-        {/* Module filter */}
-        {(() => {
-          const modulesInDay = [...new Set(appointments.map(a => a.module || 'auto_tint'))];
-          const showFilter = modulesInDay.length > 1;
-          if (!showFilter) return null;
-          return (
-            <select
-              value={moduleFilter}
-              onChange={e => setModuleFilter(e.target.value)}
-              style={{
-                background: COLORS.inputBg, color: COLORS.textPrimary,
-                border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
-                padding: '8px 16px', fontSize: FONT.sizeBase, cursor: 'pointer', outline: 'none',
-                appearance: 'auto' as const,
-              }}
-            >
-              <option value="all">All Modules</option>
-              {modulesInDay.map(mod => (
-                <option key={mod} value={mod}>
-                  {MODULE_LABELS[mod] || mod}
-                </option>
-              ))}
-            </select>
-          );
-        })()}
-
-        {/* Team member filter */}
-        {teamMembers.length >= 2 && (
-          <select
-            value={teamFilter}
-            onChange={e => setTeamFilter(e.target.value)}
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={e => setSelectedDate(e.target.value)}
             style={{
               background: COLORS.inputBg, color: COLORS.textPrimary,
               border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
-              padding: '8px 16px', fontSize: FONT.sizeBase, cursor: 'pointer', outline: 'none',
-              appearance: 'auto' as const,
+              padding: isMobile ? '12px 16px' : '8px 16px',
+              fontSize: isMobile ? '1rem' : FONT.sizeBase,
+              cursor: 'pointer', outline: 'none', flex: isMobile ? 1 : undefined,
             }}
-          >
-            <option value="all">All Team</option>
-            <option value="unassigned">Unassigned</option>
-            {teamMembers.map(tm => (
-              <option key={tm.id} value={tm.id}>
-                {tm.name}
-              </option>
-            ))}
-          </select>
+          />
+
+          <button onClick={() => navigateDate(1)} style={{
+            background: 'transparent', border: `1px solid ${COLORS.borderInput}`,
+            color: COLORS.textTertiary, borderRadius: RADIUS.md,
+            padding: isMobile ? '12px 14px' : '8px 12px', cursor: 'pointer',
+            flexShrink: 0,
+          }}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 2l5 5-5 5"/>
+            </svg>
+          </button>
+
+          {!isToday && (
+            <button onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])} style={{
+              background: COLORS.activeBg, color: COLORS.red,
+              border: '1px solid transparent', borderRadius: RADIUS.md,
+              padding: isMobile ? '12px 16px' : '8px 16px', cursor: 'pointer',
+              fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, flexShrink: 0,
+            }}>
+              Today
+            </button>
+          )}
+        </div>
+
+        {/* Row 2 (mobile): Filters side by side */}
+        {isMobile ? (
+          <div style={{ display: 'flex', gap: 8 }}>
+            {(() => {
+              const modulesInDay = [...new Set(appointments.map(a => a.module || 'auto_tint'))];
+              const showFilter = modulesInDay.length > 1;
+              if (!showFilter) return null;
+              return (
+                <select
+                  value={moduleFilter}
+                  onChange={e => setModuleFilter(e.target.value)}
+                  style={{
+                    background: COLORS.inputBg, color: COLORS.textPrimary,
+                    border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
+                    padding: '12px 12px', fontSize: '0.95rem', cursor: 'pointer', outline: 'none',
+                    appearance: 'auto' as const, flex: 1,
+                  }}
+                >
+                  <option value="all">All Modules</option>
+                  {modulesInDay.map(mod => (
+                    <option key={mod} value={mod}>
+                      {MODULE_LABELS[mod] || mod}
+                    </option>
+                  ))}
+                </select>
+              );
+            })()}
+
+            {teamMembers.length >= 2 && (
+              <select
+                value={teamFilter}
+                onChange={e => setTeamFilter(e.target.value)}
+                style={{
+                  background: COLORS.inputBg, color: COLORS.textPrimary,
+                  border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
+                  padding: '12px 12px', fontSize: '0.95rem', cursor: 'pointer', outline: 'none',
+                  appearance: 'auto' as const, flex: 1,
+                }}
+              >
+                <option value="all">All Team</option>
+                <option value="unassigned">Unassigned</option>
+                {teamMembers.map(tm => (
+                  <option key={tm.id} value={tm.id}>
+                    {tm.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Desktop: filters inline */}
+            {(() => {
+              const modulesInDay = [...new Set(appointments.map(a => a.module || 'auto_tint'))];
+              const showFilter = modulesInDay.length > 1;
+              if (!showFilter) return null;
+              return (
+                <select
+                  value={moduleFilter}
+                  onChange={e => setModuleFilter(e.target.value)}
+                  style={{
+                    background: COLORS.inputBg, color: COLORS.textPrimary,
+                    border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
+                    padding: '8px 16px', fontSize: FONT.sizeBase, cursor: 'pointer', outline: 'none',
+                    appearance: 'auto' as const,
+                  }}
+                >
+                  <option value="all">All Modules</option>
+                  {modulesInDay.map(mod => (
+                    <option key={mod} value={mod}>
+                      {MODULE_LABELS[mod] || mod}
+                    </option>
+                  ))}
+                </select>
+              );
+            })()}
+
+            {teamMembers.length >= 2 && (
+              <select
+                value={teamFilter}
+                onChange={e => setTeamFilter(e.target.value)}
+                style={{
+                  background: COLORS.inputBg, color: COLORS.textPrimary,
+                  border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
+                  padding: '8px 16px', fontSize: FONT.sizeBase, cursor: 'pointer', outline: 'none',
+                  appearance: 'auto' as const,
+                }}
+              >
+                <option value="all">All Team</option>
+                <option value="unassigned">Unassigned</option>
+                {teamMembers.map(tm => (
+                  <option key={tm.id} value={tm.id}>
+                    {tm.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <div style={{ flex: 1 }} />
+
+            <div style={{ fontSize: FONT.sizeBase, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold }}>
+              {displayDate}
+            </div>
+          </>
         )}
+      </div>
 
-        <div style={{ flex: 1 }} />
-
-        <div style={{ fontSize: FONT.sizeBase, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold }}>
+      {/* Display date on mobile (compact) */}
+      {isMobile && (
+        <div style={{
+          fontSize: '0.9rem', color: COLORS.textTertiary,
+          fontWeight: FONT.weightSemibold, marginBottom: 12,
+        }}>
           {displayDate}
         </div>
-      </div>
+      )}
 
       {/* Day Summary */}
       {summary && (
         <div style={{
-          display: 'flex', gap: SPACING.lg, marginBottom: SPACING.xl, flexWrap: 'wrap',
+          display: isMobile ? 'grid' : 'flex',
+          gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : undefined,
+          gap: isMobile ? 8 : SPACING.lg,
+          marginBottom: isMobile ? 12 : SPACING.xl,
+          flexWrap: isMobile ? undefined : 'wrap',
         }}>
-          <SummaryPill label="Total" value={summary.total} />
-          <SummaryPill label="Drop-Off" value={summary.dropoffs} color="#3b82f6" />
-          <SummaryPill label="Waiting" value={summary.waiting} color="#ef4444" />
-          <SummaryPill label="Heads-Up" value={summary.headsups} color="#f59e0b" />
+          <SummaryPill label="Total" value={summary.total} isMobile={isMobile} />
+          <SummaryPill label="Drop-Off" value={summary.dropoffs} color="#3b82f6" isMobile={isMobile} />
+          <SummaryPill label="Waiting" value={summary.waiting} color="#ef4444" isMobile={isMobile} />
+          <SummaryPill label="Heads-Up" value={summary.headsups} color="#f59e0b" isMobile={isMobile} />
           {summary.cancelled > 0 && (
-            <SummaryPill label="Cancelled" value={summary.cancelled} color={COLORS.textMuted} />
+            <SummaryPill label="Cancelled" value={summary.cancelled} color={COLORS.textMuted} isMobile={isMobile} />
           )}
-          <div style={{ flex: 1 }} />
-          <div style={{
-            fontSize: FONT.sizeBase, color: COLORS.textTertiary,
-            display: 'flex', alignItems: 'center',
-          }}>
-            Est. <strong style={{ color: COLORS.textPrimary, marginLeft: 4 }}>${summary.totalRevenue.toLocaleString()}</strong>
-          </div>
+          {isMobile ? (
+            <div style={{
+              gridColumn: '1 / -1',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '8px 14px', borderRadius: RADIUS.lg,
+              background: COLORS.hoverBg, border: `1px solid ${COLORS.border}`,
+            }}>
+              <span style={{ fontSize: '0.9rem', color: COLORS.textTertiary }}>
+                Est. <strong style={{ color: COLORS.textPrimary }}>${summary.totalRevenue.toLocaleString()}</strong>
+              </span>
+            </div>
+          ) : (
+            <>
+              <div style={{ flex: 1 }} />
+              <div style={{
+                fontSize: FONT.sizeBase, color: COLORS.textTertiary,
+                display: 'flex', alignItems: 'center',
+              }}>
+                Est. <strong style={{ color: COLORS.textPrimary, marginLeft: 4 }}>${summary.totalRevenue.toLocaleString()}</strong>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -407,6 +501,8 @@ function AppointmentsPageInner() {
       ) : (
         <TimelineView
           appointments={activeAppointments}
+          isMobile={isMobile}
+          isTablet={isTablet}
           onEdit={setEditingAppointment}
           onStatusChange={handleStatusChange}
           onOrderChange={async (positions) => {
@@ -425,6 +521,7 @@ function AppointmentsPageInner() {
           onAssign={handleAssign}
           moduleColorMap={moduleColorMap}
           moduleLabelMap={moduleLabelMap}
+          typeColorMap={shopConfig?.appointment_type_colors}
           onAddLinkedSlot={(apt) => {
             const groupId = apt.linked_group_id || apt.id; // Use existing group or create new group from this appointment
             setCreateModalLinkedGroupId(groupId);
@@ -518,22 +615,23 @@ function AppointmentsPageInner() {
   );
 }
 
-function SummaryPill({ label, value, color }: { label: string; value: number; color?: string }) {
+function SummaryPill({ label, value, color, isMobile }: { label: string; value: number; color?: string; isMobile?: boolean }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 6,
-      padding: '6px 14px', borderRadius: RADIUS.lg,
+      display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 6,
+      padding: isMobile ? '10px 14px' : '6px 14px', borderRadius: RADIUS.lg,
       background: color ? `${color}15` : COLORS.hoverBg,
       border: `1px solid ${color ? `${color}30` : COLORS.border}`,
+      justifyContent: isMobile ? 'center' : undefined,
     }}>
       <span style={{
-        fontSize: FONT.sizePageTitle, fontWeight: FONT.weightBold,
+        fontSize: isMobile ? '1.4rem' : FONT.sizePageTitle, fontWeight: FONT.weightBold,
         color: color || COLORS.textPrimary,
       }}>
         {value}
       </span>
       <span style={{
-        fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold,
+        fontSize: isMobile ? '0.75rem' : FONT.sizeXs, fontWeight: FONT.weightSemibold,
         color: COLORS.textMuted, textTransform: 'uppercase',
       }}>
         {label}

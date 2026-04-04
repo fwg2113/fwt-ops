@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PageHeader, DashboardCard, Button, Modal, TextInput, FormField, SelectInput, StatusBadge } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 import CustomerProfile from './CustomerProfile';
 import ImportModal from './ImportModal';
 
@@ -21,6 +22,9 @@ interface Customer {
 }
 
 export default function CustomersPage() {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
+  const isTouch = isMobile || isTablet;
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -129,8 +133,8 @@ export default function CustomersPage() {
       />
 
       {/* Search + Sort bar */}
-      <div style={{ display: 'flex', gap: SPACING.md, marginBottom: SPACING.lg, alignItems: 'center' }}>
-        <div style={{ flex: 1, maxWidth: 400 }}>
+      <div style={{ display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: SPACING.md, marginBottom: SPACING.lg, alignItems: 'center' }}>
+        <div style={{ flex: 1, maxWidth: isMobile ? '100%' : 400, width: isMobile ? '100%' : 'auto' }}>
           <TextInput
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
@@ -138,7 +142,7 @@ export default function CustomersPage() {
             style={{ minHeight: 40 }}
           />
         </div>
-        <SelectInput value={sort} onChange={e => { setSort(e.target.value); setOffset(0); }} style={{ minHeight: 40, maxWidth: 200 }}>
+        <SelectInput value={sort} onChange={e => { setSort(e.target.value); setOffset(0); }} style={{ minHeight: 40, maxWidth: isMobile ? '100%' : 200, flex: isMobile ? 1 : undefined }}>
           <option value="last_visit_date">Last Visit</option>
           <option value="lifetime_spend">Lifetime Spend</option>
           <option value="visit_count">Visit Count</option>
@@ -159,47 +163,87 @@ export default function CustomersPage() {
             {search ? 'No customers match your search.' : 'No customers yet. Add one or import a CSV.'}
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Name</th>
-                <th style={thStyle}>Phone</th>
-                <th style={thStyle}>Email</th>
-                <th style={{ ...thStyle, textAlign: 'center' }}>Visits</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Lifetime Spend</th>
-                <th style={thStyle}>Last Visit</th>
-              </tr>
-            </thead>
-            <tbody>
+          isMobile ? (
+            <div style={{ padding: SPACING.sm }}>
               {customers.map(c => (
-                <tr
+                <div
                   key={c.id}
                   onClick={() => setSelectedCustomerId(c.id)}
-                  style={{ cursor: 'pointer', transition: 'background 0.1s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = COLORS.hoverBg}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  style={{
+                    padding: `${SPACING.md}px ${SPACING.md}px`,
+                    borderBottom: `1px solid ${COLORS.border}`,
+                    cursor: 'pointer',
+                  }}
                 >
-                  <td style={tdStyle}>
-                    <div style={{ fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>
-                      {c.first_name} {c.last_name}
+                  {/* Row 1: Name + Phone */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
+                    <div>
+                      <span style={{ fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>
+                        {c.first_name} {c.last_name}
+                      </span>
+                      {c.company_name && (
+                        <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginLeft: SPACING.sm }}>{c.company_name}</span>
+                      )}
                     </div>
-                    {c.company_name && (
-                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{c.company_name}</div>
-                    )}
-                  </td>
-                  <td style={{ ...tdStyle, fontVariantNumeric: 'tabular-nums' }}>{formatPhone(c.phone)}</td>
-                  <td style={{ ...tdStyle, color: COLORS.textMuted }}>{c.email || '--'}</td>
-                  <td style={{ ...tdStyle, textAlign: 'center', fontWeight: FONT.weightSemibold }}>{c.visit_count}</td>
-                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: FONT.weightSemibold, color: COLORS.success }}>
-                    ${Number(c.lifetime_spend || 0).toLocaleString()}
-                  </td>
-                  <td style={{ ...tdStyle, color: COLORS.textMuted, fontSize: FONT.sizeSm }}>
-                    {c.last_visit_date ? new Date(c.last_visit_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '--'}
-                  </td>
-                </tr>
+                    <span style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.success }}>
+                      ${Number(c.lifetime_spend || 0).toLocaleString()}
+                    </span>
+                  </div>
+                  {/* Row 2: Email + Visits + Last Visit */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.md, fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPhone(c.phone)}</span>
+                    <span>{c.visit_count} visits</span>
+                    <span style={{ flex: 1 }} />
+                    <span>
+                      {c.last_visit_date ? new Date(c.last_visit_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--'}
+                    </span>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Name</th>
+                  <th style={thStyle}>Phone</th>
+                  <th style={thStyle}>Email</th>
+                  <th style={{ ...thStyle, textAlign: 'center' }}>Visits</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>Lifetime Spend</th>
+                  <th style={thStyle}>Last Visit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customers.map(c => (
+                  <tr
+                    key={c.id}
+                    onClick={() => setSelectedCustomerId(c.id)}
+                    style={{ cursor: 'pointer', transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = COLORS.hoverBg}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <td style={tdStyle}>
+                      <div style={{ fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>
+                        {c.first_name} {c.last_name}
+                      </div>
+                      {c.company_name && (
+                        <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{c.company_name}</div>
+                      )}
+                    </td>
+                    <td style={{ ...tdStyle, fontVariantNumeric: 'tabular-nums' }}>{formatPhone(c.phone)}</td>
+                    <td style={{ ...tdStyle, color: COLORS.textMuted }}>{c.email || '--'}</td>
+                    <td style={{ ...tdStyle, textAlign: 'center', fontWeight: FONT.weightSemibold }}>{c.visit_count}</td>
+                    <td style={{ ...tdStyle, textAlign: 'right', fontWeight: FONT.weightSemibold, color: COLORS.success }}>
+                      ${Number(c.lifetime_spend || 0).toLocaleString()}
+                    </td>
+                    <td style={{ ...tdStyle, color: COLORS.textMuted, fontSize: FONT.sizeSm }}>
+                      {c.last_visit_date ? new Date(c.last_visit_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '--'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
         )}
 
         {/* Pagination */}
@@ -235,15 +279,15 @@ export default function CustomersPage() {
           title="Add Customer"
           onClose={() => setShowCreate(false)}
           footer={
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: SPACING.sm }}>
-              <Button variant="secondary" onClick={() => setShowCreate(false)}>Cancel</Button>
-              <Button variant="primary" onClick={handleCreate} disabled={(!createFirst && !createLast) || creating}>
+            <div style={{ display: 'flex', justifyContent: isMobile ? 'stretch' : 'flex-end', gap: SPACING.sm }}>
+              <Button variant="secondary" onClick={() => setShowCreate(false)} style={isMobile ? { flex: 1, padding: '12px' } : undefined}>Cancel</Button>
+              <Button variant="primary" onClick={handleCreate} disabled={(!createFirst && !createLast) || creating} style={isMobile ? { flex: 1, padding: '12px' } : undefined}>
                 {creating ? 'Creating...' : 'Add Customer'}
               </Button>
             </div>
           }
         >
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
             <FormField label="First Name">
               <TextInput value={createFirst} onChange={e => setCreateFirst(e.target.value)} placeholder="First name" />
             </FormField>
@@ -251,7 +295,7 @@ export default function CustomersPage() {
               <TextInput value={createLast} onChange={e => setCreateLast(e.target.value)} placeholder="Last name" />
             </FormField>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
             <FormField label="Phone">
               <TextInput value={createPhone} onChange={e => setCreatePhone(e.target.value)} placeholder="(301) 555-1234" />
             </FormField>

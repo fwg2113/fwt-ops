@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { DashboardCard, Button, FormField, TextInput, SelectInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 interface Props {
   data: Record<string, unknown>;
@@ -21,6 +22,7 @@ interface Brand {
 }
 
 export default function CheckoutTab({ data, onSave, onRefresh }: Props) {
+  const isMobile = useIsMobile();
   const config = data.shopConfig as Record<string, unknown> || {};
   const brands = ((data.brands || []) as Brand[]).filter(b => b.active);
   const [saving, setSaving] = useState(false);
@@ -99,7 +101,7 @@ export default function CheckoutTab({ data, onSave, onRefresh }: Props) {
           <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.lg }}>
             When a quote or invoice includes services from multiple brands, choose which brand identity to show in the document header. This can be overridden per document in the Quote Builder.
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
             <FormField label="Default brand display">
               <SelectInput value={brandMode} onChange={e => setBrandMode(e.target.value)}>
                 <option value="auto">Auto -- show brand(s) from services on the document</option>
@@ -206,7 +208,7 @@ export default function CheckoutTab({ data, onSave, onRefresh }: Props) {
         <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.lg }}>
           Control when invoices are created and how customers can check out.
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
           <FormField label="When to create invoice">
             <SelectInput value={invoiceCreation} onChange={e => setInvoiceCreation(e.target.value)}>
               <option value="manual">Manual only (Invoice button)</option>
@@ -237,7 +239,7 @@ export default function CheckoutTab({ data, onSave, onRefresh }: Props) {
         <Toggle label="Enable Self-Checkout" checked={selfCheckoutEnabled} onChange={setSelfCheckoutEnabled} />
         {selfCheckoutEnabled && (
           <div style={{ marginTop: SPACING.md }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
               <FormField label="Page Heading">
                 <TextInput value={selfCheckoutHeading} onChange={e => setSelfCheckoutHeading(e.target.value)} placeholder="Self Checkout" />
               </FormField>
@@ -251,6 +253,7 @@ export default function CheckoutTab({ data, onSave, onRefresh }: Props) {
               marginTop: SPACING.md, padding: SPACING.lg,
               border: `1px solid ${COLORS.border}`, borderRadius: RADIUS.md,
               display: 'flex', gap: SPACING.xl, alignItems: 'center',
+              flexDirection: isMobile ? 'column' : 'row',
             }}>
               <div style={{ textAlign: 'center' }}>
                 <canvas id="self-checkout-qr" style={{ display: qrGenerated ? 'block' : 'none', width: 180, height: 180 }} />

@@ -4,8 +4,9 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardCard, Button, FormField, SelectInput, TextInput, Modal, MiniTimeline } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 import type { BulkConfig, AutoVehicle, AutoVehiclePricingOverride } from '@/app/components/booking/types';
-import { calculateServicePrice, getAvailableFilms, getAddFee, getAllowedShades, needsSplitShades } from '@/app/components/booking/pricing';
+import { calculateServicePrice, calculateAlaCartePrice, getAvailableFilms, getAddFee, getAllowedShades, needsSplitShades } from '@/app/components/booking/pricing';
 import { SendToCustomerModal, type SelectedRow } from './QuickTintModals';
 
 interface Props {
@@ -25,6 +26,7 @@ const tdStyle: React.CSSProperties = {
 
 export default function QuickTintMode({ onExit }: Props) {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [config, setConfig] = useState<BulkConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -33,6 +35,9 @@ export default function QuickTintMode({ onExit }: Props) {
   const [bookingDirect, setBookingDirect] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [sendingQuote, setSendingQuote] = useState(false);
+  const [bookPath, setBookPath] = useState<'schedule' | 'tailored'>('schedule');
+  const [showPreview, setShowPreview] = useState(false);
+  const [optionsMode, setOptionsMode] = useState(false);
 
   // Customer
   const [customerName, setCustomerName] = useState('');
@@ -66,6 +71,8 @@ export default function QuickTintMode({ onExit }: Props) {
   // Deposit override for "Send as Tailored Quote" path
   const [depositOverride, setDepositOverride] = useState<number | null>(null);
   const [overrideDeposit, setOverrideDeposit] = useState(false);
+  const [tailoredSendMethod, setTailoredSendMethod] = useState<'sms' | 'email' | 'copy'>('copy');
+  const [tailoredSentVia, setTailoredSentVia] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -145,6 +152,11 @@ export default function QuickTintMode({ onExit }: Props) {
     return config.services.filter(s => s.enabled && s.service_type === 'removal').sort((a, b) => a.sort_order - b.sort_order);
   }, [config]);
 
+  const alaCarteServices = useMemo(() => {
+    if (!config) return [];
+    return config.services.filter(s => s.enabled && s.service_type === 'alacarte').sort((a, b) => a.sort_order - b.sort_order);
+  }, [config]);
+
   const priceMatrix = useMemo(() => {
     if (!config || !vehicle) return null;
     const matrix: Record<string, Record<number, number>> = {};
@@ -158,8 +170,30 @@ export default function QuickTintMode({ onExit }: Props) {
       matrix[svc.service_key] = {};
       matrix[svc.service_key][0] = calculateServicePrice(vehicle, svc.service_key, null, config.pricing, config.vehicleClasses, config.vehiclePricingOverrides as AutoVehiclePricingOverride[]);
     }
+    for (const svc of alaCarteServices) {
+      matrix[svc.service_key] = {};
+      for (const film of films) {
+        matrix[svc.service_key][film.id] = calculateAlaCartePrice(vehicle, svc.service_key, film.id, config.pricing);
+      }
+    }
     return matrix;
-  }, [config, vehicle, tintServices, removalServices, films]);
+  }, [config, vehicle, tintServices, removalServices, alaCarteServices, films]);
+
+  // Filter services to only show rows that have at least one non-zero price
+  const visibleTintServices = useMemo(() => {
+    if (!priceMatrix) return tintServices;
+    return tintServices.filter(svc => films.some(f => (priceMatrix[svc.service_key]?.[f.id] ?? 0) > 0));
+  }, [tintServices, priceMatrix, films]);
+
+  const visibleRemovalServices = useMemo(() => {
+    if (!priceMatrix) return removalServices;
+    return removalServices.filter(svc => (priceMatrix[svc.service_key]?.[0] ?? 0) > 0);
+  }, [removalServices, priceMatrix]);
+
+  const visibleAlaCarteServices = useMemo(() => {
+    if (!priceMatrix) return alaCarteServices;
+    return alaCarteServices.filter(svc => films.some(f => (priceMatrix[svc.service_key]?.[f.id] ?? 0) > 0));
+  }, [alaCarteServices, priceMatrix, films]);
 
   const addFee = useMemo(() => {
     if (!config || !vehicle) return 0;
@@ -168,11 +202,30 @@ export default function QuickTintMode({ onExit }: Props) {
 
   const toggleRow = useCallback((serviceKey: string, label: string, filmId: number, filmName: string, price: number) => {
     setSelectedRows(prev => {
-      const exists = prev.find(r => r.serviceKey === serviceKey && r.filmId === filmId);
-      if (exists) return prev.filter(r => !(r.serviceKey === serviceKey && r.filmId === filmId));
-      return [...prev, { serviceKey, label, filmId, filmName, price, shadeFront: null, shadeRear: null }];
+      const exactMatch = prev.find(r => r.serviceKey === serviceKey && r.filmId === filmId);
+      // Clicking the same cell again: deselect it
+      if (exactMatch) return prev.filter(r => !(r.serviceKey === serviceKey && r.filmId === filmId));
+
+      if (optionsMode) {
+        // Options mode: multiple films per row, multiple primaries allowed
+        return [...prev, { serviceKey, label, filmId, filmName, price, shadeFront: null, shadeRear: null }];
+      }
+
+      // Normal mode: one film per service row
+      let updated = prev.filter(r => r.serviceKey !== serviceKey);
+
+      // Primary service conflict: if selecting a primary service, remove any other primary service
+      if (config) {
+        const svcDef = config.services.find(s => s.service_key === serviceKey);
+        if (svcDef?.is_primary) {
+          const primaryKeys = new Set(config.services.filter(s => s.is_primary).map(s => s.service_key));
+          updated = updated.filter(r => !primaryKeys.has(r.serviceKey));
+        }
+      }
+
+      return [...updated, { serviceKey, label, filmId, filmName, price, shadeFront: null, shadeRear: null }];
     });
-  }, []);
+  }, [config, optionsMode]);
 
   const updateRowShade = useCallback((serviceKey: string, filmId: number, field: 'shadeFront' | 'shadeRear', value: string | null) => {
     setSelectedRows(prev => prev.map(r =>
@@ -292,7 +345,7 @@ export default function QuickTintMode({ onExit }: Props) {
           total_price: totalSelected,
           charge_deposit: overrideDeposit ? (depositOverride !== null && depositOverride > 0) : (config?.shopConfig.require_deposit ?? true),
           deposit_amount: overrideDeposit ? (depositOverride || 0) : (config?.shopConfig.deposit_amount || 50),
-          send_method: 'copy',
+          send_method: tailoredSendMethod,
           // Pass the pre-selected schedule so customer sees it
           suggested_date: selectedDate || null,
           suggested_time: selectedTime || null,
@@ -302,6 +355,7 @@ export default function QuickTintMode({ onExit }: Props) {
       if (res.ok) {
         const data = await res.json();
         setGeneratedLink(data.booking_url);
+        setTailoredSentVia(data.sent ? tailoredSendMethod : null);
       }
     } catch { /* silent */ }
     setSendingQuote(false);
@@ -355,6 +409,125 @@ export default function QuickTintMode({ onExit }: Props) {
   }
 
   // ============================================================
+  // ACTION: Send as Options Quote (Options Mode)
+  // Creates a lead with options_mode=true. The lead booking page
+  // shows a pick-one-per-service UI. Stays in FLQA world.
+  // ============================================================
+  const [optionsSendSms, setOptionsSendSms] = useState(true);
+  const [optionsSendEmail, setOptionsSendEmail] = useState(true);
+  const [optionsLink, setOptionsLink] = useState('');
+  const [optionsSent, setOptionsSent] = useState(false);
+  const [optionsSentVia, setOptionsSentVia] = useState<string[]>([]);
+  const [showOptionsPreview, setShowOptionsPreview] = useState(false);
+  const [optionsCopied, setOptionsCopied] = useState(false);
+
+  async function handleSendOptions() {
+    if (!vehicle || selectedRows.length === 0) return;
+    const willSms = optionsSendSms && !!customerPhone;
+    const willEmail = optionsSendEmail && !!customerEmail;
+    if (!willSms && !willEmail) {
+      alert('Enter a phone number for SMS or an email address to send.');
+      return;
+    }
+    setCreating(true);
+
+    try {
+      const services = selectedRows.map(row => ({
+        service_key: row.serviceKey, label: row.label,
+        film_id: row.filmId > 0 ? row.filmId : null, film_name: row.filmName !== 'N/A' ? row.filmName : null,
+        price: row.price, shade_front: row.shadeFront, shade_rear: row.shadeRear,
+      }));
+
+      const sentVia: string[] = [];
+
+      // Send via SMS
+      if (willSms) {
+        const res = await fetch('/api/auto/leads', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_name: customerName || null, customer_phone: customerPhone || null,
+            customer_email: customerEmail || null,
+            vehicle_year: parseInt(selectedYear), vehicle_make: selectedMake, vehicle_model: selectedModel,
+            vehicle_id: vehicle.id, class_keys: vehicle.class_keys.join('|'),
+            services, total_price: totalSelected,
+            charge_deposit: config?.shopConfig.require_deposit ?? true,
+            deposit_amount: config?.shopConfig.deposit_amount || 50,
+            send_method: 'sms', options_mode: true,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setOptionsLink(data.booking_url);
+          if (data.sent) sentVia.push('SMS');
+        }
+      }
+
+      // Send via Email (reuse same lead if SMS already created one, or create new)
+      if (willEmail) {
+        const res = await fetch('/api/auto/leads', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_name: customerName || null, customer_phone: customerPhone || null,
+            customer_email: customerEmail || null,
+            vehicle_year: parseInt(selectedYear), vehicle_make: selectedMake, vehicle_model: selectedModel,
+            vehicle_id: vehicle.id, class_keys: vehicle.class_keys.join('|'),
+            services, total_price: totalSelected,
+            charge_deposit: config?.shopConfig.require_deposit ?? true,
+            deposit_amount: config?.shopConfig.deposit_amount || 50,
+            send_method: willSms ? 'email' : 'email', // If SMS already sent, this just sends email
+            options_mode: true,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (!optionsLink) setOptionsLink(data.booking_url);
+          if (data.sent) sentVia.push('Email');
+        }
+      }
+
+      setOptionsSentVia(sentVia);
+      setOptionsSent(true);
+    } catch { /* silent */ }
+    setCreating(false);
+  }
+
+  async function handleCopyOptionsLink() {
+    if (!vehicle || selectedRows.length === 0) return;
+    // Generate link without sending
+    if (!optionsLink) {
+      const services = selectedRows.map(row => ({
+        service_key: row.serviceKey, label: row.label,
+        film_id: row.filmId > 0 ? row.filmId : null, film_name: row.filmName !== 'N/A' ? row.filmName : null,
+        price: row.price, shade_front: row.shadeFront, shade_rear: row.shadeRear,
+      }));
+      const res = await fetch('/api/auto/leads', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_name: customerName || null, customer_phone: customerPhone || null,
+          customer_email: customerEmail || null,
+          vehicle_year: parseInt(selectedYear), vehicle_make: selectedMake, vehicle_model: selectedModel,
+          vehicle_id: vehicle.id, class_keys: vehicle.class_keys.join('|'),
+          services, total_price: totalSelected,
+          charge_deposit: config?.shopConfig.require_deposit ?? true,
+          deposit_amount: config?.shopConfig.deposit_amount || 50,
+          send_method: 'copy', options_mode: true,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOptionsLink(data.booking_url);
+        await navigator.clipboard.writeText(data.booking_url);
+        setOptionsCopied(true);
+        setTimeout(() => setOptionsCopied(false), 2000);
+        return;
+      }
+    }
+    await navigator.clipboard.writeText(optionsLink);
+    setOptionsCopied(true);
+    setTimeout(() => setOptionsCopied(false), 2000);
+  }
+
+  // ============================================================
   // RENDER
   // ============================================================
 
@@ -383,6 +556,16 @@ export default function QuickTintMode({ onExit }: Props) {
             cursor: 'pointer',
           }}>
             Exit Fast Lane
+          </button>
+          {/* Options Mode toggle */}
+          <button onClick={() => { setOptionsMode(!optionsMode); setSelectedRows([]); }} style={{
+            padding: `${SPACING.xs}px ${SPACING.md}px`, borderRadius: RADIUS.sm,
+            background: optionsMode ? `${COLORS.borderAccentSolid}20` : 'transparent',
+            border: `1px solid ${optionsMode ? COLORS.borderAccentSolid : COLORS.borderInput}`,
+            color: optionsMode ? COLORS.borderAccentSolid : COLORS.textMuted,
+            fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, cursor: 'pointer',
+          }}>
+            {optionsMode ? 'Options Mode ON' : 'Options Mode'}
           </button>
         </div>
         {selectedRows.length > 0 && (
@@ -475,6 +658,169 @@ export default function QuickTintMode({ onExit }: Props) {
             ) : (
               <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>Click cells to select services</span>
             )}>
+            {isMobile ? (
+              /* ============ MOBILE: Film pills per service row ============ */
+              <div style={{ padding: SPACING.md }}>
+                {/* Tint Services */}
+                {visibleTintServices.map(svc => {
+                  const anySelected = selectedRows.some(r => r.serviceKey === svc.service_key);
+                  return (
+                    <div key={svc.service_key} style={{
+                      marginBottom: SPACING.md, paddingBottom: SPACING.md,
+                      borderBottom: `1px solid ${COLORS.border}`,
+                    }}>
+                      <div
+                        onClick={() => {
+                          if (!optionsMode || !priceMatrix) return;
+                          if (anySelected) {
+                            setSelectedRows(prev => prev.filter(r => r.serviceKey !== svc.service_key));
+                          } else {
+                            const newRows: SelectedRow[] = [];
+                            for (const film of films) {
+                              const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
+                              if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, shadeFront: null, shadeRear: null });
+                            }
+                            setSelectedRows(prev => [...prev.filter(r => r.serviceKey !== svc.service_key), ...newRows]);
+                          }
+                        }}
+                        style={{ marginBottom: 8, cursor: optionsMode ? 'pointer' : 'default' }}
+                      >
+                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: COLORS.textPrimary }}>{svc.label}</div>
+                        {svc.service_key === 'FULL_SIDES' && addFee > 0 && <div style={{ fontSize: '0.7rem', color: COLORS.yellow }}>incl. +${addFee} add fee</div>}
+                        {optionsMode && <div style={{ fontSize: '0.65rem', color: anySelected ? COLORS.red : COLORS.textMuted }}>{anySelected ? 'Tap to deselect all' : 'Tap to select all'}</div>}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {films.map(film => {
+                          const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
+                          if (price <= 0) return null;
+                          const sel = isSelected(svc.service_key, film.id);
+                          return (
+                            <button key={film.id}
+                              onClick={() => toggleRow(svc.service_key, svc.label, film.id, film.name, price)}
+                              style={{
+                                padding: '10px 6px', borderRadius: RADIUS.md, cursor: 'pointer',
+                                background: sel ? 'rgba(220, 38, 38, 0.2)' : COLORS.inputBg,
+                                border: `2px solid ${sel ? COLORS.red : COLORS.border}`,
+                                color: sel ? COLORS.red : COLORS.textPrimary,
+                                fontSize: '0.8rem', fontWeight: sel ? 800 : 600,
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                                flex: '1 1 0', minWidth: 0,
+                              }}
+                            >
+                              <span style={{ fontSize: '0.65rem', color: sel ? COLORS.red : COLORS.textMuted, fontWeight: 600 }}>{film.abbreviation || film.name}</span>
+                              <span>${price}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Removal Services */}
+                {visibleRemovalServices.length > 0 && (
+                  <>
+                    <div style={{
+                      padding: `${SPACING.sm}px 0`, fontSize: '0.75rem',
+                      fontWeight: 700, color: '#f59e0b',
+                      textTransform: 'uppercase', letterSpacing: '1px',
+                      borderBottom: `1px solid ${COLORS.border}`, marginBottom: SPACING.md,
+                    }}>Removal Services</div>
+                    {visibleRemovalServices.map(svc => {
+                      const price = priceMatrix[svc.service_key]?.[0] ?? 0;
+                      const sel = isSelected(svc.service_key, 0);
+                      return (
+                        <div key={svc.service_key} style={{
+                          marginBottom: SPACING.md, paddingBottom: SPACING.md,
+                          borderBottom: `1px solid ${COLORS.border}`,
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        }}>
+                          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: COLORS.textSecondary }}>{svc.label}</span>
+                          <button
+                            onClick={() => price > 0 && toggleRow(svc.service_key, svc.label, 0, 'N/A', price)}
+                            style={{
+                              padding: '10px 18px', borderRadius: RADIUS.md, cursor: 'pointer',
+                              background: sel ? 'rgba(220, 38, 38, 0.2)' : COLORS.inputBg,
+                              border: `2px solid ${sel ? COLORS.red : COLORS.border}`,
+                              color: sel ? COLORS.red : COLORS.textPrimary,
+                              fontSize: '0.85rem', fontWeight: sel ? 800 : 600,
+                            }}
+                          >
+                            ${price}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+
+                {/* Ala Carte Services */}
+                {visibleAlaCarteServices.length > 0 && (
+                  <>
+                    <div style={{
+                      padding: `${SPACING.sm}px 0`, fontSize: '0.75rem',
+                      fontWeight: 700, color: '#8b5cf6',
+                      textTransform: 'uppercase', letterSpacing: '1px',
+                      borderBottom: `1px solid ${COLORS.border}`, marginBottom: SPACING.md,
+                    }}>Ala Carte -- Single Window</div>
+                    {visibleAlaCarteServices.map(svc => {
+                      const anySelected = selectedRows.some(r => r.serviceKey === svc.service_key);
+                      return (
+                        <div key={svc.service_key} style={{
+                          marginBottom: SPACING.md, paddingBottom: SPACING.md,
+                          borderBottom: `1px solid ${COLORS.border}`,
+                        }}>
+                          <div
+                            onClick={() => {
+                              if (!optionsMode || !priceMatrix) return;
+                              if (anySelected) {
+                                setSelectedRows(prev => prev.filter(r => r.serviceKey !== svc.service_key));
+                              } else {
+                                const newRows: SelectedRow[] = [];
+                                for (const film of films) {
+                                  const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
+                                  if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, shadeFront: null, shadeRear: null });
+                                }
+                                setSelectedRows(prev => [...prev.filter(r => r.serviceKey !== svc.service_key), ...newRows]);
+                              }
+                            }}
+                            style={{ marginBottom: 8, cursor: optionsMode ? 'pointer' : 'default' }}
+                          >
+                            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: COLORS.textPrimary }}>{svc.label}</div>
+                            {optionsMode && <div style={{ fontSize: '0.65rem', color: anySelected ? COLORS.red : COLORS.textMuted }}>{anySelected ? 'Tap to deselect all' : 'Tap to select all'}</div>}
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {films.map(film => {
+                              const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
+                              if (price <= 0) return null;
+                              const sel = isSelected(svc.service_key, film.id);
+                              return (
+                                <button key={film.id}
+                                  onClick={() => toggleRow(svc.service_key, svc.label, film.id, film.name, price)}
+                                  style={{
+                                    padding: '10px 14px', borderRadius: RADIUS.md, cursor: 'pointer',
+                                    background: sel ? 'rgba(220, 38, 38, 0.2)' : COLORS.inputBg,
+                                    border: `2px solid ${sel ? COLORS.red : COLORS.border}`,
+                                    color: sel ? COLORS.red : COLORS.textPrimary,
+                                    fontSize: '0.8rem', fontWeight: sel ? 800 : 600,
+                                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                                    minWidth: 75,
+                                  }}
+                                >
+                                  <span style={{ fontSize: '0.65rem', color: sel ? COLORS.red : COLORS.textMuted, fontWeight: 600 }}>{film.abbreviation || film.name}</span>
+                                  <span>${price}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            ) : (
+              /* ============ DESKTOP: Original table layout ============ */
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
                 <thead>
@@ -488,11 +834,34 @@ export default function QuickTintMode({ onExit }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {tintServices.map(svc => (
+                  {visibleTintServices.map(svc => {
+                    const anySelected = selectedRows.some(r => r.serviceKey === svc.service_key);
+                    return (
                     <tr key={svc.service_key}>
-                      <td style={{ ...tdStyle, position: 'sticky', left: 0, zIndex: 1, background: COLORS.cardBg, fontWeight: FONT.weightMedium, color: COLORS.textSecondary }}>
+                      <td
+                        onClick={() => {
+                          if (!optionsMode || !priceMatrix) return;
+                          if (anySelected) {
+                            setSelectedRows(prev => prev.filter(r => r.serviceKey !== svc.service_key));
+                          } else {
+                            const newRows: SelectedRow[] = [];
+                            for (const film of films) {
+                              const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
+                              if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, shadeFront: null, shadeRear: null });
+                            }
+                            setSelectedRows(prev => [...prev.filter(r => r.serviceKey !== svc.service_key), ...newRows]);
+                          }
+                        }}
+                        style={{
+                          ...tdStyle, position: 'sticky', left: 0, zIndex: 1,
+                          background: optionsMode && anySelected ? 'rgba(220, 38, 38, 0.08)' : COLORS.cardBg,
+                          fontWeight: FONT.weightMedium, color: COLORS.textSecondary,
+                          cursor: optionsMode ? 'pointer' : 'default',
+                        }}
+                      >
                         <div>{svc.label}</div>
                         {svc.service_key === 'FULL_SIDES' && addFee > 0 && <div style={{ fontSize: FONT.sizeXs, color: COLORS.yellow }}>incl. +${addFee} add fee</div>}
+                        {optionsMode && <div style={{ fontSize: '0.6rem', color: anySelected ? COLORS.red : COLORS.textMuted, marginTop: 2 }}>{anySelected ? 'Click to deselect row' : 'Click to select all'}</div>}
                       </td>
                       {films.map(film => {
                         const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
@@ -508,23 +877,88 @@ export default function QuickTintMode({ onExit }: Props) {
                         );
                       })}
                     </tr>
-                  ))}
-                  {removalServices.length > 0 && (
+                  );
+                  })}
+                  {/* Removal Services */}
+                  {visibleRemovalServices.length > 0 && (
                     <>
-                      <tr><td colSpan={films.length + 1} style={{ padding: `${SPACING.sm}px ${SPACING.lg}px`, fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.yellow, textTransform: 'uppercase', letterSpacing: '1px', borderBottom: `1px solid ${COLORS.border}`, background: COLORS.activeBg }}>Removal Services</td></tr>
-                      {removalServices.map(svc => {
+                      <tr><td colSpan={films.length + 1} style={{
+                        padding: `${SPACING.sm}px ${SPACING.lg}px`, fontSize: FONT.sizeXs,
+                        fontWeight: FONT.weightSemibold, color: '#f59e0b',
+                        textTransform: 'uppercase', letterSpacing: '1px',
+                        borderBottom: `1px solid ${COLORS.border}`, borderTop: `2px solid ${COLORS.border}`,
+                        background: COLORS.inputBg,
+                      }}>Removal Services</td></tr>
+                      {visibleRemovalServices.map(svc => {
                         const price = priceMatrix[svc.service_key]?.[0] ?? 0;
                         const sel = isSelected(svc.service_key, 0);
                         return (
                           <tr key={svc.service_key}>
                             <td style={{ ...tdStyle, position: 'sticky', left: 0, zIndex: 1, background: COLORS.cardBg, fontWeight: FONT.weightMedium, color: COLORS.textSecondary }}>{svc.label}</td>
                             <td colSpan={films.length} onClick={() => price > 0 && toggleRow(svc.service_key, svc.label, 0, 'N/A', price)}
-                              style={{ ...tdStyle, cursor: price > 0 ? 'pointer' : 'default', background: sel ? 'rgba(220, 38, 38, 0.15)' : 'transparent', transition: 'background 0.15s' }}
-                              onMouseEnter={e => { if (price > 0 && !sel) e.currentTarget.style.background = COLORS.hoverBg; }}
+                              style={{ ...tdStyle, cursor: 'pointer', background: sel ? 'rgba(220, 38, 38, 0.15)' : 'transparent', transition: 'background 0.15s' }}
+                              onMouseEnter={e => { if (!sel) e.currentTarget.style.background = COLORS.hoverBg; }}
                               onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'transparent'; }}>
-                              {price > 0 ? <span style={{ fontSize: FONT.sizeBase, fontWeight: sel ? FONT.weightBold : FONT.weightMedium, color: sel ? COLORS.red : COLORS.textPrimary }}>${price} (flat rate)</span>
-                                : <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>--</span>}
+                              <span style={{ fontSize: FONT.sizeBase, fontWeight: sel ? FONT.weightBold : FONT.weightMedium, color: sel ? COLORS.red : COLORS.textPrimary }}>${price}</span>
+                              <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginLeft: 6 }}>flat rate</span>
                             </td>
+                          </tr>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  {/* Ala Carte Services */}
+                  {visibleAlaCarteServices.length > 0 && (
+                    <>
+                      <tr><td colSpan={films.length + 1} style={{
+                        padding: `${SPACING.sm}px ${SPACING.lg}px`, fontSize: FONT.sizeXs,
+                        fontWeight: FONT.weightSemibold, color: '#8b5cf6',
+                        textTransform: 'uppercase', letterSpacing: '1px',
+                        borderBottom: `1px solid ${COLORS.border}`, borderTop: `2px solid ${COLORS.border}`,
+                        background: COLORS.inputBg,
+                      }}>Ala Carte -- Single Window</td></tr>
+                      {visibleAlaCarteServices.map(svc => {
+                        const anySelected = selectedRows.some(r => r.serviceKey === svc.service_key);
+                        return (
+                          <tr key={svc.service_key}>
+                            <td
+                              onClick={() => {
+                                if (!optionsMode || !priceMatrix) return;
+                                if (anySelected) {
+                                  setSelectedRows(prev => prev.filter(r => r.serviceKey !== svc.service_key));
+                                } else {
+                                  const newRows: SelectedRow[] = [];
+                                  for (const film of films) {
+                                    const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
+                                    if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, shadeFront: null, shadeRear: null });
+                                  }
+                                  setSelectedRows(prev => [...prev.filter(r => r.serviceKey !== svc.service_key), ...newRows]);
+                                }
+                              }}
+                              style={{
+                                ...tdStyle, position: 'sticky', left: 0, zIndex: 1,
+                                background: optionsMode && anySelected ? 'rgba(220, 38, 38, 0.08)' : COLORS.cardBg,
+                                fontWeight: FONT.weightMedium, color: COLORS.textSecondary,
+                                cursor: optionsMode ? 'pointer' : 'default',
+                              }}
+                            >
+                              <div>{svc.label}</div>
+                              {optionsMode && <div style={{ fontSize: '0.6rem', color: anySelected ? COLORS.red : COLORS.textMuted, marginTop: 2 }}>{anySelected ? 'Click to deselect row' : 'Click to select all'}</div>}
+                            </td>
+                            {films.map(film => {
+                              const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
+                              const sel = isSelected(svc.service_key, film.id);
+                              return (
+                                <td key={film.id} onClick={() => price > 0 && toggleRow(svc.service_key, svc.label, film.id, film.name, price)}
+                                  style={{ ...tdStyle, textAlign: 'center', cursor: price > 0 ? 'pointer' : 'default', background: sel ? 'rgba(220, 38, 38, 0.15)' : 'transparent', borderColor: sel ? COLORS.red : COLORS.border, transition: 'background 0.15s' }}
+                                  onMouseEnter={e => { if (price > 0 && !sel) e.currentTarget.style.background = COLORS.hoverBg; }}
+                                  onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'transparent'; }}>
+                                  {price > 0 ? <span style={{ fontSize: FONT.sizeBase, fontWeight: sel ? FONT.weightBold : FONT.weightMedium, color: sel ? COLORS.red : COLORS.textPrimary }}>${price}</span>
+                                    : <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>--</span>}
+                                </td>
+                              );
+                            })}
                           </tr>
                         );
                       })}
@@ -533,6 +967,7 @@ export default function QuickTintMode({ onExit }: Props) {
                 </tbody>
               </table>
             </div>
+            )}
           </DashboardCard>
         </div>
       )}
@@ -545,13 +980,32 @@ export default function QuickTintMode({ onExit }: Props) {
               const shades = row.filmId > 0 ? getAllowedShades(row.serviceKey, row.filmId, config.filmShades, config.serviceShades, config.films) : [];
               const splitShade = row.filmId > 0 && needsSplitShades(vehicle, config.classRules, row.serviceKey);
               return (
-                <div key={i} style={{ padding: SPACING.md, borderRadius: RADIUS.sm, border: `1px solid ${COLORS.border}`, background: 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.sm }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>{row.label}</div>
-                    <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{row.filmName !== 'N/A' ? row.filmName : 'No film'}{row.shadeFront ? ` -- ${row.shadeFront}${row.shadeRear ? ` / ${row.shadeRear}` : ''}` : ''}</div>
+                <div key={i} style={{
+                  padding: isMobile ? '10px 12px' : SPACING.md, borderRadius: RADIUS.sm,
+                  border: `1px solid ${COLORS.border}`, background: 'rgba(255,255,255,0.02)',
+                  display: 'flex', flexDirection: isMobile ? 'column' : 'row',
+                  justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center',
+                  gap: isMobile ? 6 : SPACING.md, marginBottom: SPACING.sm,
+                }}>
+                  {/* Row 1 on mobile: service + film + price + X */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, fontSize: isMobile ? '0.85rem' : FONT.sizeSm }}>
+                        {row.label}
+                      </span>
+                      <span style={{ fontSize: isMobile ? '0.75rem' : FONT.sizeXs, color: COLORS.textMuted, marginLeft: 6 }}>
+                        {row.filmName !== 'N/A' ? row.filmName : ''}
+                        {row.shadeFront ? ` ${row.shadeFront}${row.shadeRear ? `/${row.shadeRear}` : ''}` : ''}
+                      </span>
+                    </div>
+                    <span style={{ fontWeight: FONT.weightBold, color: COLORS.success, fontSize: isMobile ? '0.9rem' : FONT.sizeBase, flexShrink: 0 }}>${row.price}</span>
+                    <button onClick={() => toggleRow(row.serviceKey, row.label, row.filmId, row.filmName, row.price)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.textMuted, padding: 4, flexShrink: 0 }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
                   </div>
+                  {/* Shade selectors */}
                   {shades.length > 0 && (
-                    <div style={{ display: 'flex', gap: SPACING.sm }}>
+                    <div style={{ display: 'flex', gap: SPACING.sm, flexWrap: isMobile ? 'wrap' : undefined }}>
                       {splitShade ? (<>
                         <ShadeGroup label="Front" shades={shades} selected={row.shadeFront} onSelect={v => updateRowShade(row.serviceKey, row.filmId, 'shadeFront', v)} />
                         <ShadeGroup label="Rear" shades={shades} selected={row.shadeRear} onSelect={v => updateRowShade(row.serviceKey, row.filmId, 'shadeRear', v)} />
@@ -560,14 +1014,10 @@ export default function QuickTintMode({ onExit }: Props) {
                       )}
                     </div>
                   )}
-                  <span style={{ fontWeight: FONT.weightBold, color: COLORS.success, fontSize: FONT.sizeBase, minWidth: 60, textAlign: 'right' }}>${row.price}</span>
-                  <button onClick={() => toggleRow(row.serviceKey, row.label, row.filmId, row.filmName, row.price)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.textMuted, padding: 4 }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </button>
                 </div>
               );
             })}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: SPACING.md, paddingTop: SPACING.md, borderTop: `1px solid ${COLORS.border}`, fontSize: FONT.sizeLg, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: SPACING.md, paddingTop: SPACING.md, borderTop: `1px solid ${COLORS.border}`, fontSize: isMobile ? '1.1rem' : FONT.sizeLg, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>
               Total: <span style={{ color: COLORS.success, marginLeft: SPACING.sm }}>${totalSelected.toLocaleString()}</span>
             </div>
           </DashboardCard>
@@ -583,16 +1033,16 @@ export default function QuickTintMode({ onExit }: Props) {
             <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: SPACING.md }}>
               Set a date and time to book directly, or leave blank to let the customer choose.
             </div>
-            <div style={{ display: 'flex', gap: SPACING.md, flexWrap: 'wrap', marginBottom: SPACING.md }}>
-              <div style={{ width: 140 }}>
+            <div style={{ display: isMobile ? 'grid' : 'flex', gridTemplateColumns: isMobile ? '1fr 1fr' : undefined, gap: isMobile ? 10 : SPACING.md, flexWrap: 'wrap', marginBottom: SPACING.md }}>
+              <div style={{ width: isMobile ? undefined : 140 }}>
                 <FormField label="Type"><SelectInput value={appointmentType} onChange={e => setAppointmentType(e.target.value)}>
                   {appointmentTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </SelectInput></FormField>
               </div>
-              <div style={{ width: 170 }}>
+              <div style={{ width: isMobile ? undefined : 170 }}>
                 <FormField label="Date"><TextInput type="date" value={selectedDate} min={today} onChange={e => setSelectedDate(e.target.value)} style={{ cursor: 'pointer' }} /></FormField>
               </div>
-              <div style={{ width: 140 }}>
+              <div style={{ width: isMobile ? undefined : 140, gridColumn: isMobile ? '1 / -1' : undefined }}>
                 <FormField label="Time"><SelectInput value={selectedTime} onChange={e => setSelectedTime(e.target.value)}>
                   <option value="">Select Time</option>
                   {timeSlots.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -617,68 +1067,162 @@ export default function QuickTintMode({ onExit }: Props) {
       {selectedRows.length > 0 && vehicle && (
         <div style={{ marginTop: SPACING.lg }}>
           <DashboardCard>
-            <div style={{ display: 'flex', gap: SPACING.md, flexWrap: 'wrap', justifyContent: 'center' }}>
-              {/* Book Appointment -- only enabled when date + time are set */}
-              <button
-                onClick={() => { if (hasSchedule && customerName) setShowBookConfirm(true); }}
-                disabled={!hasSchedule || !customerName}
-                style={{
-                  flex: 1, minWidth: 200, padding: `${SPACING.lg}px ${SPACING.xl}px`,
-                  background: hasSchedule && customerName ? COLORS.red : COLORS.inputBg,
-                  color: hasSchedule && customerName ? '#fff' : COLORS.textMuted,
-                  border: `1px solid ${hasSchedule && customerName ? COLORS.red : COLORS.borderInput}`,
-                  borderRadius: RADIUS.md, cursor: hasSchedule && customerName ? 'pointer' : 'not-allowed',
-                  fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, textAlign: 'center',
-                }}
-              >
-                <div style={{ fontSize: FONT.sizeBase, marginBottom: 4 }}>Book Appointment</div>
-                <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightMedium, opacity: 0.8 }}>
-                  {hasSchedule && customerName
-                    ? 'Add to schedule or send for approval'
-                    : !customerName && !hasSchedule
-                      ? 'Enter customer name and select a date and time to enable'
-                      : !customerName
-                        ? 'Enter customer name to enable'
-                        : 'Select a date and time above to enable'
-                  }
+            {optionsMode ? (
+              /* Options Mode */
+              optionsSent ? (
+                /* Success state */
+                <div style={{ textAlign: 'center', padding: SPACING.lg }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke={COLORS.success} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 48, height: 48, margin: '0 auto 16px' }}>
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                  <div style={{ fontSize: FONT.sizeLg, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold, marginBottom: SPACING.sm }}>
+                    {optionsSentVia.length > 0 ? `Options Sent via ${optionsSentVia.join(' + ')}` : 'Options Link Ready'}
+                  </div>
+                  <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.lg }}>
+                    {optionsSentVia.length > 0 ? `Sent to ${[optionsSentVia.includes('SMS') ? customerPhone : '', optionsSentVia.includes('Email') ? customerEmail : ''].filter(Boolean).join(' and ')}. ` : ''}
+                    Customer will choose their preferred option per service and book.
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, padding: SPACING.md, background: COLORS.inputBg, borderRadius: RADIUS.sm, border: `1px solid ${COLORS.border}`, marginBottom: SPACING.lg }}>
+                    <input readOnly value={optionsLink} style={{ flex: 1, background: 'none', border: 'none', color: COLORS.textPrimary, fontSize: FONT.sizeSm, outline: 'none', fontFamily: 'monospace' }}
+                      onClick={e => (e.target as HTMLInputElement).select()} />
+                    <Button variant="secondary" onClick={async () => { await navigator.clipboard.writeText(optionsLink); }}>Copy</Button>
+                  </div>
+                  <Button variant="primary" onClick={onExit}>Done</Button>
                 </div>
-              </button>
+              ) : (
+                /* Options send form */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.md }}>
+                  <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>
+                    {(() => {
+                      const groups = new Set(selectedRows.map(r => r.serviceKey));
+                      const totalOptions = selectedRows.length;
+                      return `${groups.size} service${groups.size !== 1 ? 's' : ''} with ${totalOptions} option${totalOptions !== 1 ? 's' : ''} selected`;
+                    })()}
+                  </div>
 
-              {/* When Ready -- no date/time needed */}
-              <button
-                onClick={() => setShowSendModal(true)}
-                style={{
-                  flex: 1, minWidth: 200, padding: `${SPACING.lg}px ${SPACING.xl}px`,
-                  background: COLORS.inputBg, color: COLORS.textPrimary,
-                  border: `1px solid ${COLORS.borderAccentSolid}`,
-                  borderRadius: RADIUS.md, cursor: 'pointer',
-                  fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, textAlign: 'center',
-                }}
-              >
-                <div style={{ fontSize: FONT.sizeBase, marginBottom: 4 }}>When Ready</div>
-                <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightMedium, color: COLORS.textMuted }}>
-                  Send personalized booking link
-                </div>
-              </button>
+                  {/* Send toggles: SMS + Email both on by default */}
+                  <div style={{ display: 'flex', gap: SPACING.lg, alignItems: 'center' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, cursor: customerPhone ? 'pointer' : 'not-allowed', opacity: customerPhone ? 1 : 0.4 }}>
+                      <input type="checkbox" checked={optionsSendSms && !!customerPhone} disabled={!customerPhone}
+                        onChange={e => setOptionsSendSms(e.target.checked)}
+                        style={{ width: 18, height: 18, accentColor: COLORS.red, cursor: 'inherit' }} />
+                      <span style={{ fontSize: FONT.sizeSm, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold }}>Send via SMS</span>
+                      {customerPhone && <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{customerPhone}</span>}
+                      {!customerPhone && <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>No phone entered</span>}
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, cursor: customerEmail ? 'pointer' : 'not-allowed', opacity: customerEmail ? 1 : 0.4 }}>
+                      <input type="checkbox" checked={optionsSendEmail && !!customerEmail} disabled={!customerEmail}
+                        onChange={e => setOptionsSendEmail(e.target.checked)}
+                        style={{ width: 18, height: 18, accentColor: COLORS.red, cursor: 'inherit' }} />
+                      <span style={{ fontSize: FONT.sizeSm, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold }}>Send via Email</span>
+                      {customerEmail && <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{customerEmail}</span>}
+                      {!customerEmail && <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>No email entered</span>}
+                    </label>
+                  </div>
 
-              {/* Multi-Service Quote */}
-              <button
-                onClick={handleCreateQuote}
-                disabled={creating}
-                style={{
-                  flex: 1, minWidth: 200, padding: `${SPACING.lg}px ${SPACING.xl}px`,
-                  background: COLORS.inputBg, color: COLORS.textPrimary,
-                  border: `1px solid ${COLORS.borderInput}`,
-                  borderRadius: RADIUS.md, cursor: 'pointer',
-                  fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, textAlign: 'center',
-                }}
-              >
-                <div style={{ fontSize: FONT.sizeBase, marginBottom: 4 }}>{creating ? 'Creating...' : 'Multi-Service Quote'}</div>
-                <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightMedium, color: COLORS.textMuted }}>
-                  Customer needs more than tint
+                  {/* Action buttons */}
+                  <div style={{ display: 'flex', gap: SPACING.sm, flexWrap: 'wrap' }}>
+                    <button onClick={() => setShowOptionsPreview(true)} style={{
+                      padding: `${SPACING.md}px ${SPACING.lg}px`, background: COLORS.inputBg,
+                      border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
+                      color: COLORS.textPrimary, fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, cursor: 'pointer',
+                    }}>
+                      Preview
+                    </button>
+                    <button onClick={handleCopyOptionsLink} disabled={creating} style={{
+                      padding: `${SPACING.md}px ${SPACING.lg}px`, background: COLORS.inputBg,
+                      border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
+                      color: optionsCopied ? COLORS.success : COLORS.textPrimary,
+                      fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, cursor: 'pointer',
+                    }}>
+                      {optionsCopied ? 'Copied' : 'Copy Link'}
+                    </button>
+                    <button onClick={handleSendOptions} disabled={creating} style={{
+                      flex: 1, padding: `${SPACING.md}px ${SPACING.xl}px`,
+                      background: COLORS.red, color: '#fff', border: 'none',
+                      borderRadius: RADIUS.md, cursor: 'pointer',
+                      fontSize: FONT.sizeSm, fontWeight: FONT.weightBold,
+                    }}>
+                      {creating ? 'Sending...' : 'Send Options'}
+                    </button>
+                  </div>
+
+                  {/* Multi-Service fallback */}
+                  <button onClick={handleCreateQuote} disabled={creating} style={{
+                    padding: `${SPACING.sm}px ${SPACING.md}px`, background: 'transparent',
+                    border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm,
+                    color: COLORS.textMuted, fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold,
+                    cursor: 'pointer', textAlign: 'center',
+                  }}>
+                    Customer needs more than tint? Switch to Multi-Service Quote
+                  </button>
                 </div>
-              </button>
-            </div>
+              )
+            ) : (
+              /* Normal Mode: Book / When Ready / Multi-Service */
+              <div style={{ display: 'flex', gap: SPACING.md, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {/* Book Appointment -- only enabled when date + time are set */}
+                <button
+                  onClick={() => { if (hasSchedule && customerName) setShowBookConfirm(true); }}
+                  disabled={!hasSchedule || !customerName}
+                  style={{
+                    flex: 1, minWidth: 200, padding: `${SPACING.lg}px ${SPACING.xl}px`,
+                    background: hasSchedule && customerName ? COLORS.red : COLORS.inputBg,
+                    color: hasSchedule && customerName ? '#fff' : COLORS.textMuted,
+                    border: `1px solid ${hasSchedule && customerName ? COLORS.red : COLORS.borderInput}`,
+                    borderRadius: RADIUS.md, cursor: hasSchedule && customerName ? 'pointer' : 'not-allowed',
+                    fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: FONT.sizeBase, marginBottom: 4 }}>Book Appointment</div>
+                  <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightMedium, opacity: 0.8 }}>
+                    {hasSchedule && customerName
+                      ? 'Add to schedule or send for approval'
+                      : !customerName && !hasSchedule
+                        ? 'Enter customer name and select a date and time to enable'
+                        : !customerName
+                          ? 'Enter customer name to enable'
+                          : 'Select a date and time above to enable'
+                    }
+                  </div>
+                </button>
+
+                {/* When Ready -- no date/time needed */}
+                <button
+                  onClick={() => setShowSendModal(true)}
+                  style={{
+                    flex: 1, minWidth: 200, padding: `${SPACING.lg}px ${SPACING.xl}px`,
+                    background: COLORS.inputBg, color: COLORS.textPrimary,
+                    border: `1px solid ${COLORS.borderAccentSolid}`,
+                    borderRadius: RADIUS.md, cursor: 'pointer',
+                    fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: FONT.sizeBase, marginBottom: 4 }}>When Ready</div>
+                  <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightMedium, color: COLORS.textMuted }}>
+                    Send personalized booking link
+                  </div>
+                </button>
+
+                {/* Multi-Service Quote */}
+                <button
+                  onClick={handleCreateQuote}
+                  disabled={creating}
+                  style={{
+                    flex: 1, minWidth: 200, padding: `${SPACING.lg}px ${SPACING.xl}px`,
+                    background: COLORS.inputBg, color: COLORS.textPrimary,
+                    border: `1px solid ${COLORS.borderInput}`,
+                    borderRadius: RADIUS.md, cursor: 'pointer',
+                    fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: FONT.sizeBase, marginBottom: 4 }}>{creating ? 'Creating...' : 'Multi-Service Quote'}</div>
+                  <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightMedium, color: COLORS.textMuted }}>
+                    Customer needs more than tint
+                  </div>
+                </button>
+              </div>
+            )}
           </DashboardCard>
         </div>
       )}
@@ -705,8 +1249,11 @@ export default function QuickTintMode({ onExit }: Props) {
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                 <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
               </svg>
-              <div style={{ fontSize: FONT.sizeLg, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold, marginBottom: SPACING.sm }}>Tailored Quote Sent</div>
+              <div style={{ fontSize: FONT.sizeLg, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold, marginBottom: SPACING.sm }}>
+                {tailoredSentVia === 'sms' ? 'Quote Sent via SMS' : tailoredSentVia === 'email' ? 'Quote Sent via Email' : 'Tailored Quote Ready'}
+              </div>
               <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.lg }}>
+                {tailoredSentVia ? `Sent to ${tailoredSentVia === 'sms' ? customerPhone : customerEmail}. ` : ''}
                 Customer approves and books at {selectedDate} {selectedTime ? `at ${selectedTime}` : ''}.
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, padding: SPACING.md, background: COLORS.inputBg, borderRadius: RADIUS.sm, border: `1px solid ${COLORS.border}`, marginBottom: SPACING.lg }}>
@@ -715,6 +1262,46 @@ export default function QuickTintMode({ onExit }: Props) {
                 <Button variant={copied ? 'primary' : 'secondary'} onClick={handleCopyLink}>{copied ? 'Copied' : 'Copy'}</Button>
               </div>
               <Button variant="primary" onClick={onExit}>Done</Button>
+            </div>
+          ) : showPreview ? (
+            /* ---- PREVIEW: what the customer will see ---- */
+            <div>
+              <div style={{ padding: SPACING.lg, background: '#ffffff', borderRadius: RADIUS.md, color: '#1a1a1a', marginBottom: SPACING.lg }}>
+                <div style={{ fontSize: '20px', fontWeight: 800, marginBottom: SPACING.md, color: '#1a1a1a' }}>Your Window Tint Quote</div>
+                <div style={{ fontSize: '14px', color: '#666', marginBottom: SPACING.md }}>
+                  {selectedYear} {selectedMake} {selectedModel}
+                </div>
+                {selectedRows.map((row, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < selectedRows.length - 1 ? '1px solid #eee' : 'none', fontSize: '14px' }}>
+                    <span style={{ color: '#1a1a1a' }}>{row.label}{row.filmName !== 'N/A' ? ` (${row.filmName})` : ''}{row.shadeFront ? ` - ${row.shadeFront}` : ''}</span>
+                    <span style={{ fontWeight: 600, color: '#1a1a1a' }}>${row.price}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0 0', marginTop: '8px', borderTop: '2px solid #1a1a1a', fontSize: '16px', fontWeight: 700, color: '#1a1a1a' }}>
+                  <span>Total</span><span>${totalSelected.toLocaleString()}</span>
+                </div>
+                {(() => {
+                  const dep = overrideDeposit ? (depositOverride || 0) : (config.shopConfig.deposit_amount || 50);
+                  const chargeDep = overrideDeposit ? dep > 0 : config.shopConfig.require_deposit;
+                  return chargeDep ? (
+                    <div style={{ marginTop: SPACING.md, padding: SPACING.md, background: '#f0fdf4', borderRadius: '8px', fontSize: '14px', color: '#166534' }}>
+                      <strong>${dep} deposit</strong> required to confirm your appointment.
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: SPACING.md, padding: SPACING.md, background: '#f0fdf4', borderRadius: '8px', fontSize: '14px', color: '#166534' }}>
+                      No deposit required -- pay in full at your appointment.
+                    </div>
+                  );
+                })()}
+                <div style={{ marginTop: SPACING.lg, textAlign: 'center' }}>
+                  <div style={{ display: 'inline-block', padding: '14px 32px', background: '#dc2626', color: '#fff', borderRadius: '8px', fontWeight: 700, fontSize: '16px' }}>
+                    View Quote &amp; Book
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: SPACING.sm, justifyContent: 'center' }}>
+                <Button variant="secondary" onClick={() => setShowPreview(false)}>Back</Button>
+              </div>
             </div>
           ) : (
             <>
@@ -727,56 +1314,126 @@ export default function QuickTintMode({ onExit }: Props) {
                 </div>
               </div>
 
-              {/* Two options */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.md }}>
-                {/* Option 1: Add to Schedule */}
-                <button onClick={handleDirectBook} disabled={bookingDirect}
+              {/* Step 1: Choose path (selection, not action) */}
+              <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textMuted, marginBottom: SPACING.sm, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                What would you like to do?
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.sm, marginBottom: SPACING.lg }}>
+                <button onClick={() => setBookPath('schedule')}
                   style={{
-                    padding: SPACING.lg, background: COLORS.activeBg, border: `2px solid ${COLORS.red}`,
-                    borderRadius: RADIUS.md, cursor: 'pointer', textAlign: 'left',
+                    padding: `${SPACING.md}px ${SPACING.lg}px`, textAlign: 'left', cursor: 'pointer',
+                    background: bookPath === 'schedule' ? COLORS.activeBg : 'transparent',
+                    border: bookPath === 'schedule' ? `2px solid ${COLORS.red}` : `1px solid ${COLORS.borderInput}`,
+                    borderRadius: RADIUS.md,
                   }}>
-                  <div style={{ fontSize: FONT.sizeBase, fontWeight: FONT.weightBold, color: COLORS.textPrimary, marginBottom: 4 }}>
-                    {bookingDirect ? 'Adding...' : 'Add to Schedule'}
-                  </div>
-                  <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>
-                    Book the appointment directly. No deposit, no customer approval needed.
-                  </div>
-                </button>
-
-                {/* Option 2: Send as Tailored Quote */}
-                <button onClick={handleSendTailoredQuote} disabled={sendingQuote}
-                  style={{
-                    padding: SPACING.lg, background: 'transparent', border: `1px solid ${COLORS.borderInput}`,
-                    borderRadius: RADIUS.md, cursor: 'pointer', textAlign: 'left',
-                  }}>
-                  <div style={{ fontSize: FONT.sizeBase, fontWeight: FONT.weightBold, color: COLORS.textPrimary, marginBottom: 4 }}>
-                    {sendingQuote ? 'Generating...' : 'Send as Tailored Quote'}
-                  </div>
-                  <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>
-                    Customer receives a link to approve and confirm. Deposit: {
-                      overrideDeposit
-                        ? (depositOverride && depositOverride > 0 ? `$${depositOverride}` : 'None')
-                        : (config.shopConfig.require_deposit ? `$${config.shopConfig.deposit_amount || 50} (shop default)` : 'None (shop default)')
-                    }
-                  </div>
-                </button>
-
-                {/* Deposit override */}
-                <div style={{ padding: `${SPACING.sm}px ${SPACING.md}px`, display: 'flex', alignItems: 'center', gap: SPACING.md }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={overrideDeposit} onChange={e => setOverrideDeposit(e.target.checked)}
-                      style={{ width: 16, height: 16, accentColor: COLORS.red, cursor: 'pointer' }} />
-                    <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>Override deposit</span>
-                  </label>
-                  {overrideDeposit && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>$</span>
-                      <TextInput type="number" value={depositOverride !== null ? String(depositOverride) : ''}
-                        onChange={e => setDepositOverride(Number(e.target.value) || 0)}
-                        placeholder="0" style={{ width: 80, minHeight: 28, fontSize: FONT.sizeSm }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+                    <div style={{
+                      width: 18, height: 18, borderRadius: '50%',
+                      border: bookPath === 'schedule' ? `5px solid ${COLORS.red}` : `2px solid ${COLORS.borderInput}`,
+                      flexShrink: 0,
+                    }} />
+                    <div>
+                      <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>Add to Schedule</div>
+                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>Book directly. No deposit, no customer approval needed.</div>
                     </div>
-                  )}
+                  </div>
+                </button>
+
+                <button onClick={() => setBookPath('tailored')}
+                  style={{
+                    padding: `${SPACING.md}px ${SPACING.lg}px`, textAlign: 'left', cursor: 'pointer',
+                    background: bookPath === 'tailored' ? COLORS.activeBg : 'transparent',
+                    border: bookPath === 'tailored' ? `2px solid ${COLORS.red}` : `1px solid ${COLORS.borderInput}`,
+                    borderRadius: RADIUS.md,
+                  }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+                    <div style={{
+                      width: 18, height: 18, borderRadius: '50%',
+                      border: bookPath === 'tailored' ? `5px solid ${COLORS.red}` : `2px solid ${COLORS.borderInput}`,
+                      flexShrink: 0,
+                    }} />
+                    <div>
+                      <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>Send as Tailored Quote</div>
+                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>Customer receives a personalized link to review, approve, and book.</div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Step 2: Options for tailored path */}
+              {bookPath === 'tailored' && (
+                <div style={{ padding: SPACING.md, background: COLORS.inputBg, borderRadius: RADIUS.md, border: `1px solid ${COLORS.border}`, marginBottom: SPACING.lg }}>
+                  {/* Deposit */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md }}>
+                    <div>
+                      <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>Deposit</div>
+                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                        {overrideDeposit
+                          ? (depositOverride && depositOverride > 0 ? `$${depositOverride}` : 'No deposit')
+                          : (config.shopConfig.require_deposit ? `$${config.shopConfig.deposit_amount || 50} (shop default)` : 'No deposit (shop default)')
+                        }
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={overrideDeposit} onChange={e => setOverrideDeposit(e.target.checked)}
+                          style={{ width: 14, height: 14, accentColor: COLORS.red, cursor: 'pointer' }} />
+                        <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>Override</span>
+                      </label>
+                      {overrideDeposit && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>$</span>
+                          <TextInput type="number" value={depositOverride !== null ? String(depositOverride) : ''}
+                            onChange={e => setDepositOverride(Number(e.target.value) || 0)}
+                            placeholder="0" style={{ width: 70, minHeight: 26, fontSize: FONT.sizeSm }} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Send method */}
+                  <div>
+                    <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textMuted, marginBottom: SPACING.xs, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Send via</div>
+                    <div style={{ display: 'flex', gap: SPACING.sm }}>
+                      {[
+                        { key: 'sms' as const, label: 'SMS', disabled: !customerPhone },
+                        { key: 'email' as const, label: 'Email', disabled: !customerEmail },
+                        { key: 'copy' as const, label: 'Copy Link Only', disabled: false },
+                      ].map(opt => (
+                        <button key={opt.key} onClick={() => !opt.disabled && setTailoredSendMethod(opt.key)}
+                          style={{
+                            flex: 1, padding: `${SPACING.sm}px ${SPACING.sm}px`, borderRadius: RADIUS.sm,
+                            cursor: opt.disabled ? 'not-allowed' : 'pointer', opacity: opt.disabled ? 0.4 : 1,
+                            background: tailoredSendMethod === opt.key ? COLORS.activeBg : 'transparent',
+                            color: tailoredSendMethod === opt.key ? COLORS.red : COLORS.textMuted,
+                            border: `1px solid ${tailoredSendMethod === opt.key ? COLORS.red : COLORS.borderInput}`,
+                            fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold,
+                          }}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
+              )}
+
+              {/* Step 3: Action buttons */}
+              <div style={{ display: 'flex', gap: SPACING.sm, justifyContent: 'flex-end' }}>
+                {bookPath === 'tailored' && (
+                  <Button variant="secondary" onClick={() => setShowPreview(true)}>
+                    Preview
+                  </Button>
+                )}
+                <Button
+                  variant="primary"
+                  onClick={bookPath === 'schedule' ? handleDirectBook : handleSendTailoredQuote}
+                  disabled={bookingDirect || sendingQuote}
+                >
+                  {bookPath === 'schedule'
+                    ? (bookingDirect ? 'Adding...' : 'Add to Schedule')
+                    : (sendingQuote ? 'Sending...' : tailoredSendMethod === 'copy' ? 'Generate Link' : `Send via ${tailoredSendMethod === 'sms' ? 'SMS' : 'Email'}`)
+                  }
+                </Button>
               </div>
             </>
           )}
@@ -794,6 +1451,97 @@ export default function QuickTintMode({ onExit }: Props) {
           prefillName={customerName} prefillPhone={customerPhone} prefillEmail={customerEmail}
         />
       )}
+
+      {/* Options Mode Preview Lightbox */}
+      {showOptionsPreview && vehicle && (
+        <>
+          <div onClick={() => setShowOptionsPreview(false)} style={{
+            position: 'fixed', inset: 0, zIndex: 9998,
+            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+          }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            zIndex: 9999, width: '90%', maxWidth: 500, maxHeight: '85vh', overflowY: 'auto',
+            borderRadius: 16, boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          }}>
+            {/* Mock customer page */}
+            <div style={{ background: '#ffffff', borderRadius: 16, padding: 24, color: '#1a1a1a' }}>
+              <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#1a1a1a' }}>Your Tint Options</div>
+                <div style={{ fontSize: 14, color: '#666', marginTop: 4 }}>
+                  Choose your preferred option for each service, then pick a date and time to book.
+                </div>
+              </div>
+
+              <div style={{ padding: 12, background: '#f9fafb', borderRadius: 10, marginBottom: 20 }}>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>
+                  {selectedYear} {selectedMake} {selectedModel}
+                </div>
+              </div>
+
+              {/* Service groups */}
+              {(() => {
+                const groups = new Map<string, typeof selectedRows>();
+                for (const row of selectedRows) {
+                  if (!groups.has(row.serviceKey)) groups.set(row.serviceKey, []);
+                  groups.get(row.serviceKey)!.push(row);
+                }
+                return Array.from(groups.entries()).map(([key, rows], gi) => (
+                  <div key={key} style={{ marginBottom: gi < groups.size - 1 ? 20 : 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8, color: '#333' }}>
+                      {rows[0].label}
+                    </div>
+                    {rows.map((opt, oi) => (
+                      <div key={oi} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '12px 14px', borderRadius: 8, marginBottom: 6,
+                        background: oi === 0 ? '#fef2f2' : '#f9fafb',
+                        border: oi === 0 ? '2px solid #dc2626' : '2px solid #e5e7eb',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{
+                            width: 18, height: 18, borderRadius: '50%',
+                            border: oi === 0 ? '5px solid #dc2626' : '2px solid #d1d5db',
+                          }} />
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 14 }}>{opt.filmName}</div>
+                            {opt.shadeFront && <div style={{ fontSize: 12, color: '#666' }}>Shade: {opt.shadeFront}</div>}
+                          </div>
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: 16, color: oi === 0 ? '#dc2626' : '#1a1a1a' }}>
+                          ${opt.price}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ));
+              })()}
+
+              {/* Mock schedule section */}
+              <div style={{ marginTop: 20, padding: 16, background: '#f9fafb', borderRadius: 10, textAlign: 'center', color: '#999', fontSize: 13 }}>
+                Appointment type, date &amp; time picker, contact form, and booking button appear here
+              </div>
+
+              {/* Deposit info */}
+              {config?.shopConfig.require_deposit && (
+                <div style={{ marginTop: 12, padding: 10, background: '#f0fdf4', borderRadius: 8, fontSize: 13, color: '#166534', textAlign: 'center' }}>
+                  ${config.shopConfig.deposit_amount || 50} deposit required to confirm
+                </div>
+              )}
+            </div>
+
+            {/* Close button */}
+            <div style={{ textAlign: 'center', marginTop: 12 }}>
+              <button onClick={() => setShowOptionsPreview(false)} style={{
+                padding: '10px 24px', background: 'rgba(255,255,255,0.9)', border: 'none',
+                borderRadius: 8, color: '#1a1a1a', fontWeight: 700, fontSize: 14, cursor: 'pointer',
+              }}>
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -808,10 +1556,10 @@ function ShadeGroup({ label, shades, selected, onSelect }: {
   return (
     <div>
       <div style={{ fontSize: '10px', color: COLORS.textMuted, marginBottom: 2 }}>{label}</div>
-      <div style={{ display: 'flex', gap: 3 }}>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {shades.map(s => (
           <button key={s.id} onClick={() => onSelect(s.shade_value)} style={{
-            padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontSize: '11px',
+            padding: '5px 10px', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem',
             fontWeight: selected === s.shade_value ? 700 : 500,
             background: selected === s.shade_value ? COLORS.activeBg : 'transparent',
             color: selected === s.shade_value ? COLORS.red : COLORS.textMuted,

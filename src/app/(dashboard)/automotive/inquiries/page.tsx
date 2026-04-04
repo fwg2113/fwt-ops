@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { PageHeader, DashboardCard, DataTable, StatusBadge, Button, Modal } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 
 interface Inquiry {
   id: string;
@@ -19,6 +20,7 @@ interface Inquiry {
 }
 
 export default function InquiriesPage() {
+  const isMobile = useIsMobile();
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Inquiry | null>(null);
@@ -110,7 +112,12 @@ export default function InquiriesPage() {
       <PageHeader title="Inquiries" subtitle="Automotive - Vehicle Inquiries" />
 
       {/* Summary */}
-      <div style={{ display: 'flex', gap: SPACING.md, marginBottom: SPACING.xl }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
+        gap: SPACING.md,
+        marginBottom: SPACING.xl,
+      }}>
         <QuickStat label="Total" value={inquiries.length} color={COLORS.textPrimary} />
         <QuickStat label="Pending" value={pending.length} color="#f59e0b" />
         <QuickStat label="Resolved" value={resolved.length} color="#22c55e" />
@@ -122,7 +129,11 @@ export default function InquiriesPage() {
           <DashboardCard title={`Pending (${pending.length})`} noPadding
             icon={<svg viewBox="0 0 24 24" fill="none" stroke={COLORS.red} strokeWidth="2" style={{ width: 18, height: 18 }}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>}
           >
-            <DataTable columns={columns} data={pending} rowKey={inq => inq.id} onRowClick={setSelected} compact />
+            {isMobile ? (
+              <MobileInquiryList items={pending} onSelect={setSelected} formatPhone={formatPhone} />
+            ) : (
+              <DataTable columns={columns} data={pending} rowKey={inq => inq.id} onRowClick={setSelected} compact />
+            )}
           </DashboardCard>
         </div>
       )}
@@ -133,6 +144,12 @@ export default function InquiriesPage() {
       >
         {loading ? (
           <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>Loading...</div>
+        ) : isMobile ? (
+          inquiries.length === 0 ? (
+            <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>No vehicle inquiries yet.</div>
+          ) : (
+            <MobileInquiryList items={inquiries} onSelect={setSelected} formatPhone={formatPhone} />
+          )
         ) : (
           <DataTable columns={columns} data={inquiries} rowKey={inq => inq.id} onRowClick={setSelected}
             emptyMessage="No vehicle inquiries yet." compact />
@@ -195,6 +212,45 @@ function InfoBlock({ label, value }: { label: string; value: string }) {
     <div>
       <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>{label}</div>
       <div style={{ fontSize: FONT.sizeBase, color: COLORS.textPrimary }}>{value}</div>
+    </div>
+  );
+}
+
+function MobileInquiryList({ items, onSelect, formatPhone }: { items: Inquiry[]; onSelect: (inq: Inquiry) => void; formatPhone: (p: string | null) => string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {items.map((inq, idx) => {
+        const v = inq.status === 'booked' ? 'warning' as const
+          : inq.status === 'completed' ? 'success' as const
+          : inq.status === 'cancelled' ? 'danger' as const
+          : 'neutral' as const;
+        const statusLabel = inq.status === 'booked' ? 'Pending'
+          : inq.status === 'completed' ? 'Resolved'
+          : inq.status;
+        return (
+          <div key={inq.id} onClick={() => onSelect(inq)} style={{
+            padding: `${SPACING.md}px ${SPACING.lg}px`,
+            borderBottom: idx < items.length - 1 ? `1px solid ${COLORS.border}` : 'none',
+            cursor: 'pointer',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xs }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+                <StatusBadge label={statusLabel} variant={v} />
+                <span style={{ fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>
+                  {inq.vehicle_year} {inq.vehicle_make} {inq.vehicle_model}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: FONT.sizeXs, color: COLORS.textSecondary }}>{inq.customer_name}</span>
+              <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{formatPhone(inq.customer_phone)}</span>
+            </div>
+            <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 2 }}>
+              {new Date(inq.created_at).toLocaleDateString()}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

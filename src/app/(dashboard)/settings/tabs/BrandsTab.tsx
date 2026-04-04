@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { DashboardCard, Button, FormField, TextInput, ColorPicker } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 const MAX_BRANDS = 4;
 
@@ -140,6 +141,7 @@ function LogoUpload({ brandId, label, currentUrl, ratio, onUploaded }: {
 }
 
 export default function BrandsTab({ data, onSave, onAdd, onDelete, onRefresh }: Props) {
+  const isMobile = useIsMobile();
   const brands = ((data.brands || []) as Brand[]).sort((a, b) => a.sort_order - b.sort_order);
 
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -243,7 +245,7 @@ export default function BrandsTab({ data, onSave, onAdd, onDelete, onRefresh }: 
   ) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.md }}>
-        <div style={{ display: 'flex', gap: SPACING.md, flexWrap: 'wrap' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
           <FormField label="Brand Name" required>
             <TextInput
               value={form.name}
@@ -259,7 +261,7 @@ export default function BrandsTab({ data, onSave, onAdd, onDelete, onRefresh }: 
             />
           </FormField>
         </div>
-        <div style={{ display: 'flex', gap: SPACING.md, flexWrap: 'wrap' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
           <FormField label="Email From">
             <TextInput
               value={form.email_from}
@@ -316,8 +318,9 @@ export default function BrandsTab({ data, onSave, onAdd, onDelete, onRefresh }: 
               <div
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: SPACING.md,
+                  flexDirection: isMobile ? 'column' : 'row',
+                  alignItems: isMobile ? 'stretch' : 'center',
+                  gap: isMobile ? SPACING.sm : SPACING.md,
                   padding: SPACING.md,
                   background: COLORS.inputBg,
                   borderRadius: RADIUS.md,
@@ -325,78 +328,81 @@ export default function BrandsTab({ data, onSave, onAdd, onDelete, onRefresh }: 
                   opacity: brand.active ? 1 : 0.5,
                 }}
               >
-                {/* Logo or Color Dots */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, flexShrink: 0 }}>
-                  {brand.logo_square_url ? (
-                    <img src={brand.logo_square_url} alt={brand.short_name || brand.name}
-                      style={{ width: 32, height: 32, borderRadius: RADIUS.sm, objectFit: 'contain', background: COLORS.hoverBg }} />
-                  ) : (
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <div style={{
-                        width: 16, height: 16, borderRadius: '50%',
-                        background: brand.primary_color,
-                        border: `2px solid ${COLORS.border}`,
-                      }} />
-                      <div style={{
-                        width: 16, height: 16, borderRadius: '50%',
-                        background: brand.secondary_color,
-                        border: `2px solid ${COLORS.border}`,
-                      }} />
-                    </div>
-                  )}
-                </div>
+                {/* Row 1 (mobile) / inline (desktop): Logo + Name + Badges */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, flex: 1, minWidth: 0 }}>
+                  {/* Logo or Color Dots */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, flexShrink: 0 }}>
+                    {brand.logo_square_url ? (
+                      <img src={brand.logo_square_url} alt={brand.short_name || brand.name}
+                        style={{ width: 32, height: 32, borderRadius: RADIUS.sm, objectFit: 'contain', background: COLORS.hoverBg }} />
+                    ) : (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{
+                          width: 16, height: 16, borderRadius: '50%',
+                          background: brand.primary_color,
+                          border: `2px solid ${COLORS.border}`,
+                        }} />
+                        <div style={{
+                          width: 16, height: 16, borderRadius: '50%',
+                          background: brand.secondary_color,
+                          border: `2px solid ${COLORS.border}`,
+                        }} />
+                      </div>
+                    )}
+                  </div>
 
-                {/* Name + Badges */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, flexWrap: 'wrap' }}>
-                    <span style={{
-                      fontWeight: FONT.weightSemibold,
-                      fontSize: FONT.sizeSm,
-                      color: COLORS.textPrimary,
-                    }}>
-                      {brand.name}
-                    </span>
-                    {brand.short_name && (
+                  {/* Name + Badges */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, flexWrap: 'wrap' }}>
                       <span style={{
-                        fontSize: FONT.sizeXs,
-                        color: COLORS.textMuted,
-                        background: COLORS.hoverBg,
-                        padding: '1px 6px',
-                        borderRadius: RADIUS.sm,
-                        border: `1px solid ${COLORS.border}`,
-                      }}>
-                        {brand.short_name}
-                      </span>
-                    )}
-                    {brand.is_default && (
-                      <span style={{
-                        fontSize: FONT.sizeXs,
-                        color: COLORS.yellowSolid,
-                        background: COLORS.yellow,
-                        padding: '1px 8px',
-                        borderRadius: RADIUS.sm,
                         fontWeight: FONT.weightSemibold,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
+                        fontSize: FONT.sizeSm,
+                        color: COLORS.textPrimary,
                       }}>
-                        <StarIcon /> Default
+                        {brand.name}
                       </span>
-                    )}
-                    {!brand.active && (
-                      <span style={{
-                        fontSize: FONT.sizeXs,
-                        color: COLORS.textMuted,
-                        fontStyle: 'italic',
-                      }}>
-                        Inactive
-                      </span>
-                    )}
+                      {brand.short_name && (
+                        <span style={{
+                          fontSize: FONT.sizeXs,
+                          color: COLORS.textMuted,
+                          background: COLORS.hoverBg,
+                          padding: '1px 6px',
+                          borderRadius: RADIUS.sm,
+                          border: `1px solid ${COLORS.border}`,
+                        }}>
+                          {brand.short_name}
+                        </span>
+                      )}
+                      {brand.is_default && (
+                        <span style={{
+                          fontSize: FONT.sizeXs,
+                          color: COLORS.yellowSolid,
+                          background: COLORS.yellow,
+                          padding: '1px 8px',
+                          borderRadius: RADIUS.sm,
+                          fontWeight: FONT.weightSemibold,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}>
+                          <StarIcon /> Default
+                        </span>
+                      )}
+                      {!brand.active && (
+                        <span style={{
+                          fontSize: FONT.sizeXs,
+                          color: COLORS.textMuted,
+                          fontStyle: 'italic',
+                        }}>
+                          Inactive
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: SPACING.xs, flexShrink: 0 }}>
+                {/* Row 3 (mobile) / inline (desktop): Actions */}
+                <div style={{ display: 'flex', gap: SPACING.xs, flexShrink: 0, flexWrap: 'wrap' }}>
                   {/* Active Toggle */}
                   <button
                     onClick={() => handleToggleActive(brand)}
@@ -495,6 +501,7 @@ export default function BrandsTab({ data, onSave, onAdd, onDelete, onRefresh }: 
                   <div style={{
                     display: 'flex', gap: SPACING.xl, marginTop: SPACING.lg,
                     paddingTop: SPACING.lg, borderTop: `1px solid ${COLORS.border}`,
+                    flexWrap: 'wrap',
                   }}>
                     <LogoUpload brandId={brand.id} label="Square Logo (1:1)" currentUrl={brand.logo_square_url} ratio="square" onUploaded={onRefresh} />
                     <LogoUpload brandId={brand.id} label="Wide Logo (2:1)" currentUrl={brand.logo_wide_url} ratio="wide" onUploaded={onRefresh} />

@@ -6,6 +6,7 @@ import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme'
 import { StatusBadge, Button } from '@/app/components/dashboard';
 import SignaturePad, { InitialsPad } from '@/app/components/SignaturePad';
 import ServiceLineEditor, { type ServiceLine } from '../ServiceLineEditor';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 
 // ============================================================================
 // COUNTER CHECKOUT PAGE
@@ -72,6 +73,8 @@ function formatPhone(p: string | null) { if (!p) return ''; const d = p.replace(
 export default function CounterCheckoutPage() {
   const params = useParams();
   const router = useRouter();
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   const invoiceId = params.id as string;
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
@@ -83,6 +86,8 @@ export default function CounterCheckoutPage() {
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [signatureMode, setSignatureMode] = useState<'idle' | 'signing' | 'sent' | 'done'>('idle');
   const [savingSignature, setSavingSignature] = useState(false);
+  const [showSendConfirm, setShowSendConfirm] = useState<{ includePayment: boolean } | null>(null);
+  const [sendToPhone, setSendToPhone] = useState('');
 
   // Payment state
   const [paying, setPaying] = useState(false);
@@ -168,10 +173,10 @@ export default function CounterCheckoutPage() {
   const paymentBlocked = needsSignature && signatureMode !== 'sent';
 
   if (loading) {
-    return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: COLORS.pageBg, color: COLORS.textMuted }}>Loading...</div>;
+    return <div style={{ minHeight: isMobile ? '60vh' : '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: COLORS.pageBg, color: COLORS.textMuted }}>Loading...</div>;
   }
   if (!invoice) {
-    return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: COLORS.pageBg, color: COLORS.textMuted }}>Invoice not found</div>;
+    return <div style={{ minHeight: isMobile ? '60vh' : '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: COLORS.pageBg, color: COLORS.textMuted }}>Invoice not found</div>;
   }
 
   const inv = invoice;
@@ -225,23 +230,18 @@ export default function CounterCheckoutPage() {
   async function handleSendSigningLink(includePayment: boolean) {
     const url = `${window.location.origin}/invoice/${inv.public_token}${includePayment ? '' : '?sign=true'}`;
     const firstName = inv.customer_name?.split(' ')[0] || '';
+    const phone = sendToPhone || inv.customer_phone;
     const msg = includePayment
       ? `Hi ${firstName}, please review, sign and pay your invoice for your ${vehicleStr}: ${url}`
       : `Hi ${firstName}, please sign your invoice for your ${vehicleStr}: ${url}`;
-    if (inv.booking_id) {
-      await fetch('/api/auto/messages/send', {
+    if (phone) {
+      await fetch('/api/auto/send-sms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId: inv.booking_id, message: msg, method: 'sms' }),
-      }).catch(() => {});
-    } else if (inv.customer_phone) {
-      // Fallback: send invoice-specific SMS
-      await fetch('/api/auto/invoices/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId: inv.id, method: 'sms' }),
+        body: JSON.stringify({ phone, message: msg }),
       }).catch(() => {});
     }
+    setShowSendConfirm(null);
     setSignatureMode('sent');
   }
 
@@ -295,54 +295,67 @@ export default function CounterCheckoutPage() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f3f4f6' }}>
+    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', minHeight: isMobile ? 'auto' : '100vh', background: '#f3f4f6' }}>
       {/* ================================================================ */}
       {/* LEFT: INVOICE DOCUMENT */}
       {/* ================================================================ */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+      <div style={{ flex: 1, overflowY: isMobile ? 'visible' : 'auto', padding: isMobile ? '16px' : isTablet ? '24px' : '32px' }}>
         <div style={{ maxWidth: 700, margin: '0 auto' }}>
           {/* Header Card */}
           <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', marginBottom: 24, position: 'relative' }}>
-            <div style={{ position: 'absolute', top: '-50%', right: '-20%', width: '55%', height: '200%', background: `linear-gradient(135deg, ${BRAND} 0%, #b91c1c 100%)`, borderRadius: '50%', zIndex: 0 }} />
-            <div style={{ position: 'relative', zIndex: 1, padding: '32px 40px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+            {!isMobile && <div style={{ position: 'absolute', top: '-50%', right: '-20%', width: '55%', height: '200%', background: `linear-gradient(135deg, ${BRAND} 0%, #b91c1c 100%)`, borderRadius: '50%', zIndex: 0 }} />}
+            <div style={{ position: 'relative', zIndex: 1, padding: isMobile ? '20px' : '32px 40px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: isMobile ? 16 : 28 }}>
                 <div>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: BRAND, letterSpacing: -0.5, lineHeight: 1.1 }}>FWT</div>
+                  <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 700, color: BRAND, letterSpacing: -0.5, lineHeight: 1.1 }}>FWT</div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1.5, marginTop: 2 }}>{shopName}</div>
                 </div>
-                <div style={{ background: BRAND, color: '#fff', padding: '8px 20px', borderRadius: 20, fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  {inv.invoice_number}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ background: BRAND, color: '#fff', padding: isMobile ? '6px 14px' : '8px 20px', borderRadius: 20, fontSize: isMobile ? 11 : 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+                    {inv.invoice_number}
+                  </div>
+                  {isMobile && (
+                    <div style={{
+                      display: 'inline-block', padding: '6px 14px', borderRadius: 20,
+                      background: isPaid ? 'linear-gradient(179deg, #22c55e 0%, #15803d 100%)' : 'linear-gradient(179deg, #ffffff 0%, #969696 40%)',
+                      fontSize: 11, fontWeight: 600, color: isPaid ? '#fff' : '#1a1a1a',
+                    }}>
+                      {isPaid ? 'Paid' : 'Due'}
+                    </div>
+                  )}
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, maxWidth: '60%' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? 12 : 32, maxWidth: isMobile ? '100%' : '60%' }}>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Bill To</div>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: '#1a1a1a', marginBottom: 4 }}>{inv.customer_name}</div>
-                  {inv.customer_email && <div style={{ fontSize: 14, color: '#6b7280' }}>{inv.customer_email}</div>}
-                  {inv.customer_phone && <div style={{ fontSize: 14, color: '#6b7280' }}>{formatPhone(inv.customer_phone)}</div>}
+                  <div style={{ fontSize: isMobile ? 14 : 16, fontWeight: 600, color: '#1a1a1a', marginBottom: 4 }}>{inv.customer_name}</div>
+                  {inv.customer_email && <div style={{ fontSize: isMobile ? 13 : 14, color: '#6b7280' }}>{inv.customer_email}</div>}
+                  {inv.customer_phone && <div style={{ fontSize: isMobile ? 13 : 14, color: '#6b7280' }}>{formatPhone(inv.customer_phone)}</div>}
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Vehicle</div>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: '#1a1a1a' }}>{vehicleStr}</div>
+                  <div style={{ fontSize: isMobile ? 14 : 16, fontWeight: 600, color: '#1a1a1a' }}>{vehicleStr}</div>
                 </div>
               </div>
               {/* Status */}
-              <div style={{ position: 'absolute', top: '55%', right: '10%', transform: 'translateY(-50%)', textAlign: 'center', zIndex: 2 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#fff', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Status</div>
-                <div style={{
-                  display: 'inline-block', padding: '10px 28px', borderRadius: 30,
-                  background: isPaid ? 'linear-gradient(179deg, #22c55e 0%, #15803d 100%)' : 'linear-gradient(179deg, #ffffff 0%, #969696 40%)',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.2)', fontSize: 18, fontWeight: 600, color: isPaid ? '#fff' : '#1a1a1a',
-                }}>
-                  {isPaid ? 'Paid' : 'Due'}
+              {!isMobile && (
+                <div style={{ position: 'absolute', top: '55%', right: '10%', transform: 'translateY(-50%)', textAlign: 'center', zIndex: 2 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#fff', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Status</div>
+                  <div style={{
+                    display: 'inline-block', padding: '10px 28px', borderRadius: 30,
+                    background: isPaid ? 'linear-gradient(179deg, #22c55e 0%, #15803d 100%)' : 'linear-gradient(179deg, #ffffff 0%, #969696 40%)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)', fontSize: 18, fontWeight: 600, color: isPaid ? '#fff' : '#1a1a1a',
+                  }}>
+                    {isPaid ? 'Paid' : 'Due'}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
           {/* Line Items */}
-          <div style={{ background: '#fff', borderRadius: 16, padding: '24px 32px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', marginBottom: 24 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a1a1a', margin: '0 0 20px 0' }}>Invoice Details</h2>
+          <div style={{ background: '#fff', borderRadius: 16, padding: isMobile ? '16px 20px' : '24px 32px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', marginBottom: 24 }}>
+            <h2 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 600, color: '#1a1a1a', margin: '0 0 20px 0' }}>Invoice Details</h2>
             {/* Service line items */}
             {lineItems.map((item, idx) => (
               <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '16px 0', borderBottom: '1px solid #f3f4f6' }}>
@@ -437,7 +450,7 @@ export default function CounterCheckoutPage() {
             if (modulesWithContent.length === 0) return null;
             const MODULE_LABELS: Record<string, string> = { auto_tint: 'Window Tint', flat_glass: 'Flat Glass', detailing: 'Detailing', ceramic_coating: 'Ceramic Coating', ppf: 'Paint Protection Film', wraps: 'Vehicle Wraps' };
             return (
-              <div style={{ background: '#fff', borderRadius: 16, padding: '24px 32px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', marginBottom: 24 }}>
+              <div style={{ background: '#fff', borderRadius: 16, padding: isMobile ? '16px 20px' : '24px 32px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', marginBottom: 24 }}>
                 {modulesWithContent.map((mod, i) => {
                   const content = warrantyContent[mod];
                   if (!content) return null;
@@ -485,9 +498,9 @@ export default function CounterCheckoutPage() {
 
           {/* Signature display (if signed) */}
           {signatureMode === 'done' && (signatureData || initialsData) && (
-            <div style={{ background: '#fff', borderRadius: 16, padding: '24px 32px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', marginBottom: 24 }}>
+            <div style={{ background: '#fff', borderRadius: 16, padding: isMobile ? '16px 20px' : '24px 32px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', marginBottom: 24 }}>
               <h2 style={{ fontSize: 16, fontWeight: 600, color: '#1a1a1a', margin: '0 0 16px 0' }}>Customer Signature</h2>
-              <div style={{ display: 'flex', gap: 24 }}>
+              <div style={{ display: 'flex', gap: isMobile ? 16 : 24, flexWrap: isMobile ? 'wrap' as const : 'nowrap' as const }}>
                 {initialsData && (
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', marginBottom: 4 }}>Initials</div>
@@ -510,9 +523,12 @@ export default function CounterCheckoutPage() {
       {/* RIGHT: CONTROL PANEL */}
       {/* ================================================================ */}
       <div style={{
-        width: 380, flexShrink: 0, background: COLORS.pageBg,
-        borderLeft: `1px solid ${COLORS.borderAccent}`,
-        overflowY: 'auto', padding: SPACING.xxl,
+        width: isMobile ? '100%' : isTablet ? 340 : 380,
+        flexShrink: 0, background: COLORS.pageBg,
+        borderLeft: isMobile ? 'none' : `1px solid ${COLORS.borderAccent}`,
+        borderTop: isMobile ? `1px solid ${COLORS.borderAccent}` : 'none',
+        overflowY: isMobile ? 'visible' : 'auto',
+        padding: isMobile ? SPACING.lg : SPACING.xxl,
         display: 'flex', flexDirection: 'column', gap: SPACING.lg,
       }}>
         {/* Header */}
@@ -725,45 +741,26 @@ export default function CounterCheckoutPage() {
             {signatureMode === 'idle' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.sm }}>
                 <ControlButton icon={<PenIcon />} color="#8b5cf6" label="Sign Here" desc="Customer signs on this screen" onClick={() => setSignatureMode('signing')} />
-                <ControlButton icon={<PhoneIcon />} color="#3b82f6" label="Send to Phone (Sign Only)" desc="Customer signs, pay at counter" onClick={() => handleSendSigningLink(false)} />
-                <ControlButton icon={<SendIcon />} color="#22c55e" label="Send to Phone (Sign + Pay)" desc="Customer signs and pays on phone" onClick={() => handleSendSigningLink(true)} />
+                <ControlButton icon={<PhoneIcon />} color="#3b82f6" label="Send to Phone (Sign Only)" desc="Customer signs, pay at counter" onClick={() => { setSendToPhone(inv.customer_phone || ''); setShowSendConfirm({ includePayment: false }); }} />
+                <ControlButton icon={<SendIcon />} color="#22c55e" label="Send to Phone (Sign + Pay)" desc="Customer signs and pays on phone" onClick={() => { setSendToPhone(inv.customer_phone || ''); setShowSendConfirm({ includePayment: true }); }} />
                 {!sigRequired && !legalRequired && (
                   <button onClick={() => setSignatureMode('done')} style={{ padding: 8, border: 'none', background: 'transparent', color: COLORS.textMuted, fontSize: FONT.sizeXs, cursor: 'pointer' }}>Skip</button>
                 )}
               </div>
             )}
 
-            {signatureMode === 'signing' && (
-              <div>
-                {legalEnabled && (
-                  <div style={{ marginBottom: SPACING.lg }}>
-                    <div style={{ fontSize: FONT.sizeXs, color: COLORS.textSecondary, lineHeight: 1.6, padding: SPACING.sm, background: COLORS.inputBg, borderRadius: RADIUS.sm, marginBottom: SPACING.sm, border: `1px solid ${COLORS.borderInput}` }}>
-                      {sigConfig?.legality_acknowledgment_text || 'I acknowledge the legal terms.'}
-                    </div>
-                    <InitialsPad label="Customer Initials" value={initialsData} onChange={setInitialsData} disabled={savingSignature} />
-                  </div>
-                )}
-                {sigEnabled && (
-                  <div>
-                    <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, lineHeight: 1.6, padding: SPACING.sm, background: COLORS.inputBg, borderRadius: RADIUS.sm, marginBottom: SPACING.sm, border: `1px solid ${COLORS.borderInput}`, maxHeight: 80, overflowY: 'auto' }}>
-                      {sigConfig?.signature_terms_text || 'I accept the terms stated above.'}
-                    </div>
-                    <SignaturePad label="Customer Signature" value={signatureData} onChange={setSignatureData} disabled={savingSignature} penColor="#1a1a1a" />
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: SPACING.sm, marginTop: SPACING.md }}>
-                  <button onClick={handleSaveSignature} disabled={savingSignature || (legalRequired && !initialsData) || (sigRequired && !signatureData)} style={{ flex: 1, padding: 12, borderRadius: RADIUS.md, border: 'none', background: (legalRequired && !initialsData) || (sigRequired && !signatureData) ? COLORS.inputBg : '#8b5cf6', color: (legalRequired && !initialsData) || (sigRequired && !signatureData) ? COLORS.textMuted : '#fff', fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, cursor: 'pointer' }}>{savingSignature ? 'Saving...' : 'Confirm Signature'}</button>
-                  <button onClick={() => { setSignatureMode('idle'); setInitialsData(null); setSignatureData(null); }} style={{ padding: '12px 20px', borderRadius: RADIUS.md, border: `1px solid ${COLORS.borderInput}`, background: 'transparent', color: COLORS.textMuted, fontSize: FONT.sizeSm, cursor: 'pointer' }}>Back</button>
-                </div>
-              </div>
-            )}
+            {/* Signing mode renders as a full-screen modal -- see below */}
 
             {signatureMode === 'sent' && (
-              <div style={{ textAlign: 'center', padding: SPACING.lg }}>
-                <div style={{ fontSize: FONT.sizeSm, color: COLORS.textPrimary }}>Signing link sent</div>
-                <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 4 }}>Waiting for customer...</div>
-                <button onClick={() => setSignatureMode('idle')} style={{ marginTop: SPACING.md, padding: '8px 16px', borderRadius: RADIUS.sm, border: `1px solid ${COLORS.borderInput}`, background: 'transparent', color: COLORS.textMuted, fontSize: FONT.sizeXs, cursor: 'pointer' }}>Try Another Method</button>
-              </div>
+              <SignaturePolling
+                invoiceId={inv.id}
+                onComplete={(sigData, initData) => {
+                  setSignatureData(sigData);
+                  setInitialsData(initData);
+                  setSignatureMode('done');
+                }}
+                onCancel={() => setSignatureMode('idle')}
+              />
             )}
           </div>
         )}
@@ -787,7 +784,7 @@ export default function CounterCheckoutPage() {
         {/* Tip + Discount Note */}
         {!isPaid && (
           <div style={{ background: COLORS.cardBg, borderRadius: RADIUS.md, padding: SPACING.lg, border: `1px solid ${COLORS.border}` }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: SPACING.sm }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr', gap: SPACING.sm }}>
               <div>
                 <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 4 }}>Tip</div>
                 <input
@@ -795,7 +792,7 @@ export default function CounterCheckoutPage() {
                   onChange={e => setTipAmount(e.target.value)}
                   type="number"
                   placeholder="$0"
-                  style={{ width: '100%', background: COLORS.inputBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm, padding: '6px 8px', fontSize: FONT.sizeSm, outline: 'none' }}
+                  style={{ width: '100%', background: COLORS.inputBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm, padding: isMobile ? '10px 12px' : '6px 8px', fontSize: FONT.sizeSm, outline: 'none' }}
                 />
               </div>
               <div>
@@ -804,7 +801,7 @@ export default function CounterCheckoutPage() {
                   value={discountNote}
                   onChange={e => setDiscountNote(e.target.value)}
                   placeholder="e.g. Cash 5% Off Applied"
-                  style={{ width: '100%', background: COLORS.inputBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm, padding: '6px 8px', fontSize: FONT.sizeSm, outline: 'none' }}
+                  style={{ width: '100%', background: COLORS.inputBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm, padding: isMobile ? '10px 12px' : '6px 8px', fontSize: FONT.sizeSm, outline: 'none' }}
                 />
               </div>
             </div>
@@ -843,13 +840,154 @@ export default function CounterCheckoutPage() {
 
         {/* Back button */}
         <button onClick={() => router.push('/appointments')} style={{
-          padding: 12, borderRadius: RADIUS.md, border: `1px solid ${COLORS.borderInput}`,
+          padding: isMobile ? 16 : 12, borderRadius: RADIUS.md, border: `1px solid ${COLORS.borderInput}`,
           background: 'transparent', color: COLORS.textMuted, fontSize: FONT.sizeSm,
-          cursor: 'pointer', textAlign: 'center', marginTop: 'auto',
+          cursor: 'pointer', textAlign: 'center', marginTop: isMobile ? SPACING.md : 'auto',
+          marginBottom: isMobile ? SPACING.lg : 0,
         }}>
           Back to Appointments
         </button>
       </div>
+
+      {/* ================================================================ */}
+      {/* SEND SIGNING LINK CONFIRMATION MODAL */}
+      {/* ================================================================ */}
+      {showSendConfirm && (
+        <>
+          <div onClick={() => setShowSendConfirm(null)}
+            style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.5)' }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            zIndex: 9999, width: '90%', maxWidth: 400,
+            background: COLORS.cardBg, borderRadius: RADIUS.xl, padding: SPACING.xl,
+            boxShadow: '0 24px 60px rgba(0,0,0,0.5)', border: `1px solid ${COLORS.border}`,
+          }}>
+            <div style={{ fontSize: FONT.sizeLg, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, marginBottom: SPACING.lg }}>
+              {showSendConfirm.includePayment ? 'Send Sign + Pay Link' : 'Send Signing Link'}
+            </div>
+
+            <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.md }}>
+              Send to:
+            </div>
+
+            <div style={{ marginBottom: SPACING.lg }}>
+              <input
+                type="tel"
+                value={sendToPhone}
+                onChange={e => setSendToPhone(e.target.value)}
+                placeholder="Phone number"
+                style={{
+                  width: '100%', padding: '14px 16px', fontSize: FONT.sizeBase,
+                  background: COLORS.inputBg, color: COLORS.textPrimary,
+                  border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
+                  outline: 'none', fontFamily: 'inherit',
+                }}
+              />
+              {inv.customer_phone && sendToPhone !== inv.customer_phone && (
+                <button onClick={() => setSendToPhone(inv.customer_phone || '')} style={{
+                  marginTop: SPACING.xs, padding: 0, background: 'none', border: 'none',
+                  color: COLORS.textMuted, fontSize: FONT.sizeXs, cursor: 'pointer', textDecoration: 'underline',
+                }}>
+                  Reset to {inv.customer_phone}
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: SPACING.sm }}>
+              <button onClick={() => handleSendSigningLink(showSendConfirm.includePayment)}
+                disabled={!sendToPhone}
+                style={{
+                  flex: 1, padding: 14, borderRadius: RADIUS.md, border: 'none',
+                  background: sendToPhone ? (showSendConfirm.includePayment ? '#22c55e' : '#3b82f6') : COLORS.inputBg,
+                  color: sendToPhone ? '#fff' : COLORS.textMuted,
+                  fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, cursor: sendToPhone ? 'pointer' : 'not-allowed',
+                }}>
+                Send
+              </button>
+              <button onClick={() => setShowSendConfirm(null)} style={{
+                padding: '14px 20px', borderRadius: RADIUS.md,
+                border: `1px solid ${COLORS.borderInput}`, background: 'transparent',
+                color: COLORS.textMuted, fontSize: FONT.sizeSm, cursor: 'pointer',
+              }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ================================================================ */}
+      {/* SIGNATURE MODAL -- large centered for in-person tablet signing */}
+      {/* ================================================================ */}
+      {signatureMode === 'signing' && (
+        <>
+          <div onClick={() => { setSignatureMode('idle'); setInitialsData(null); setSignatureData(null); }}
+            style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }} />
+          <div style={{
+            position: 'fixed', top: isMobile ? 0 : '50%', left: isMobile ? 0 : '50%',
+            transform: isMobile ? 'none' : 'translate(-50%, -50%)',
+            zIndex: 9999, width: isMobile ? '100%' : '90%', maxWidth: isMobile ? '100%' : 600,
+            height: isMobile ? '100%' : 'auto', maxHeight: isMobile ? '100%' : '90vh', overflowY: 'auto',
+            background: '#ffffff', borderRadius: isMobile ? 0 : 16, padding: isMobile ? 20 : 32,
+            boxShadow: isMobile ? 'none' : '0 24px 80px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#1a1a1a' }}>Customer Signature</div>
+              <div style={{ fontSize: 14, color: '#666', marginTop: 4 }}>{inv.customer_name} -- {vehicleStr}</div>
+            </div>
+
+            {legalEnabled && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 13, color: '#444', lineHeight: 1.6, padding: 12, background: '#f9fafb', borderRadius: 8, marginBottom: 12, border: '1px solid #e5e7eb' }}>
+                  {sigConfig?.legality_acknowledgment_text || 'I acknowledge the legal terms.'}
+                </div>
+                <InitialsPad label="Customer Initials" value={initialsData} onChange={setInitialsData} disabled={savingSignature} />
+              </div>
+            )}
+
+            {sigEnabled && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 13, color: '#666', lineHeight: 1.6, padding: 12, background: '#f9fafb', borderRadius: 8, marginBottom: 12, border: '1px solid #e5e7eb', maxHeight: 80, overflowY: 'auto' }}>
+                  {sigConfig?.signature_terms_text || 'I accept the terms stated above.'}
+                </div>
+                <SignaturePad
+                  label="Sign Below"
+                  value={signatureData}
+                  onChange={setSignatureData}
+                  disabled={savingSignature}
+                  penColor="#1a1a1a"
+                  width={isMobile ? 280 : 520}
+                  height={isMobile ? 160 : 200}
+                />
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+              <button
+                onClick={handleSaveSignature}
+                disabled={savingSignature || (legalRequired && !initialsData) || (sigRequired && !signatureData)}
+                style={{
+                  flex: 1, padding: 16, borderRadius: 10, border: 'none',
+                  background: (legalRequired && !initialsData) || (sigRequired && !signatureData) ? '#e5e7eb' : '#8b5cf6',
+                  color: (legalRequired && !initialsData) || (sigRequired && !signatureData) ? '#9ca3af' : '#fff',
+                  fontSize: 16, fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                {savingSignature ? 'Saving...' : 'Confirm Signature'}
+              </button>
+              <button
+                onClick={() => { setSignatureMode('idle'); setInitialsData(null); setSignatureData(null); }}
+                style={{
+                  padding: '16px 24px', borderRadius: 10, border: '1px solid #d1d5db',
+                  background: '#fff', color: '#666', fontSize: 16, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -871,7 +1009,7 @@ function ControlButton({ icon, color, label, desc, onClick }: { icon: React.Reac
 
 function PayBtn({ label, amount, detail, color, loading, disabled, onClick }: { label: string; amount: number; detail?: string; color: string; loading: boolean; disabled: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} disabled={disabled} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: RADIUS.md, border: `1px solid ${color}30`, background: `${color}08`, cursor: disabled ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1, transition: 'all 0.15s' }}>
+    <button onClick={onClick} disabled={disabled} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderRadius: RADIUS.md, border: `1px solid ${color}30`, background: `${color}08`, cursor: disabled ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1, transition: 'all 0.15s', minHeight: 48 }}>
       <div style={{ textAlign: 'left' }}>
         <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>{loading ? 'Processing...' : label}</div>
         {detail && <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{detail}</div>}
@@ -884,3 +1022,57 @@ function PayBtn({ label, amount, detail, color, loading, disabled, onClick }: { 
 function PenIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>; }
 function PhoneIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"/></svg>; }
 function SendIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>; }
+
+// ============================================================================
+// SIGNATURE POLLING -- polls the invoice for remote signature completion
+// ============================================================================
+function SignaturePolling({ invoiceId, onComplete, onCancel }: {
+  invoiceId: string;
+  onComplete: (sigData: string | null, initData: string | null) => void;
+  onCancel: () => void;
+}) {
+  const [dots, setDots] = useState('');
+
+  useEffect(() => {
+    const dotInterval = setInterval(() => {
+      setDots(prev => prev.length >= 3 ? '' : prev + '.');
+    }, 500);
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/auto/invoices?id=${invoiceId}`);
+        const data = await res.json();
+        const inv = Array.isArray(data) ? data[0] : data.invoice || data;
+        if (inv?.signature_data || inv?.signed_at) {
+          onComplete(inv.signature_data || null, inv.initials_data || null);
+        }
+      } catch { /* silent */ }
+    }, 3000);
+
+    return () => { clearInterval(dotInterval); clearInterval(pollInterval); };
+  }, [invoiceId, onComplete]);
+
+  return (
+    <div style={{ textAlign: 'center', padding: SPACING.lg }}>
+      <div style={{ marginBottom: SPACING.md }}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 32, height: 32, animation: 'spin 2s linear infinite' }}>
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.11 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"/>
+        </svg>
+      </div>
+      <div style={{ fontSize: FONT.sizeSm, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold }}>
+        Waiting for customer{dots}
+      </div>
+      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 4 }}>
+        This will update automatically when the customer signs
+      </div>
+      <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }' }} />
+      <button onClick={onCancel} style={{
+        marginTop: SPACING.lg, padding: '8px 16px', borderRadius: RADIUS.sm,
+        border: `1px solid ${COLORS.borderInput}`, background: 'transparent',
+        color: COLORS.textMuted, fontSize: FONT.sizeXs, cursor: 'pointer',
+      }}>
+        Try Another Method
+      </button>
+    </div>
+  );
+}

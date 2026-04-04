@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 import { DashboardCard, Button, DataTable, Modal, FormField, TextInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 
@@ -24,6 +25,7 @@ interface DurationOverride {
 }
 
 export default function VehiclesTab() {
+  const isMobile = useIsMobile();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -51,7 +53,7 @@ export default function VehiclesTab() {
   // Pricing: key = "serviceKey|filmId", value = override price string
   const [formPricingOverrides, setFormPricingOverrides] = useState<Record<string, string>>({});
   const [defaultPricing, setDefaultPricing] = useState<Array<{ class_key: string; service_key: string; film_id: number | null; price: number }>>([]);
-  const [films, setFilms] = useState<Array<{ id: number; name: string }>>([]);
+  const [films, setFilms] = useState<Array<{ id: number; name: string; abbreviation?: string }>>([]);
   const [allServiceDefs, setAllServiceDefs] = useState<ServiceDef[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -269,6 +271,42 @@ export default function VehiclesTab() {
       <DashboardCard noPadding>
         {loading ? (
           <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>Loading...</div>
+        ) : isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {vehicles.length === 0 ? (
+              <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>No vehicles found.</div>
+            ) : vehicles.map(v => (
+              <div key={v.id} onClick={() => openEdit(v)} style={{
+                padding: `${SPACING.md}px ${SPACING.lg}px`,
+                borderBottom: `1px solid ${COLORS.border}`,
+                cursor: 'pointer',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>
+                    {v.make} {v.model}
+                  </span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke={COLORS.textMuted} strokeWidth="2" style={{ width: 16, height: 16, flexShrink: 0 }}>
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+                <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{v.year_start}-{v.year_end}</span>
+                  {v.class_keys.map(ck => {
+                    const vc = vehicleClasses.find(c => c.class_key === ck);
+                    return (
+                      <span key={ck} style={{
+                        fontSize: FONT.sizeXs, padding: '1px 6px', borderRadius: 3,
+                        background: vc?.is_add_fee ? '#f59e0b18' : 'rgba(255,255,255,0.06)',
+                        color: vc?.is_add_fee ? '#f59e0b' : COLORS.textSecondary,
+                      }}>
+                        {vc?.name || ck}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <DataTable columns={columns} data={vehicles} rowKey={v => v.id} onRowClick={openEdit}
             emptyMessage="No vehicles found." compact />
@@ -466,7 +504,7 @@ export default function VehiclesTab() {
                         <PricingServiceRow key={svc.service_key} label={svc.label} badge="Primary"
                           films={films} getPrice={(filmId) => getBaseClassPrice(svc.service_key, filmId)}
                           overrides={formPricingOverrides} serviceKey={svc.service_key}
-                          onOverrideChange={setFormPricingOverrides} />
+                          onOverrideChange={setFormPricingOverrides} isMobile={isMobile} />
                       );
                     })}
 
@@ -479,7 +517,7 @@ export default function VehiclesTab() {
                         <PricingServiceRow key={svc.service_key} label={svc.label} badge="Add-On"
                           films={films} getPrice={(filmId) => getWildcardPrice(svc.service_key, filmId)}
                           overrides={formPricingOverrides} serviceKey={svc.service_key}
-                          onOverrideChange={setFormPricingOverrides} />
+                          onOverrideChange={setFormPricingOverrides} isMobile={isMobile} />
                       );
                     })}
 
@@ -607,8 +645,8 @@ export default function VehiclesTab() {
 
                       return (
                         <div key={film.id} style={{ textAlign: 'center' }}>
-                          <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 4 }}>
-                            {film.name}
+                          <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 4, minHeight: isMobile ? undefined : 16 }}>
+                            {film.abbreviation || film.name}
                           </div>
                           <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 2 }}>
                             {displayDefault}
@@ -651,14 +689,15 @@ export default function VehiclesTab() {
   );
 }
 
-function PricingServiceRow({ label, badge, films, getPrice, overrides, serviceKey, onOverrideChange }: {
+function PricingServiceRow({ label, badge, films, getPrice, overrides, serviceKey, onOverrideChange, isMobile }: {
   label: string;
   badge: string;
-  films: Array<{ id: number; name: string }>;
+  films: Array<{ id: number; name: string; abbreviation?: string }>;
   getPrice: (filmId: number) => number | null;
   overrides: Record<string, string>;
   serviceKey: string;
   onOverrideChange: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  isMobile?: boolean;
 }) {
   return (
     <div style={{ padding: SPACING.md, border: `1px solid ${COLORS.border}`, borderRadius: RADIUS.lg }}>
@@ -682,8 +721,8 @@ function PricingServiceRow({ label, badge, films, getPrice, overrides, serviceKe
           const hasOverride = override !== undefined && override !== '';
 
           return (
-            <div key={film.id} style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 4 }}>{film.name}</div>
+            <div key={film.id} style={{ textAlign: 'center', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 4, minHeight: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{film.abbreviation || film.name}</div>
               <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 2 }}>
                 {defaultPrice !== null ? `$${defaultPrice}` : '—'}
               </div>
@@ -693,7 +732,9 @@ function PricingServiceRow({ label, badge, films, getPrice, overrides, serviceKe
                 style={{
                   width: '100%', background: COLORS.inputBg, color: COLORS.textPrimary,
                   border: `1px solid ${hasOverride ? COLORS.red : COLORS.borderInput}`,
-                  borderRadius: RADIUS.sm, padding: '4px 6px', fontSize: FONT.sizeSm, textAlign: 'center',
+                  borderRadius: RADIUS.sm, padding: isMobile ? '8px 4px' : '4px 6px',
+                  fontSize: isMobile ? FONT.sizeXs : FONT.sizeSm, textAlign: 'center',
+                  minHeight: isMobile ? 36 : undefined,
                 }} />
             </div>
           );

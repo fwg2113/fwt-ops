@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PageHeader, DashboardCard, Button, StatusBadge } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 
 interface Lead {
   id: number;
@@ -32,6 +33,7 @@ const STATUS_VARIANTS: Record<string, 'info' | 'warning' | 'success' | 'neutral'
 };
 
 export default function LeadPipelinePage() {
+  const isMobile = useIsMobile();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
@@ -95,7 +97,12 @@ export default function LeadPipelinePage() {
       />
 
       {/* Stats */}
-      <div style={{ display: 'flex', gap: SPACING.md, marginBottom: SPACING.lg, flexWrap: 'wrap' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+        gap: SPACING.md,
+        marginBottom: SPACING.lg,
+      }}>
         <StatBox label="Total Sent" value={String(totalSent)} />
         <StatBox label="Opened" value={`${totalOpened} (${openRate}%)`} color="#f59e0b" />
         <StatBox label="Booked" value={`${totalBooked} (${conversionRate}%)`} color={COLORS.success} />
@@ -103,13 +110,13 @@ export default function LeadPipelinePage() {
       </div>
 
       {/* Filter pills */}
-      <div style={{ display: 'flex', gap: SPACING.sm, marginBottom: SPACING.lg }}>
+      <div style={{ display: 'flex', gap: SPACING.sm, marginBottom: SPACING.lg, flexWrap: 'wrap' }}>
         {['all', 'sent', 'opened', 'booked', 'expired'].map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             style={{
-              padding: `${SPACING.xs}px ${SPACING.md}px`,
+              padding: isMobile ? `${SPACING.sm}px ${SPACING.md}px` : `${SPACING.xs}px ${SPACING.md}px`,
               borderRadius: RADIUS.md,
               border: `1px solid ${filter === f ? COLORS.red : COLORS.borderInput}`,
               background: filter === f ? COLORS.activeBg : 'transparent',
@@ -133,7 +140,51 @@ export default function LeadPipelinePage() {
           <div style={{ padding: SPACING.xxl, textAlign: 'center', color: COLORS.textMuted }}>
             {filter === 'all' ? 'No leads yet. Send a booking link from Quick Tint Quote.' : `No ${filter} leads.`}
           </div>
+        ) : isMobile ? (
+          /* Mobile card list */
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {filtered.map((lead, idx) => (
+              <div key={lead.id} style={{
+                padding: `${SPACING.md}px ${SPACING.lg}px`,
+                borderBottom: idx < filtered.length - 1 ? `1px solid ${COLORS.border}` : 'none',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xs }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+                    <StatusBadge label={lead.status} variant={STATUS_VARIANTS[lead.status] || 'neutral'} />
+                    <span style={{ fontWeight: FONT.weightMedium, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>
+                      {lead.customer_name || 'Anonymous'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleCopyLink(lead.token)}
+                    title="Copy booking link"
+                    style={{
+                      background: 'none', border: `1px solid ${COLORS.borderInput}`,
+                      borderRadius: RADIUS.sm, padding: '6px 12px', cursor: 'pointer',
+                      color: COLORS.textMuted, fontSize: FONT.sizeXs,
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: FONT.sizeXs, color: COLORS.textSecondary }}>
+                    {lead.vehicle_year} {lead.vehicle_make} {lead.vehicle_model}
+                  </span>
+                  <span style={{ fontWeight: FONT.weightBold, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>
+                    ${Number(lead.total_price).toLocaleString()}
+                  </span>
+                </div>
+                <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 4 }}>
+                  Sent {timeAgo(lead.created_at)}
+                  {lead.link_opened_at && <span style={{ color: '#f59e0b' }}> -- Opened {formatDate(lead.link_opened_at)}</span>}
+                  {lead.booked_at && <span style={{ color: COLORS.success }}> -- Booked {formatDate(lead.booked_at)}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
+          /* Desktop table */
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>

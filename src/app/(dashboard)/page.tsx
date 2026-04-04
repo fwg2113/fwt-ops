@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { PageHeader, DashboardCard, StatCard, StatusBadge } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 
 interface TodayAppointment {
   id: string;
@@ -77,6 +78,9 @@ function formatTime(time: string | null): string {
 }
 
 export default function CommandCenter() {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
+  const isTouch = isMobile || isTablet;
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -101,11 +105,11 @@ export default function CommandCenter() {
 
       {/* Quick Stats Row */}
       {data && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: SPACING.lg, marginBottom: SPACING.xl }}>
-          <QuickStat label="Today's Appointments" value={data.today.total} color={COLORS.textPrimary} />
-          <QuickStat label="Checked In" value={data.today.checkedIn} color="#22c55e" />
-          <QuickStat label="Today's Revenue" value={`$${data.today.revenue.toLocaleString()}`} color={COLORS.red} />
-          <QuickStat label="Pending Inquiries" value={data.inquiries.length} color="#f59e0b" />
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: SPACING.lg, marginBottom: SPACING.xl }}>
+          <QuickStat label="Today's Appointments" value={data.today.total} color={COLORS.textPrimary} compact={isMobile} />
+          <QuickStat label="Checked In" value={data.today.checkedIn} color="#22c55e" compact={isMobile} />
+          <QuickStat label="Today's Revenue" value={`$${data.today.revenue.toLocaleString()}`} color={COLORS.red} compact={isMobile} />
+          <QuickStat label="Pending Inquiries" value={data.inquiries.length} color="#f59e0b" compact={isMobile} />
         </div>
       )}
 
@@ -124,13 +128,15 @@ export default function CommandCenter() {
           }
           actions={
             data ? (
-              <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: SPACING.sm, alignItems: 'center' }}>
                 <StatusBadge label={`${data.today.dropoffs} Drop-Off`} variant="info" />
                 <StatusBadge label={`${data.today.waiting} Waiting`} variant="danger" />
                 {data.today.headsups > 0 && <StatusBadge label={`${data.today.headsups} Heads-Up`} variant="warning" />}
-                <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginLeft: SPACING.sm }}>
-                  Est. ${data.today.revenue.toLocaleString()}
-                </span>
+                {!isMobile && (
+                  <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginLeft: SPACING.sm }}>
+                    Est. ${data.today.revenue.toLocaleString()}
+                  </span>
+                )}
               </div>
             ) : undefined
           }
@@ -148,59 +154,110 @@ export default function CommandCenter() {
                 const isCheckedIn = apt.status === 'in_progress' || apt.status === 'completed' || apt.status === 'invoiced';
                 return (
                   <div key={apt.id} style={{
-                    display: 'flex', alignItems: 'center', gap: SPACING.md,
-                    padding: `${SPACING.sm}px ${SPACING.md}px`,
+                    display: 'flex', alignItems: isMobile ? 'flex-start' : 'center',
+                    flexWrap: isMobile ? 'wrap' : 'nowrap',
+                    gap: isMobile ? SPACING.xs : SPACING.md,
+                    padding: isMobile ? `${SPACING.sm}px ${SPACING.sm}px` : `${SPACING.sm}px ${SPACING.md}px`,
                     borderRadius: RADIUS.md,
-                    marginBottom: 2,
+                    marginBottom: isMobile ? 4 : 2,
                     borderLeft: `3px solid ${typeColor}`,
                     background: `${typeColor}08`,
                   }}>
-                    {/* Time */}
-                    <span style={{
-                      fontSize: FONT.sizeSm, fontWeight: FONT.weightBold,
-                      color: typeColor, minWidth: 70,
-                    }}>
-                      {formatTime(apt.appointment_time)}
-                    </span>
+                    {isMobile ? (
+                      <>
+                        {/* Mobile row 1: time + type + dot + price */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.xs, width: '100%' }}>
+                          <span style={{
+                            fontSize: FONT.sizeSm, fontWeight: FONT.weightBold,
+                            color: typeColor,
+                          }}>
+                            {formatTime(apt.appointment_time)}
+                          </span>
+                          <span style={{
+                            fontSize: FONT.sizeXs, fontWeight: FONT.weightBold,
+                            color: typeColor, textTransform: 'uppercase',
+                          }}>
+                            {TYPE_LABELS[apt.appointment_type]}
+                          </span>
+                          <span style={{
+                            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                            background: isCheckedIn ? '#22c55e' : '#6b7280',
+                          }} />
+                          <span style={{ flex: 1 }} />
+                          <span style={{
+                            fontSize: FONT.sizeSm, fontWeight: FONT.weightBold,
+                            color: COLORS.textPrimary,
+                          }}>
+                            ${Number(apt.balance_due).toFixed(0)}
+                          </span>
+                        </div>
+                        {/* Mobile row 2: vehicle + customer */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.xs, width: '100%' }}>
+                          <span style={{
+                            fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold,
+                            color: COLORS.textPrimary, flex: 1,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {apt.vehicle_year} {apt.vehicle_make} {apt.vehicle_model}
+                          </span>
+                          <span style={{
+                            fontSize: FONT.sizeXs, color: COLORS.textMuted,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {apt.customer_name}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {/* Time */}
+                        <span style={{
+                          fontSize: FONT.sizeSm, fontWeight: FONT.weightBold,
+                          color: typeColor, minWidth: 70,
+                        }}>
+                          {formatTime(apt.appointment_time)}
+                        </span>
 
-                    {/* Checked-in dot */}
-                    <span style={{
-                      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                      background: isCheckedIn ? '#22c55e' : '#6b7280',
-                    }} />
+                        {/* Checked-in dot */}
+                        <span style={{
+                          width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                          background: isCheckedIn ? '#22c55e' : '#6b7280',
+                        }} />
 
-                    {/* Type badge */}
-                    <span style={{
-                      fontSize: FONT.sizeXs, fontWeight: FONT.weightBold,
-                      color: typeColor, textTransform: 'uppercase', minWidth: 60,
-                    }}>
-                      {TYPE_LABELS[apt.appointment_type]}
-                    </span>
+                        {/* Type badge */}
+                        <span style={{
+                          fontSize: FONT.sizeXs, fontWeight: FONT.weightBold,
+                          color: typeColor, textTransform: 'uppercase', minWidth: 60,
+                        }}>
+                          {TYPE_LABELS[apt.appointment_type]}
+                        </span>
 
-                    {/* Vehicle */}
-                    <span style={{
-                      fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold,
-                      color: COLORS.textPrimary, flex: 1,
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    }}>
-                      {apt.vehicle_year} {apt.vehicle_make} {apt.vehicle_model}
-                    </span>
+                        {/* Vehicle */}
+                        <span style={{
+                          fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold,
+                          color: COLORS.textPrimary, flex: 1,
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        }}>
+                          {apt.vehicle_year} {apt.vehicle_make} {apt.vehicle_model}
+                        </span>
 
-                    {/* Customer */}
-                    <span style={{
-                      fontSize: FONT.sizeSm, color: COLORS.textMuted,
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {apt.customer_name}
-                    </span>
+                        {/* Customer */}
+                        <span style={{
+                          fontSize: FONT.sizeSm, color: COLORS.textMuted,
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {apt.customer_name}
+                        </span>
 
-                    {/* Price */}
-                    <span style={{
-                      fontSize: FONT.sizeSm, fontWeight: FONT.weightBold,
-                      color: COLORS.textPrimary, minWidth: 50, textAlign: 'right',
-                    }}>
-                      ${Number(apt.balance_due).toFixed(0)}
-                    </span>
+                        {/* Price */}
+                        <span style={{
+                          fontSize: FONT.sizeSm, fontWeight: FONT.weightBold,
+                          color: COLORS.textPrimary, minWidth: 50, textAlign: 'right',
+                        }}>
+                          ${Number(apt.balance_due).toFixed(0)}
+                        </span>
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -302,7 +359,7 @@ export default function CommandCenter() {
           }
         >
           {data ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: SPACING.lg }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: SPACING.lg }}>
               <StatCard
                 label="Total Sales"
                 value={data.mtd.totalSales.toLocaleString()}
@@ -325,7 +382,7 @@ export default function CommandCenter() {
               />
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: SPACING.lg }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: SPACING.lg }}>
               <StatCard label="Total Sales" value="--" color={COLORS.red} />
               <StatCard label="Projected Sales" value="--" color="#f59e0b" />
               <StatCard label="Completed" value="--" color="#22c55e" />
@@ -337,16 +394,19 @@ export default function CommandCenter() {
   );
 }
 
-function QuickStat({ label, value, color }: { label: string; value: string | number; color: string }) {
+function QuickStat({ label, value, color, compact }: { label: string; value: string | number; color: string; compact?: boolean }) {
   return (
     <div style={{
       background: COLORS.cardBg,
       border: `1px solid ${COLORS.borderAccent}`,
       borderRadius: RADIUS.xl,
-      padding: `${SPACING.lg}px ${SPACING.xl}px`,
-      display: 'flex', alignItems: 'center', gap: SPACING.md,
+      padding: compact ? `${SPACING.sm}px ${SPACING.md}px` : `${SPACING.lg}px ${SPACING.xl}px`,
+      display: 'flex',
+      flexDirection: compact ? 'column' : 'row',
+      alignItems: compact ? 'flex-start' : 'center',
+      gap: compact ? SPACING.xs : SPACING.md,
     }}>
-      <div style={{ fontSize: FONT.sizePageTitle, fontWeight: FONT.weightBold, color }}>{value}</div>
+      <div style={{ fontSize: compact ? FONT.sizeLg : FONT.sizePageTitle, fontWeight: FONT.weightBold, color }}>{value}</div>
       <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.3 }}>{label}</div>
     </div>
   );

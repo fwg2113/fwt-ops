@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 import { DashboardCard, Button, StatusBadge, ColorPicker } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import FilmCard from '@/app/components/booking/FilmCard';
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function FilmsTab({ data, onSave, onRefresh }: Props) {
+  const isMobile = useIsMobile();
   const brands = (data.filmBrands || []) as FilmBrand[];
   const films = (data.films || []) as Film[];
   const filmShades = (data.filmShades || []) as FilmShade[];
@@ -402,44 +404,87 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                   }}>
                     {/* Film header */}
                     <div style={{
-                      display: 'flex', alignItems: 'center', gap: SPACING.md,
-                      padding: `${SPACING.md}px ${SPACING.lg}px`, cursor: 'pointer',
+                      display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? SPACING.sm : SPACING.md,
+                      padding: isMobile ? `${SPACING.md}px ${SPACING.md}px` : `${SPACING.md}px ${SPACING.lg}px`, cursor: 'pointer',
                       background: isExpanded ? 'rgba(255,255,255,0.03)' : 'transparent',
+                      flexWrap: isMobile ? 'wrap' : 'nowrap',
                     }}
                       onClick={() => setExpandedFilm(isExpanded ? null : film.id)}
                     >
-                      <div style={{ flex: 1 }}>
-                        <span style={{ fontSize: FONT.sizeBase, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>
-                          {film.name}
-                        </span>
-                        <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginLeft: SPACING.sm }}>
-                          {film.tier_label || `Tier ${film.tier}`}
-                        </span>
-                      </div>
-                      {film.ir_rejection && (
-                        <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>IR: {film.ir_rejection}</span>
+                      {isMobile ? (
+                        <>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>
+                              {film.abbreviation || film.name}
+                              {film.abbreviation && (
+                                <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, fontWeight: FONT.weightNormal, marginLeft: 6 }}>
+                                  {film.name}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'center', marginTop: 2 }}>
+                              <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                                {film.tier_label || `Tier ${film.tier}`}
+                              </span>
+                              <StatusBadge label={`${shades.filter(s => s.offered).length}/${shades.length}`} variant="neutral" />
+                            </div>
+                          </div>
+                          <button
+                            onClick={e => { e.stopPropagation(); toggleFilmOffered(film); }}
+                            style={{
+                              width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+                              background: film.offered ? COLORS.red : COLORS.border,
+                              position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                            }}
+                          >
+                            <div style={{
+                              width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                              position: 'absolute', top: 3,
+                              left: film.offered ? 21 : 3,
+                              transition: 'left 0.2s',
+                            }} />
+                          </button>
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={COLORS.textMuted} strokeWidth="2"
+                            style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', flexShrink: 0 }}>
+                            <path d="M3 5l4 4 4-4"/>
+                          </svg>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontSize: FONT.sizeBase, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>
+                              {film.name}
+                            </span>
+                            <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginLeft: SPACING.sm }}>
+                              {film.tier_label || `Tier ${film.tier}`}
+                            </span>
+                          </div>
+                          {film.ir_rejection && (
+                            <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>IR: {film.ir_rejection}</span>
+                          )}
+                          <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, fontFamily: 'monospace' }}>{film.abbreviation}</span>
+                          <StatusBadge label={`${shades.filter(s => s.offered).length}/${shades.length} shades`} variant="neutral" />
+                          <button
+                            onClick={e => { e.stopPropagation(); toggleFilmOffered(film); }}
+                            style={{
+                              width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+                              background: film.offered ? COLORS.red : COLORS.border,
+                              position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                            }}
+                          >
+                            <div style={{
+                              width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                              position: 'absolute', top: 3,
+                              left: film.offered ? 21 : 3,
+                              transition: 'left 0.2s',
+                            }} />
+                          </button>
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={COLORS.textMuted} strokeWidth="2"
+                            style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                            <path d="M3 5l4 4 4-4"/>
+                          </svg>
+                        </>
                       )}
-                      <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, fontFamily: 'monospace' }}>{film.abbreviation}</span>
-                      <StatusBadge label={`${shades.filter(s => s.offered).length}/${shades.length} shades`} variant="neutral" />
-                      <button
-                        onClick={e => { e.stopPropagation(); toggleFilmOffered(film); }}
-                        style={{
-                          width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
-                          background: film.offered ? COLORS.red : COLORS.border,
-                          position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-                        }}
-                      >
-                        <div style={{
-                          width: 16, height: 16, borderRadius: '50%', background: '#fff',
-                          position: 'absolute', top: 3,
-                          left: film.offered ? 21 : 3,
-                          transition: 'left 0.2s',
-                        }} />
-                      </button>
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={COLORS.textMuted} strokeWidth="2"
-                        style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
-                        <path d="M3 5l4 4 4-4"/>
-                      </svg>
                     </div>
 
                     {/* Expanded: film customization + shade toggles */}
@@ -464,9 +509,9 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                               {filmSaving === film.id ? 'Saving...' : filmSaved === film.id ? 'Saved' : 'Save'}
                             </Button>
                           </div>
-                          <div style={{ display: 'flex', gap: SPACING.md, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                          <div style={{ display: isMobile ? 'grid' : 'flex', gridTemplateColumns: isMobile ? '1fr 1fr' : undefined, gap: SPACING.md, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                             {/* Display Name */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, gridColumn: isMobile ? '1 / -1' : undefined }}>
                               <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>Display Name</span>
                               <input
                                 type="text"
@@ -474,7 +519,7 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                                 placeholder={film.name}
                                 onChange={e => updateFilmEdit(film.id, { display_name: e.target.value.trim() || null })}
                                 style={{
-                                  width: 180, padding: '6px 10px', background: COLORS.inputBg,
+                                  width: isMobile ? '100%' : 180, padding: '6px 10px', background: COLORS.inputBg,
                                   color: COLORS.textPrimary, border: `1px solid ${COLORS.borderInput}`,
                                   borderRadius: RADIUS.sm, fontSize: FONT.sizeSm,
                                 }}
@@ -489,7 +534,7 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                                 placeholder="e.g. Good, Best, Premium"
                                 onChange={e => updateFilmEdit(film.id, { tier_label: e.target.value.trim() || null })}
                                 style={{
-                                  width: 160, padding: '6px 10px', background: COLORS.inputBg,
+                                  width: isMobile ? '100%' : 160, padding: '6px 10px', background: COLORS.inputBg,
                                   color: COLORS.textPrimary, border: `1px solid ${COLORS.borderInput}`,
                                   borderRadius: RADIUS.sm, fontSize: FONT.sizeSm,
                                 }}
@@ -504,7 +549,7 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                                 placeholder="e.g. BLK, BC, i3"
                                 onChange={e => updateFilmEdit(film.id, { abbreviation: e.target.value })}
                                 style={{
-                                  width: 80, padding: '6px 10px', background: COLORS.inputBg,
+                                  width: isMobile ? '100%' : 80, padding: '6px 10px', background: COLORS.inputBg,
                                   color: COLORS.textPrimary, border: `1px solid ${COLORS.borderInput}`,
                                   borderRadius: RADIUS.sm, fontSize: FONT.sizeSm, fontFamily: 'monospace',
                                   textAlign: 'center',
@@ -974,15 +1019,15 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: FONT.sizeSm, tableLayout: 'fixed' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: isMobile ? FONT.sizeXs : FONT.sizeSm, tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: '200px' }} />
+                <col style={{ width: isMobile && offeredFilms.length >= 4 ? '100px' : '200px' }} />
                 {offeredFilms.map(f => <col key={f.id} />)}
               </colgroup>
               <thead>
                 <tr>
                   <th style={{
-                    padding: `${SPACING.sm}px ${SPACING.md}px`, textAlign: 'left',
+                    padding: isMobile ? `${SPACING.sm}px ${SPACING.xs}px` : `${SPACING.sm}px ${SPACING.md}px`, textAlign: 'left',
                     fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, textTransform: 'uppercase',
                     color: COLORS.textMuted, borderBottom: `1px solid ${COLORS.border}`,
                   }}>
@@ -990,11 +1035,11 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                   </th>
                   {offeredFilms.map(film => (
                     <th key={film.id} style={{
-                      padding: `${SPACING.sm}px ${SPACING.md}px`, textAlign: 'center',
+                      padding: isMobile ? `${SPACING.sm}px ${SPACING.xs}px` : `${SPACING.sm}px ${SPACING.md}px`, textAlign: 'center',
                       fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold,
                       color: COLORS.textMuted, borderBottom: `1px solid ${COLORS.border}`,
                     }}>
-                      {film.name}
+                      {isMobile ? (film.abbreviation || film.name) : film.name}
                     </th>
                   ))}
                 </tr>
@@ -1096,7 +1141,7 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                           // Removals: single flat price aligned to first film column
                           <>
                             <td style={{
-                              padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                              padding: isMobile ? `${SPACING.xs}px 2px` : `${SPACING.xs}px ${SPACING.sm}px`,
                               textAlign: 'center', borderBottom: `1px solid ${COLORS.border}`,
                             }}>
                               {(() => {
@@ -1118,10 +1163,12 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                                     }}
                                     placeholder={currentPrice !== null ? String(currentPrice) : '0'}
                                     style={{
-                                      width: '100%', maxWidth: 80, background: COLORS.inputBg,
+                                      width: '100%', maxWidth: isMobile ? 60 : 80, background: COLORS.inputBg,
                                       color: COLORS.textPrimary, textAlign: 'center',
                                       border: `1px solid ${isEdited ? COLORS.red : COLORS.borderInput}`,
-                                      borderRadius: RADIUS.sm, padding: '4px 6px', fontSize: FONT.sizeSm,
+                                      borderRadius: RADIUS.sm, padding: isMobile ? '8px 4px' : '4px 6px',
+                                      fontSize: isMobile ? FONT.sizeXs : FONT.sizeSm,
+                                      minHeight: isMobile ? 36 : undefined,
                                     }}
                                   />
                                 );
@@ -1138,7 +1185,7 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                           const isEdited = editValue !== undefined;
                           return (
                             <td key={film.id} style={{
-                              padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                              padding: isMobile ? `${SPACING.xs}px 2px` : `${SPACING.xs}px ${SPACING.sm}px`,
                               textAlign: 'center', borderBottom: `1px solid ${COLORS.border}`,
                             }}>
                               <input
@@ -1154,10 +1201,12 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                                 }}
                                 placeholder={currentPrice !== null ? String(currentPrice) : '0'}
                                 style={{
-                                  width: '100%', maxWidth: 80, background: COLORS.inputBg,
+                                  width: '100%', maxWidth: isMobile ? 60 : 80, background: COLORS.inputBg,
                                   color: COLORS.textPrimary, textAlign: 'center',
                                   border: `1px solid ${isEdited ? COLORS.red : COLORS.borderInput}`,
-                                  borderRadius: RADIUS.sm, padding: '4px 6px', fontSize: FONT.sizeSm,
+                                  borderRadius: RADIUS.sm, padding: isMobile ? '8px 4px' : '4px 6px',
+                                  fontSize: isMobile ? FONT.sizeXs : FONT.sizeSm,
+                                  minHeight: isMobile ? 36 : undefined,
                                 }}
                               />
                             </td>
@@ -1179,7 +1228,7 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                         {isRemoval ? (
                           <>
                             <td style={{
-                              padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                              padding: isMobile ? `${SPACING.xs}px 2px` : `${SPACING.xs}px ${SPACING.sm}px`,
                               textAlign: 'center', borderBottom: `1px solid ${COLORS.border}`,
                             }}>
                               {(() => {
@@ -1201,10 +1250,12 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                                     }}
                                     placeholder={currentPrice !== null ? String(currentPrice) : '0'}
                                     style={{
-                                      width: '100%', maxWidth: 80, background: COLORS.inputBg,
+                                      width: '100%', maxWidth: isMobile ? 60 : 80, background: COLORS.inputBg,
                                       color: COLORS.textPrimary, textAlign: 'center',
                                       border: `1px solid ${isEdited ? COLORS.red : COLORS.borderInput}`,
-                                      borderRadius: RADIUS.sm, padding: '4px 6px', fontSize: FONT.sizeSm,
+                                      borderRadius: RADIUS.sm, padding: isMobile ? '8px 4px' : '4px 6px',
+                                      fontSize: isMobile ? FONT.sizeXs : FONT.sizeSm,
+                                      minHeight: isMobile ? 36 : undefined,
                                     }}
                                   />
                                 );
@@ -1221,7 +1272,7 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                           const isEdited = editValue !== undefined;
                           return (
                             <td key={film.id} style={{
-                              padding: `${SPACING.xs}px ${SPACING.sm}px`,
+                              padding: isMobile ? `${SPACING.xs}px 2px` : `${SPACING.xs}px ${SPACING.sm}px`,
                               textAlign: 'center', borderBottom: `1px solid ${COLORS.border}`,
                             }}>
                               <input
@@ -1237,10 +1288,12 @@ export default function FilmsTab({ data, onSave, onRefresh }: Props) {
                                 }}
                                 placeholder={currentPrice !== null ? String(currentPrice) : '0'}
                                 style={{
-                                  width: '100%', maxWidth: 80, background: COLORS.inputBg,
+                                  width: '100%', maxWidth: isMobile ? 60 : 80, background: COLORS.inputBg,
                                   color: COLORS.textPrimary, textAlign: 'center',
                                   border: `1px solid ${isEdited ? COLORS.red : COLORS.borderInput}`,
-                                  borderRadius: RADIUS.sm, padding: '4px 6px', fontSize: FONT.sizeSm,
+                                  borderRadius: RADIUS.sm, padding: isMobile ? '8px 4px' : '4px 6px',
+                                  fontSize: isMobile ? FONT.sizeXs : FONT.sizeSm,
+                                  minHeight: isMobile ? 36 : undefined,
                                 }}
                               />
                             </td>

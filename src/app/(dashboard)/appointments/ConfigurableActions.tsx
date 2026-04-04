@@ -37,17 +37,18 @@ interface Props {
   actioned: Set<string>;
   onAction: (buttonKey: string, appointment: Appointment, anchorRect?: DOMRect) => void;
   compact?: boolean;
+  mobile?: boolean;
 }
 
 // Consultation-specific button config
 const CONSULTATION_BUTTONS: ActionButtonConfig[] = [
   { key: 'edit', enabled: true, label: 'Edit', clickedLabel: 'Edit', defaultColor: '#6b7280', clickedColor: '#6b7280', behavior: 'edit_modal', statusTarget: null, messageTemplate: null, showWhen: null },
   { key: 'message', enabled: true, label: 'Message', clickedLabel: 'Sent', defaultColor: '#3b82f6', clickedColor: '#22c55e', behavior: 'message_modal', statusTarget: null, messageTemplate: 'consultation_onway', showWhen: null },
-  { key: 'complete', enabled: true, label: 'Complete', clickedLabel: 'Done', defaultColor: '#6b7280', clickedColor: '#22c55e', behavior: 'status_change', statusTarget: 'completed', messageTemplate: null, showWhen: { status_in: ['booked', 'in_progress'] } },
+  { key: 'complete', enabled: true, label: 'Done', clickedLabel: 'Done', defaultColor: '#6b7280', clickedColor: '#22c55e', behavior: 'status_change', statusTarget: 'completed', messageTemplate: null, showWhen: { status_in: ['booked', 'in_progress'] } },
   { key: 'undo', enabled: true, label: 'Undo', clickedLabel: 'Undo', defaultColor: '#6b7280', clickedColor: '#6b7280', behavior: 'status_change', statusTarget: 'booked', messageTemplate: null, showWhen: { status_in: ['completed'] } },
 ];
 
-export default function ConfigurableActions({ appointment, buttonsConfig, actioned, onAction, compact }: Props) {
+export default function ConfigurableActions({ appointment, buttonsConfig, actioned, onAction, compact, mobile }: Props) {
   // Use consultation-specific buttons for consultation appointments
   const isConsultation = appointment.appointment_type === 'consultation';
   const effectiveButtons = isConsultation ? CONSULTATION_BUTTONS : buttonsConfig;
@@ -93,17 +94,21 @@ export default function ConfigurableActions({ appointment, buttonsConfig, action
             disabled={linkedNotReady}
             title={linkedNotReady ? 'All linked service slots must be completed first' : undefined}
             style={{
-              padding: compact ? '2px 6px' : '3px 10px',
-              borderRadius: 4, cursor: linkedNotReady ? 'not-allowed' : 'pointer',
-              background: isClicked ? `${color}50` : 'rgba(0,0,0,0.35)',
-              border: `1px solid ${isClicked ? color : 'rgba(255,255,255,0.2)'}`,
+              padding: mobile ? '8px 0' : compact ? '2px 6px' : '3px 10px',
+              borderRadius: mobile ? 0 : 4,
+              cursor: linkedNotReady ? 'not-allowed' : 'pointer',
+              background: isClicked ? `${color}50` : mobile ? 'transparent' : 'rgba(0,0,0,0.35)',
+              border: mobile ? 'none' : `1px solid ${isClicked ? color : 'rgba(255,255,255,0.2)'}`,
               color: isClicked ? color : 'rgba(255,255,255,0.85)',
-              fontSize: compact ? '0.55rem' : FONT.sizeXs,
-              fontWeight: 600,
+              fontSize: mobile ? '0.72rem' : compact ? '0.55rem' : FONT.sizeXs,
+              fontWeight: mobile ? 700 : 600,
               transition: 'all 0.15s',
               whiteSpace: 'nowrap',
               lineHeight: 1.2,
               opacity: linkedNotReady ? 0.5 : 1,
+              flex: mobile ? 1 : undefined,
+              textAlign: mobile ? 'center' : undefined,
+              borderRight: mobile ? '1px solid rgba(255,255,255,0.1)' : undefined,
             }}
           >
             {linkedNotReady ? btn.label : label}

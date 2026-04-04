@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
         supabaseAdmin.from('auto_vehicle_duration_overrides').select('*').eq('vehicle_id', vehicleId),
         supabaseAdmin.from('auto_vehicle_pricing_overrides').select('*').eq('vehicle_id', vehicleId),
         supabaseAdmin.from('auto_vehicle_custom_classes').select('*').eq('vehicle_id', vehicleId).order('sort_order'),
-        supabaseAdmin.from('auto_films').select('id, name').eq('offered', true).order('sort_order'),
+        supabaseAdmin.from('auto_films').select('id, name, abbreviation').eq('offered', true).order('sort_order'),
         supabaseAdmin.from('auto_services').select('service_key, label, service_type, is_primary, is_addon').eq('enabled', true).order('sort_order'),
         supabaseAdmin.from('auto_pricing').select('*'),
       ]);

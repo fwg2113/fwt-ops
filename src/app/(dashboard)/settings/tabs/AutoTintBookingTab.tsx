@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { DashboardCard, Button, FormField, TextInput, SelectInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 interface Props {
   data: Record<string, unknown>;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function AutoTintBookingTab({ data, onSave, onRefresh }: Props) {
+  const isMobile = useIsMobile();
   const config = data.shopConfig as Record<string, unknown> || {};
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -64,7 +66,7 @@ export default function AutoTintBookingTab({ data, onSave, onRefresh }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.xl }}>
       <DashboardCard title="Booking Settings">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: SPACING.md }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: SPACING.md }}>
           <FormField label="Pricing Model">
             <SelectInput value={pricingModel} onChange={e => setPricingModel(e.target.value)}>
               <option value="ymm">YMM (Year/Make/Model)</option>
@@ -75,7 +77,7 @@ export default function AutoTintBookingTab({ data, onSave, onRefresh }: Props) {
           <FormField label="Max Days Out"><TextInput type="number" value={maxDaysOut} onChange={e => setMaxDaysOut(e.target.value)} /></FormField>
           <FormField label="Booking Cutoff (hours)"><TextInput type="number" value={bookingCutoff} onChange={e => setBookingCutoff(e.target.value)} /></FormField>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
           <div>
             <Toggle label="Require Deposit" checked={requireDeposit} onChange={setRequireDeposit} />
             {requireDeposit && (
@@ -118,7 +120,7 @@ export default function AutoTintBookingTab({ data, onSave, onRefresh }: Props) {
       </DashboardCard>
 
       <DashboardCard title="Appointment Types">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
           <Toggle label="Drop-Off" checked={enableDropoff} onChange={setEnableDropoff} />
           <Toggle label="Waiting" checked={enableWaiting} onChange={setEnableWaiting} />
           <Toggle label="30-Min Heads-Up" checked={enableHeadsup30} onChange={setEnableHeadsup30} />
@@ -128,11 +130,11 @@ export default function AutoTintBookingTab({ data, onSave, onRefresh }: Props) {
       </DashboardCard>
 
       <DashboardCard title="Gift Certificate / Promo Code Section">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
           <FormField label="Help Message" hint="Text shown above the Call/Text buttons">
             <TextInput value={gcHelpText} onChange={e => setGcHelpText(e.target.value)} placeholder="If you're having issues..." />
           </FormField>
-          <div />
+          {!isMobile && <div />}
           <div>
             <Toggle label="Call Button" checked={gcCallEnabled} onChange={setGcCallEnabled} />
             {gcCallEnabled && (

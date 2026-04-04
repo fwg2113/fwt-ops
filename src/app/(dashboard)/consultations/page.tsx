@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageHeader, DashboardCard, Button, FormField, TextInput, SelectInput } from '@/app/components/dashboard'
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme'
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile'
 
 // ============================================================================
 // CONSULTATIONS PAGE
@@ -103,6 +104,8 @@ interface TeamMember {
 
 export default function ConsultationsPage() {
   const router = useRouter()
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
 
   // Data from API
   const [shopModules, setShopModules] = useState<Array<{ service_modules: { module_key: string; label: string; color: string } }>>([])
@@ -429,10 +432,12 @@ export default function ConsultationsPage() {
               display: 'flex',
               gap: SPACING.md,
               justifyContent: 'center',
+              flexDirection: isMobile ? 'column' : 'row',
             }}>
               <Button
                 variant="primary"
                 onClick={() => router.push(`/appointments?date=${success.date}`)}
+                style={isMobile ? { width: '100%', padding: '14px 20px' } : undefined}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -447,6 +452,7 @@ export default function ConsultationsPage() {
               <Button
                 variant="secondary"
                 onClick={resetForm}
+                style={isMobile ? { width: '100%', padding: '14px 20px' } : undefined}
               >
                 Schedule Another
               </Button>
@@ -473,7 +479,7 @@ export default function ConsultationsPage() {
         </DashboardCard>
       ) : (
         <DashboardCard>
-          <div style={{ padding: SPACING.xl, maxWidth: 720, margin: '0 auto' }}>
+          <div style={{ padding: isMobile ? SPACING.md : SPACING.xl, maxWidth: 720, margin: '0 auto' }}>
 
             {/* Service Module */}
             <FormField label="Service Module" required>
@@ -525,7 +531,7 @@ export default function ConsultationsPage() {
 
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
               gap: SPACING.md,
             }}>
               <div style={{ gridColumn: '1 / -1' }}>
@@ -570,7 +576,7 @@ export default function ConsultationsPage() {
 
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: '80px 1fr 1fr',
+                  gridTemplateColumns: isMobile ? '1fr' : '80px 1fr 1fr',
                   gap: SPACING.md,
                 }}>
                   <FormField label="Year">
@@ -649,7 +655,7 @@ export default function ConsultationsPage() {
                       color: COLORS.textPrimary,
                       border: `1px solid ${COLORS.borderInput}`,
                       borderRadius: RADIUS.md,
-                      fontSize: FONT.sizeBase,
+                      fontSize: isMobile ? '16px' : FONT.sizeBase,
                       minHeight: 48,
                       outline: 'none',
                       transition: 'border-color 0.15s',
@@ -664,7 +670,7 @@ export default function ConsultationsPage() {
 
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr 100px',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 100px',
               gap: SPACING.md,
             }}>
               <FormField label="Date" required>
@@ -760,7 +766,7 @@ export default function ConsultationsPage() {
               display: 'flex',
               gap: SPACING.md,
             }}>
-              <Button variant="primary" onClick={handleSubmit} disabled={submitting}>
+              <Button variant="primary" onClick={handleSubmit} disabled={submitting} style={isMobile ? { width: '100%', padding: '14px 20px' } : undefined}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />

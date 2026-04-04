@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { COLORS, RADIUS, SPACING, FONT } from './theme';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 // ============================================================================
 // MINI TIMELINE
@@ -117,8 +118,12 @@ function computeColumns(appts: { startMin: number; endMin: number; index: number
 }
 
 export default function MiniTimeline({ appointments, loading, dateLabel, summary, excludeId, height }: Props) {
-  const pxPerMin = PIXELS_PER_HOUR / 60;
+  const isMobile = useIsMobile();
+  const PPH = isMobile ? 100 : PIXELS_PER_HOUR;
+  const pxPerMin = PPH / 60;
+  const totalHeight = TOTAL_HOURS * PPH;
   const scrollHeight = height || 400;
+  const gutterWidth = isMobile ? 36 : TIME_GUTTER_WIDTH;
 
   const filtered = useMemo(() =>
     appointments
@@ -146,10 +151,10 @@ export default function MiniTimeline({ appointments, loading, dateLabel, summary
     for (let h = TIMELINE_START_HOUR; h <= TIMELINE_END_HOUR; h++) {
       const ampm = h >= 12 ? 'PM' : 'AM';
       const displayH = h === 0 ? 12 : h > 12 ? h - 12 : h;
-      markers.push({ hour: h, label: `${displayH} ${ampm}`, top: (h - TIMELINE_START_HOUR) * PIXELS_PER_HOUR });
+      markers.push({ hour: h, label: isMobile ? `${displayH}${ampm}` : `${displayH} ${ampm}`, top: (h - TIMELINE_START_HOUR) * PPH });
     }
     return markers;
-  }, []);
+  }, [isMobile, PPH]);
 
   if (loading) {
     return (
@@ -193,10 +198,10 @@ export default function MiniTimeline({ appointments, loading, dateLabel, summary
 
       {/* Scrollable timeline */}
       <div style={{ height: scrollHeight, overflowY: 'auto', overflowX: 'hidden' }}>
-        <div style={{ position: 'relative', display: 'flex', height: TOTAL_HEIGHT }}>
+        <div style={{ position: 'relative', display: 'flex', height: totalHeight }}>
           {/* Time gutter */}
           <div style={{
-            width: TIME_GUTTER_WIDTH, flexShrink: 0,
+            width: gutterWidth, flexShrink: 0,
             borderRight: `1px solid ${COLORS.border}`,
             position: 'relative',
           }}>
@@ -224,7 +229,7 @@ export default function MiniTimeline({ appointments, loading, dateLabel, summary
             {/* Half-hour lines */}
             {hourMarkers.slice(0, -1).map(m => (
               <div key={`h-${m.hour}`} style={{
-                position: 'absolute', top: m.top + PIXELS_PER_HOUR / 2, left: 0, right: 0,
+                position: 'absolute', top: m.top + PPH / 2, left: 0, right: 0,
                 borderTop: '1px dashed rgba(255,255,255,0.04)',
               }} />
             ))}
@@ -249,11 +254,11 @@ export default function MiniTimeline({ appointments, loading, dateLabel, summary
               const top = (startMin - TIMELINE_START_HOUR * 60) * pxPerMin;
               const cardHeight = Math.max(duration * pxPerMin, 24);
               const typeColor = TYPE_COLORS[apt.appointment_type] || '#6b7280';
-              const layout = columnLayout.get(i) || { col: 0, totalCols: 1 };
+              const layout = isMobile ? { col: 0, totalCols: 1 } : (columnLayout.get(i) || { col: 0, totalCols: 1 });
               const serviceSummary = buildServiceSummary(apt.services_json);
               const isCompact = cardHeight < 45;
 
-              // Side-by-side layout for overlapping appointments
+              // Side-by-side layout for overlapping appointments (single column on mobile)
               const colWidth = 100 / layout.totalCols;
               const leftPct = layout.col * colWidth;
 

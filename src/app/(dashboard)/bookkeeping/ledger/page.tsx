@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PageHeader, DashboardCard, Button, TextInput, SelectInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 
 interface Transaction {
   id: number;
@@ -21,6 +22,8 @@ interface Transaction {
 }
 
 export default function LedgerPage() {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -67,20 +70,20 @@ export default function LedgerPage() {
       />
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: SPACING.md, marginBottom: SPACING.lg, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: SPACING.md, marginBottom: isMobile ? SPACING.sm : SPACING.lg, alignItems: 'center', flexWrap: 'wrap' }}>
         <TextInput
           type="month"
           value={month}
           onChange={e => { setMonth(e.target.value); setOffset(0); }}
-          style={{ maxWidth: 200, minHeight: 40 }}
+          style={{ maxWidth: isMobile ? '100%' : 200, minHeight: 40, width: isMobile ? '100%' : 'auto', flex: isMobile ? '1 1 100%' : undefined }}
         />
-        <SelectInput value={direction} onChange={e => { setDirection(e.target.value); setOffset(0); }} style={{ maxWidth: 160, minHeight: 40 }}>
+        <SelectInput value={direction} onChange={e => { setDirection(e.target.value); setOffset(0); }} style={{ maxWidth: isMobile ? '100%' : 160, minHeight: 40, flex: isMobile ? '1 1 100%' : undefined }}>
           <option value="">All Transactions</option>
           <option value="IN">Revenue (IN)</option>
           <option value="OUT">Expenses (OUT)</option>
         </SelectInput>
-        <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', gap: SPACING.lg }}>
+        {!isMobile && <div style={{ flex: 1 }} />}
+        <div style={{ display: 'flex', gap: isMobile ? SPACING.md : SPACING.lg, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'space-between' : undefined }}>
           <span style={{ fontSize: FONT.sizeSm }}>
             <span style={{ color: COLORS.textMuted }}>IN:</span>{' '}
             <span style={{ color: COLORS.success, fontWeight: FONT.weightBold }}>${totalIn.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
@@ -107,62 +110,110 @@ export default function LedgerPage() {
             No transactions for {monthLabel}
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>ID</th>
-                  <th style={thStyle}>Date</th>
-                  <th style={thStyle}>Type</th>
-                  <th style={thStyle}>Category</th>
-                  <th style={thStyle}>Vendor / Customer</th>
-                  <th style={thStyle}>Memo</th>
-                  <th style={thStyle}>Payment</th>
-                  <th style={{ ...thStyle, textAlign: 'right' }}>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map(txn => {
-                  const isIn = txn.direction === 'IN';
-                  return (
-                    <tr key={txn.id}>
-                      <td style={{ ...tdStyle, fontSize: FONT.sizeXs, color: COLORS.textMuted, fontFamily: 'monospace' }}>
-                        {txn.transaction_id}
-                      </td>
-                      <td style={{ ...tdStyle, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatDate(txn.txn_date)}
-                      </td>
-                      <td style={tdStyle}>
-                        <span style={{
-                          fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold,
-                          padding: '2px 8px', borderRadius: RADIUS.sm,
-                          color: isIn ? COLORS.success : COLORS.danger,
-                          background: isIn ? COLORS.successBg : COLORS.dangerBg,
-                        }}>
-                          {txn.direction} / {txn.event_type}
-                        </span>
-                      </td>
-                      <td style={tdStyle}>{txn.category}</td>
-                      <td style={{ ...tdStyle, fontWeight: FONT.weightMedium, color: COLORS.textPrimary }}>
-                        {txn.vendor_or_customer || '--'}
-                      </td>
-                      <td style={{ ...tdStyle, color: COLORS.textMuted, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {txn.memo || '--'}
-                      </td>
-                      <td style={{ ...tdStyle, color: COLORS.textMuted }}>{txn.payment_method || '--'}</td>
-                      <td style={{
-                        ...tdStyle, textAlign: 'right', fontWeight: FONT.weightBold,
+          isMobile ? (
+            <div style={{ padding: SPACING.sm }}>
+              {transactions.map(txn => {
+                const isIn = txn.direction === 'IN';
+                return (
+                  <div key={txn.id} style={{
+                    padding: `${SPACING.md}px ${SPACING.md}px`,
+                    borderBottom: `1px solid ${COLORS.border}`,
+                  }}>
+                    {/* Row 1: Vendor/Customer + Amount */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
+                      <span style={{ fontWeight: FONT.weightMedium, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>
+                        {txn.vendor_or_customer || txn.category}
+                      </span>
+                      <span style={{
+                        fontWeight: FONT.weightBold, fontSize: FONT.sizeSm,
                         color: isIn ? COLORS.success : COLORS.danger,
                         fontVariantNumeric: 'tabular-nums',
                       }}>
                         {isIn ? '+' : '-'}${Number(txn.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      </span>
+                    </div>
+                    {/* Row 2: Date + Type badge + Category */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatDate(txn.txn_date)}</span>
+                      <span style={{
+                        fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold,
+                        padding: '1px 6px', borderRadius: RADIUS.sm,
+                        color: isIn ? COLORS.success : COLORS.danger,
+                        background: isIn ? COLORS.successBg : COLORS.dangerBg,
+                      }}>
+                        {txn.direction}
+                      </span>
+                      <span>{txn.category}</span>
+                      {txn.payment_method && <span>{txn.payment_method}</span>}
+                    </div>
+                    {/* Row 3: Memo (if exists) */}
+                    {txn.memo && (
+                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: SPACING.xs, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {txn.memo}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>ID</th>
+                    <th style={thStyle}>Date</th>
+                    <th style={thStyle}>Type</th>
+                    <th style={thStyle}>Category</th>
+                    <th style={thStyle}>Vendor / Customer</th>
+                    <th style={thStyle}>Memo</th>
+                    <th style={thStyle}>Payment</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map(txn => {
+                    const isIn = txn.direction === 'IN';
+                    return (
+                      <tr key={txn.id}>
+                        <td style={{ ...tdStyle, fontSize: FONT.sizeXs, color: COLORS.textMuted, fontFamily: 'monospace' }}>
+                          {txn.transaction_id}
+                        </td>
+                        <td style={{ ...tdStyle, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                          {formatDate(txn.txn_date)}
+                        </td>
+                        <td style={tdStyle}>
+                          <span style={{
+                            fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold,
+                            padding: '2px 8px', borderRadius: RADIUS.sm,
+                            color: isIn ? COLORS.success : COLORS.danger,
+                            background: isIn ? COLORS.successBg : COLORS.dangerBg,
+                          }}>
+                            {txn.direction} / {txn.event_type}
+                          </span>
+                        </td>
+                        <td style={tdStyle}>{txn.category}</td>
+                        <td style={{ ...tdStyle, fontWeight: FONT.weightMedium, color: COLORS.textPrimary }}>
+                          {txn.vendor_or_customer || '--'}
+                        </td>
+                        <td style={{ ...tdStyle, color: COLORS.textMuted, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {txn.memo || '--'}
+                        </td>
+                        <td style={{ ...tdStyle, color: COLORS.textMuted }}>{txn.payment_method || '--'}</td>
+                        <td style={{
+                          ...tdStyle, textAlign: 'right', fontWeight: FONT.weightBold,
+                          color: isIn ? COLORS.success : COLORS.danger,
+                          fontVariantNumeric: 'tabular-nums',
+                        }}>
+                          {isIn ? '+' : '-'}${Number(txn.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
         )}
 
         {/* Pagination */}

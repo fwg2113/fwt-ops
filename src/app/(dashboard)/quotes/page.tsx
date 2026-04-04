@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme'
+import { useIsMobile } from '@/app/hooks/useIsMobile'
 import QuickTintMode from './QuickTintMode'
 
 // ============================================================================
@@ -58,6 +59,7 @@ export default function QuoteBuilderPage() {
 
 export function DocumentListView({ docType = 'quote' }: { docType?: 'quote' | 'invoice' }) {
   const router = useRouter()
+  const isMobile = useIsMobile()
   const [documents, setDocuments] = useState<Document[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [modules, setModules] = useState<ServiceModule[]>([])
@@ -263,7 +265,7 @@ export function DocumentListView({ docType = 'quote' }: { docType?: 'quote' | 'i
   if (quickTintMode) {
     return (
       <div style={{ padding: SPACING.xl, fontFamily: 'system-ui, sans-serif' }}>
-        <QuickTintMode onExit={() => setQuickTintMode(false)} />
+        <QuickTintMode onExit={() => { setQuickTintMode(false); loadData(); }} />
       </div>
     )
   }
@@ -271,7 +273,7 @@ export function DocumentListView({ docType = 'quote' }: { docType?: 'quote' | 'i
   return (
     <div style={{ padding: SPACING.xl, fontFamily: 'system-ui, sans-serif' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <h1 style={{ color: COLORS.textPrimary, fontSize: '24px', fontWeight: 600, margin: 0 }}>{pageTitle}</h1>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
@@ -292,10 +294,40 @@ export function DocumentListView({ docType = 'quote' }: { docType?: 'quote' | 'i
         </div>
       </div>
 
+      {/* Action Buttons (mobile: stacked full-width, desktop: inline) */}
+      {docType === 'quote' && quickTintEnabled && isMobile && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          <button
+            onClick={() => setQuickTintMode(true)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              padding: '14px 20px', background: COLORS.red, border: 'none',
+              borderRadius: RADIUS.md, color: '#ffffff', fontSize: '1rem',
+              fontWeight: 700, cursor: 'pointer', boxShadow: `0 2px 12px ${COLORS.red}40`,
+            }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 20, height: 20 }}>
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+            Fast Lane Quote / Appointment
+          </button>
+          <button
+            onClick={() => { resetForm(); setShowModal(true) }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              padding: '14px 20px', background: COLORS.borderAccentSolid, border: 'none',
+              borderRadius: RADIUS.md, color: 'white', fontSize: '1rem', fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            + New {docType === 'invoice' ? 'Invoice' : 'Quote'}
+          </button>
+        </div>
+      )}
+
       {/* Controls Row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: isMobile ? 'stretch' : 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', flexDirection: isMobile ? 'column' : 'row' }}>
         {/* Search */}
-        <div style={{ position: 'relative', flex: '1', maxWidth: '400px', minWidth: '200px' }}>
+        <div style={{ position: 'relative', flex: isMobile ? undefined : '1', maxWidth: isMobile ? undefined : '400px', minWidth: isMobile ? undefined : '200px' }}>
           <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: COLORS.textMuted }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -306,7 +338,7 @@ export function DocumentListView({ docType = 'quote' }: { docType?: 'quote' | 'i
             placeholder="Search by name, vehicle, project..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ ...inputStyle, paddingLeft: '42px' }}
+            style={{ ...inputStyle, paddingLeft: '42px', width: '100%' }}
           />
         </div>
 
@@ -314,7 +346,7 @@ export function DocumentListView({ docType = 'quote' }: { docType?: 'quote' | 'i
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          style={{ ...inputStyle, width: 'auto', cursor: 'pointer' }}
+          style={{ ...inputStyle, width: isMobile ? '100%' : 'auto', cursor: 'pointer', padding: isMobile ? '12px 16px' : undefined, fontSize: isMobile ? '1rem' : undefined }}
         >
           <option value="all">All Statuses</option>
           <option value="draft">Draft</option>
@@ -326,23 +358,17 @@ export function DocumentListView({ docType = 'quote' }: { docType?: 'quote' | 'i
           {docType === 'invoice' && <option value="partial">Partial</option>}
         </select>
 
-        <div style={{ flex: '1' }} />
+        {!isMobile && <div style={{ flex: '1' }} />}
 
-        {/* Fast Lane toggle (only for quotes, only when enabled) */}
-        {docType === 'quote' && quickTintEnabled && (
+        {/* Desktop: Fast Lane + New buttons inline */}
+        {!isMobile && docType === 'quote' && quickTintEnabled && (
           <button
             onClick={() => setQuickTintMode(true)}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '14px 28px',
-              background: COLORS.red,
-              border: 'none',
-              borderRadius: RADIUS.md,
-              color: '#ffffff',
-              fontSize: '16px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              letterSpacing: '0.3px',
+              padding: '14px 28px', background: COLORS.red, border: 'none',
+              borderRadius: RADIUS.md, color: '#ffffff', fontSize: '16px',
+              fontWeight: 700, cursor: 'pointer', letterSpacing: '0.3px',
               boxShadow: `0 2px 12px ${COLORS.red}40`,
             }}
           >
@@ -353,20 +379,73 @@ export function DocumentListView({ docType = 'quote' }: { docType?: 'quote' | 'i
           </button>
         )}
 
-        {/* New Button */}
-        <button
-          onClick={() => { resetForm(); setShowModal(true) }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '14px 28px', background: COLORS.borderAccentSolid, border: 'none',
-            borderRadius: RADIUS.md, color: 'white', fontSize: '16px', fontWeight: 700, cursor: 'pointer',
-          }}
-        >
-          + New {docType === 'invoice' ? 'Invoice' : 'Quote'}
-        </button>
+        {!isMobile && (
+          <button
+            onClick={() => { resetForm(); setShowModal(true) }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '14px 28px', background: COLORS.borderAccentSolid, border: 'none',
+              borderRadius: RADIUS.md, color: 'white', fontSize: '16px', fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            + New {docType === 'invoice' ? 'Invoice' : 'Quote'}
+          </button>
+        )}
       </div>
 
-      {/* Table */}
+      {/* Document List */}
+      {isMobile ? (
+        /* Mobile: Card-style list */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {filteredDocuments.length > 0 ? filteredDocuments.map((doc) => {
+            const statusStyle = getStatusStyle(doc.status)
+            const vehicle = [doc.vehicle_year, doc.vehicle_make, doc.vehicle_model].filter(Boolean).join(' ')
+            const isViewed = !!doc.viewed_at && !['approved', 'paid'].includes(doc.status)
+            return (
+              <div
+                key={doc.id}
+                onClick={() => router.push(`/documents/${doc.id}`)}
+                style={{
+                  padding: '14px 16px', background: COLORS.cardBg, borderRadius: RADIUS.md,
+                  border: `1px solid ${COLORS.border}`, cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: COLORS.textPrimary }}>
+                    {doc.customer_name || '-'}
+                    {isViewed && (
+                      <span style={{
+                        marginLeft: 8, padding: '2px 6px',
+                        background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7',
+                        fontSize: '10px', fontWeight: 600, borderRadius: '4px', textTransform: 'uppercase',
+                      }}>VIEWED</span>
+                    )}
+                  </span>
+                  <span style={{ color: '#22c55e', fontSize: '0.9rem', fontWeight: 700 }}>
+                    {doc.subtotal ? formatCurrency(doc.subtotal) : '-'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', color: COLORS.textMuted }}>
+                    {vehicle || doc.project_description || doc.doc_number || '-'}
+                  </span>
+                  <span style={{
+                    padding: '3px 8px', borderRadius: 4, fontSize: '0.7rem', fontWeight: 600,
+                    background: statusStyle.bg, color: statusStyle.color, textTransform: 'capitalize',
+                  }}>
+                    {doc.status === 'revision_requested' ? 'Changes' : (doc.status || 'Draft')}
+                  </span>
+                </div>
+              </div>
+            )
+          }) : (
+            <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted, background: COLORS.cardBg, borderRadius: RADIUS.md }}>
+              {searchTerm || statusFilter !== 'all' ? 'No documents match your filters' : `No ${docType}s yet`}
+            </div>
+          )}
+        </div>
+      ) : (
+      /* Desktop: Table */
       <div style={{ background: COLORS.cardBg, borderRadius: RADIUS.md, overflow: 'hidden', overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse' }}>
           <thead>
@@ -463,6 +542,7 @@ export function DocumentListView({ docType = 'quote' }: { docType?: 'quote' | 'i
           </tbody>
         </table>
       </div>
+      )}
 
       {/* ================================================================ */}
       {/* NEW DOCUMENT MODAL — with customer search autocomplete */}

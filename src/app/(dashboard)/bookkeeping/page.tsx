@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PageHeader, DashboardCard, Button, Modal, TextInput, SelectInput, FormField } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 import ExpenseImportModal from './ExpenseImportModal';
 
 interface Transaction {
@@ -27,6 +28,8 @@ interface Category {
 }
 
 export default function ExpenseTrackerPage() {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,11 +135,11 @@ export default function ExpenseTrackerPage() {
         titleAccent="Tracker"
         subtitle={`Bookkeeping -- ${monthLabel}`}
         actions={
-          <div style={{ display: 'flex', gap: SPACING.sm }}>
-            <Button variant="secondary" onClick={() => setShowImport(true)}>
+          <div style={{ display: 'flex', gap: SPACING.sm, flexWrap: 'wrap' }}>
+            <Button variant="secondary" onClick={() => setShowImport(true)} style={isMobile ? { padding: '10px 16px', fontSize: FONT.sizeSm } : undefined}>
               Import CSV
             </Button>
-            <Button variant="primary" onClick={() => setShowForm(true)}>
+            <Button variant="primary" onClick={() => setShowForm(true)} style={isMobile ? { padding: '10px 16px', fontSize: FONT.sizeSm } : undefined}>
               Add Expense
             </Button>
           </div>
@@ -144,7 +147,12 @@ export default function ExpenseTrackerPage() {
       />
 
       {/* MTD summary */}
-      <div style={{ display: 'flex', gap: SPACING.md, marginBottom: SPACING.lg, flexWrap: 'wrap' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+        gap: SPACING.md,
+        marginBottom: SPACING.lg,
+      }}>
         <StatBox label="MTD Expenses" value={`$${mtdExpenses.toLocaleString()}`} color={COLORS.danger} />
         <StatBox label="MTD Revenue" value={`$${mtdRevenue.toLocaleString()}`} color={COLORS.success} />
         <StatBox label="Net" value={`$${(mtdRevenue - mtdExpenses).toLocaleString()}`}
@@ -158,7 +166,7 @@ export default function ExpenseTrackerPage() {
           type="month"
           value={month}
           onChange={e => setMonth(e.target.value)}
-          style={{ maxWidth: 200, minHeight: 40 }}
+          style={{ maxWidth: isMobile ? '100%' : 200, minHeight: 40, width: isMobile ? '100%' : 'auto' }}
         />
       </div>
 
@@ -169,6 +177,53 @@ export default function ExpenseTrackerPage() {
         ) : transactions.length === 0 ? (
           <div style={{ padding: SPACING.xxl, textAlign: 'center', color: COLORS.textMuted }}>
             No expenses recorded for {monthLabel}
+          </div>
+        ) : isMobile ? (
+          <div style={{ padding: SPACING.sm }}>
+            {transactions.map(txn => (
+              <div key={txn.id} style={{
+                padding: `${SPACING.md}px ${SPACING.md}px`,
+                borderBottom: `1px solid ${COLORS.border}`,
+              }}>
+                {/* Row 1: Vendor + Amount */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
+                  <span style={{ fontWeight: FONT.weightMedium, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>
+                    {txn.vendor_or_customer || '--'}
+                  </span>
+                  <span style={{ fontWeight: FONT.weightBold, color: COLORS.danger, fontSize: FONT.sizeSm, fontVariantNumeric: 'tabular-nums' }}>
+                    ${Number(txn.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                {/* Row 2: Date + Category + Payment */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatDate(txn.txn_date)}</span>
+                  <span style={{
+                    padding: '1px 6px',
+                    background: COLORS.activeBg, borderRadius: RADIUS.sm,
+                    color: COLORS.textSecondary,
+                  }}>
+                    {txn.category}
+                  </span>
+                  {txn.payment_method && <span>{txn.payment_method}</span>}
+                  <span style={{ flex: 1 }} />
+                  <button
+                    onClick={() => handleDelete(txn.id)}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: COLORS.textMuted, fontSize: FONT.sizeSm, padding: '4px 8px',
+                    }}
+                  >
+                    x
+                  </button>
+                </div>
+                {/* Row 3: Memo (if exists) */}
+                {txn.memo && (
+                  <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: SPACING.xs, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {txn.memo}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -242,7 +297,7 @@ export default function ExpenseTrackerPage() {
             </div>
           }
         >
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
             <FormField label="Date *">
               <TextInput type="date" value={formDate} onChange={e => setFormDate(e.target.value)} />
             </FormField>
@@ -261,7 +316,7 @@ export default function ExpenseTrackerPage() {
               ))}
             </SelectInput>
           </FormField>
-          <div style={{ display: 'grid', gridTemplateColumns: brands.length > 0 ? '1fr 1fr' : '1fr', gap: SPACING.md }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : (brands.length > 0 ? '1fr 1fr' : '1fr'), gap: SPACING.md }}>
             <FormField label="Payment Method">
               <SelectInput value={formPayment} onChange={e => setFormPayment(e.target.value)}>
                 <option value="">Select...</option>
@@ -305,7 +360,7 @@ export default function ExpenseTrackerPage() {
 function StatBox({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div style={{
-      flex: 1, minWidth: 120, padding: SPACING.md,
+      padding: SPACING.md,
       background: COLORS.cardBg, borderRadius: RADIUS.sm,
       border: `1px solid ${COLORS.border}`,
     }}>

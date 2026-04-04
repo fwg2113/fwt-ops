@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { DashboardCard, Button, FormField, TextInput, SelectInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 interface Props {
   data: Record<string, unknown>;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function NotificationsTab({ data, onSave, onRefresh }: Props) {
+  const isMobile = useIsMobile();
   const config = data.shopConfig as Record<string, unknown> || {};
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -53,7 +55,7 @@ export default function NotificationsTab({ data, onSave, onRefresh }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.xl }}>
       {/* Appointment Reminders */}
       <DashboardCard title="Appointment Reminders">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
           <div>
             <Toggle label="24-Hour Reminder (day before)" checked={reminder24hr} onChange={setReminder24hr} />
             {reminder24hr && (

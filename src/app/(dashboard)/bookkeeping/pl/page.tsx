@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PageHeader, DashboardCard, Button, TextInput, SelectInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 
 interface CategoryTotal {
   category: string;
@@ -20,6 +21,8 @@ interface Summary {
 }
 
 export default function ProfitLossPage() {
+  const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -89,15 +92,15 @@ export default function ProfitLossPage() {
       />
 
       {/* Period picker */}
-      <div style={{ display: 'flex', gap: SPACING.md, marginBottom: SPACING.lg, alignItems: 'center' }}>
-        <SelectInput value={viewMode} onChange={e => setViewMode(e.target.value as 'month' | 'year')} style={{ maxWidth: 140, minHeight: 40 }}>
+      <div style={{ display: 'flex', gap: SPACING.md, marginBottom: SPACING.lg, alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+        <SelectInput value={viewMode} onChange={e => setViewMode(e.target.value as 'month' | 'year')} style={{ maxWidth: isMobile ? '100%' : 140, minHeight: 40, flex: isMobile ? '1 1 100%' : undefined }}>
           <option value="month">Monthly</option>
           <option value="year">Annual</option>
         </SelectInput>
         {viewMode === 'month' ? (
-          <TextInput type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ maxWidth: 200, minHeight: 40 }} />
+          <TextInput type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ maxWidth: isMobile ? '100%' : 200, minHeight: 40, flex: isMobile ? '1 1 100%' : undefined }} />
         ) : (
-          <SelectInput value={year} onChange={e => setYear(e.target.value)} style={{ maxWidth: 120, minHeight: 40 }}>
+          <SelectInput value={year} onChange={e => setYear(e.target.value)} style={{ maxWidth: isMobile ? '100%' : 120, minHeight: 40, flex: isMobile ? '1 1 100%' : undefined }}>
             {[2024, 2025, 2026, 2027].map(y => <option key={y} value={String(y)}>{y}</option>)}
           </SelectInput>
         )}
@@ -114,44 +117,44 @@ export default function ProfitLossPage() {
       ) : (
         <>
           {/* Top-level summary */}
-          <div style={{ display: 'flex', gap: SPACING.md, marginBottom: SPACING.lg }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: SPACING.md, marginBottom: SPACING.lg }}>
             <div style={{
-              flex: 1, padding: SPACING.xl,
+              padding: isMobile ? SPACING.md : SPACING.xl,
               background: COLORS.cardBg, borderRadius: RADIUS.md,
               border: `1px solid ${COLORS.border}`,
               textAlign: 'center',
             }}>
               <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: SPACING.sm, textTransform: 'uppercase', letterSpacing: '1px' }}>Total Revenue</div>
-              <div style={{ fontSize: '2rem', fontWeight: FONT.weightBold, color: COLORS.success }}>
+              <div style={{ fontSize: isMobile ? '1.5rem' : '2rem', fontWeight: FONT.weightBold, color: COLORS.success }}>
                 ${summary.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
             </div>
             <div style={{
-              flex: 1, padding: SPACING.xl,
+              padding: isMobile ? SPACING.md : SPACING.xl,
               background: COLORS.cardBg, borderRadius: RADIUS.md,
               border: `1px solid ${COLORS.border}`,
               textAlign: 'center',
             }}>
               <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: SPACING.sm, textTransform: 'uppercase', letterSpacing: '1px' }}>Total Expenses</div>
-              <div style={{ fontSize: '2rem', fontWeight: FONT.weightBold, color: COLORS.danger }}>
+              <div style={{ fontSize: isMobile ? '1.5rem' : '2rem', fontWeight: FONT.weightBold, color: COLORS.danger }}>
                 ${summary.totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
             </div>
             <div style={{
-              flex: 1, padding: SPACING.xl,
+              padding: isMobile ? SPACING.md : SPACING.xl,
               background: COLORS.cardBg, borderRadius: RADIUS.md,
               border: `2px solid ${summary.netProfit >= 0 ? COLORS.success : COLORS.danger}`,
               textAlign: 'center',
             }}>
               <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: SPACING.sm, textTransform: 'uppercase', letterSpacing: '1px' }}>Net Profit</div>
-              <div style={{ fontSize: '2rem', fontWeight: FONT.weightBold, color: summary.netProfit >= 0 ? COLORS.success : COLORS.danger }}>
+              <div style={{ fontSize: isMobile ? '1.5rem' : '2rem', fontWeight: FONT.weightBold, color: summary.netProfit >= 0 ? COLORS.success : COLORS.danger }}>
                 ${summary.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </div>
             </div>
           </div>
 
           {/* Two-column: Revenue | Expenses */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.lg }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.lg }}>
             {/* Revenue breakdown */}
             <DashboardCard title="Revenue">
               {summary.revenue.length === 0 ? (

@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme'
+import { useIsMobile } from '@/app/hooks/useIsMobile'
 import { MODULE_LABELS, MODULE_COLORS } from '@/app/components/booking/types'
 import ServiceLineEditor, { type ServiceLine } from '@/app/(dashboard)/invoicing/checkout/ServiceLineEditor'
 import ScheduleFromQuoteModal from './ScheduleFromQuoteModal'
@@ -134,6 +135,7 @@ export default function DocumentDetail({
   shopModules = [],
 }: Props) {
   const router = useRouter()
+  const isMobile = useIsMobile()
 
   // Document state
   const [doc, setDoc] = useState(initialDoc)
@@ -163,6 +165,7 @@ export default function DocumentDetail({
   // Tint service editor (structured input for auto_tint module)
   const [showTintEditor, setShowTintEditor] = useState(false)
   const [tintEditorGroupId, setTintEditorGroupId] = useState<string | null>(null)
+  const [tintEditorInitialLines, setTintEditorInitialLines] = useState<ServiceLine[]>([])
   const [showVehiclePicker, setShowVehiclePicker] = useState(false)
 
   // YMM vehicle picker state (used when document has no vehicle data)
@@ -593,8 +596,19 @@ export default function DocumentDetail({
   async function handleTintEditorSave(lines: ServiceLine[], subtotalFromEditor: number) {
     const groupId = tintEditorGroupId || 'grp_' + Date.now()
 
-    // Add the group
-    setLineItemGroups(prev => [...prev, { group_id: groupId, module_key: 'auto_tint' }])
+    // Check if this group already exists (editing vs adding)
+    const existingGroup = lineItemGroups.find(g => g.group_id === groupId)
+    if (existingGroup) {
+      // Delete existing line items in this group before replacing
+      const oldItems = lineItems.filter(li => li.group_id === groupId)
+      for (const item of oldItems) {
+        await fetch(`/api/documents/${doc.id}/line-items?itemId=${item.id}`, { method: 'DELETE' })
+      }
+      setLineItems(prev => prev.filter(li => li.group_id !== groupId))
+    } else {
+      // Add the group (new group)
+      setLineItemGroups(prev => [...prev, { group_id: groupId, module_key: 'auto_tint' }])
+    }
 
     // Vehicle data for this group (stored per line item for multi-vehicle support)
     const vehicleData = {
@@ -647,6 +661,7 @@ export default function DocumentDetail({
     }
 
     setShowTintEditor(false)
+    setTintEditorInitialLines([])
     setTintEditorGroupId(null)
   }
 
@@ -841,17 +856,19 @@ export default function DocumentDetail({
       {/* HEADER */}
       {/* ================================================================ */}
       <div style={{
-        padding: `${SPACING.lg}px ${SPACING.xl}px`,
+        padding: isMobile ? `${SPACING.md}px ${SPACING.md}px` : `${SPACING.lg}px ${SPACING.xl}px`,
         borderBottom: `1px solid ${COLORS.border}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        display: 'flex', flexDirection: isMobile ? 'column' : 'row',
+        alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between',
+        gap: isMobile ? 12 : 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.md }}>
-          <button onClick={() => router.push(isQuote ? '/quotes' : '/invoicing')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.textMuted, padding: 4 }}>
+          <button onClick={() => router.push(isQuote ? '/quotes' : '/invoicing')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.textMuted, padding: 4, flexShrink: 0 }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
-              <span style={{ fontSize: FONT.sizeLg, fontWeight: 700, color: COLORS.textPrimary }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: isMobile ? '1rem' : FONT.sizeLg, fontWeight: 700, color: COLORS.textPrimary }}>
                 {doc.doc_number || (isQuote ? 'Quote' : 'Invoice')}
               </span>
               <span style={{
@@ -860,7 +877,7 @@ export default function DocumentDetail({
               }}>
                 {doc.status === 'revision_requested' ? 'Changes Requested' : doc.status}
               </span>
-              {doc.viewed_at && !['approved', 'paid'].includes(doc.status) && (
+              {doc.viewed_at && !['approved', 'paid'].includes(doc.status) && !isMobile && (
                 <span style={{ padding: '2px 6px', background: 'rgba(168,85,247,0.15)', color: '#a855f7', fontSize: '10px', fontWeight: 600, borderRadius: '4px', textTransform: 'uppercase' }}>
                   VIEWED {formatDateTime(doc.viewed_at)}
                 </span>
@@ -868,33 +885,36 @@ export default function DocumentDetail({
             </div>
             <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 2 }}>
               {isQuote ? 'Quote' : 'Invoice'} -- Created {formatDate(doc.created_at)}
-              {doc.sent_at && ` -- Sent ${formatDate(doc.sent_at)}`}
-              {doc.approved_at && ` -- Approved ${formatDate(doc.approved_at)}`}
+              {!isMobile && doc.sent_at && ` -- Sent ${formatDate(doc.sent_at)}`}
+              {!isMobile && doc.approved_at && ` -- Approved ${formatDate(doc.approved_at)}`}
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: SPACING.sm }}>
+        <div style={{
+          display: 'flex', gap: SPACING.sm,
+          flexWrap: isMobile ? 'wrap' : undefined,
+        }}>
           {doc.status === 'draft' && (
-            <ActionButton variant="primary" onClick={() => setShowSendModal(true)}>
+            <ActionButton variant="primary" onClick={() => setShowSendModal(true)} style={isMobile ? { flex: 1, justifyContent: 'center' } : {}}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               Send {isQuote ? 'Quote' : 'Invoice'}
             </ActionButton>
           )}
           {isQuote && ['sent', 'viewed'].includes(doc.status) && (
-            <ActionButton variant="success" onClick={handleMarkApproved}>
+            <ActionButton variant="success" onClick={handleMarkApproved} style={isMobile ? { flex: 1, justifyContent: 'center' } : {}}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-              Mark Approved
+              {isMobile ? 'Approve' : 'Mark Approved'}
             </ActionButton>
           )}
           {isQuote && doc.status === 'approved' && (
             <>
-              <ActionButton variant="success" onClick={() => setShowScheduleModal(true)}>
+              <ActionButton variant="success" onClick={() => setShowScheduleModal(true)} style={isMobile ? { flex: 1, justifyContent: 'center' } : {}}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 Schedule
               </ActionButton>
-              <ActionButton variant="success" onClick={handleConvertToInvoice}>
-                Convert to Invoice
+              <ActionButton variant="success" onClick={handleConvertToInvoice} style={isMobile ? { flex: 1, justifyContent: 'center' } : {}}>
+                {isMobile ? 'To Invoice' : 'Convert to Invoice'}
               </ActionButton>
             </>
           )}
@@ -902,18 +922,20 @@ export default function DocumentDetail({
             <ActionButton onClick={() => {
               setFollowUpMessage(`Hi ${(customerName || '').split(' ')[0] || 'there'}, just following up on your ${isQuote ? 'quote' : 'invoice'}. Let us know if you have any questions!`)
               setShowFollowUpModal(true)
-            }}>
+            }} style={isMobile ? { flex: 1, justifyContent: 'center' } : {}}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
               Follow Up{(doc as any).followup_count ? ` (${(doc as any).followup_count})` : ''}
             </ActionButton>
           )}
-          <ActionButton onClick={handleSaveAll} disabled={isSaving}>
+          <ActionButton onClick={handleSaveAll} disabled={isSaving} style={isMobile ? { flex: 1, justifyContent: 'center' } : {}}>
             {isSaving ? 'Saving...' : 'Save'}
           </ActionButton>
-          <ActionButton onClick={() => window.open(`/invoice/${doc.public_token}`, '_blank')}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            Preview
-          </ActionButton>
+          {!isMobile && (
+            <ActionButton onClick={() => window.open(`/invoice/${doc.public_token}`, '_blank')}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Preview
+            </ActionButton>
+          )}
           <ActionButton variant="danger" onClick={() => setShowDeleteModal(true)} style={{ padding: '10px 12px' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
           </ActionButton>
@@ -921,19 +943,23 @@ export default function DocumentDetail({
       </div>
 
       {/* ================================================================ */}
-      {/* MAIN CONTENT — two column layout */}
+      {/* MAIN CONTENT — two column on desktop, stacked on mobile */}
       {/* ================================================================ */}
-      <div style={{ display: 'flex', height: 'calc(100vh - 130px)' }}>
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', height: isMobile ? 'auto' : 'calc(100vh - 130px)' }}>
 
         {/* LEFT COLUMN — document content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: SPACING.xl }}>
+        <div style={{ flex: 1, overflowY: isMobile ? undefined : 'auto', padding: isMobile ? SPACING.md : SPACING.xl }}>
 
           {/* Customer Info */}
           <div style={{ background: COLORS.cardBg, borderRadius: RADIUS.md, padding: SPACING.lg, border: `1px solid ${COLORS.border}`, marginBottom: SPACING.lg }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
+            <div style={{
+              display: 'flex', flexDirection: isMobile ? 'column' : 'row',
+              justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center',
+              marginBottom: SPACING.md, gap: isMobile ? 8 : 0,
+            }}>
               <h3 style={{ margin: 0, fontSize: FONT.sizeSm, fontWeight: 600, color: COLORS.textPrimary }}>Customer</h3>
               {/* Customer search */}
-              <div style={{ position: 'relative', width: 250 }}>
+              <div style={{ position: 'relative', width: isMobile ? '100%' : 250 }}>
                 <input
                   type="text" value={customerSearchTerm}
                   onChange={(e) => setCustomerSearchTerm(e.target.value)}
@@ -963,7 +989,7 @@ export default function DocumentDetail({
                 )}
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.sm }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.sm }}>
               <div>
                 <label style={labelStyle}>Name</label>
                 <input value={customerName} onChange={(e) => { setCustomerName(e.target.value); setIsDirty(true) }} style={inputStyle} />
@@ -1113,44 +1139,45 @@ export default function DocumentDetail({
           {/* LINE ITEMS — grouped by module */}
           {/* ============================================================ */}
           <div style={{ background: COLORS.cardBg, borderRadius: RADIUS.md, padding: SPACING.lg, border: `1px solid ${COLORS.border}`, marginBottom: SPACING.lg }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.md }}>
-                <h3 style={{ margin: 0, fontSize: FONT.sizeSm, fontWeight: 600, color: COLORS.textPrimary }}>Services</h3>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.md }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginBottom: SPACING.md, flexWrap: isMobile ? 'wrap' : undefined, gap: isMobile ? 8 : 0,
+            }}>
+              <h3 style={{ margin: 0, fontSize: FONT.sizeSm, fontWeight: 600, color: COLORS.textPrimary }}>Services</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : SPACING.md }}>
                 {isQuote && !isPaid && (
                   <button
                     onClick={handleToggleOptionsMode}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '6px 14px', borderRadius: RADIUS.sm, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: isMobile ? '6px 10px' : '6px 14px', borderRadius: RADIUS.sm, cursor: 'pointer',
                       background: optionsMode ? `${COLORS.borderAccentSolid}20` : 'transparent',
                       border: `1px solid ${optionsMode ? COLORS.borderAccentSolid : COLORS.borderInput}`,
                       color: optionsMode ? COLORS.borderAccentSolid : COLORS.textMuted,
-                      fontSize: FONT.sizeXs, fontWeight: 600, fontFamily: 'inherit',
+                      fontSize: isMobile ? '0.7rem' : FONT.sizeXs, fontWeight: 600, fontFamily: 'inherit',
                       transition: 'all 0.15s',
                     }}
                   >
                     <span style={{
-                      width: 32, height: 18, borderRadius: 9, position: 'relative',
+                      width: 28, height: 16, borderRadius: 8, position: 'relative',
                       background: optionsMode ? COLORS.borderAccentSolid : COLORS.borderInput,
-                      transition: 'background 0.15s',
+                      transition: 'background 0.15s', flexShrink: 0,
                     }}>
                       <span style={{
-                        position: 'absolute', top: 2, left: optionsMode ? 16 : 2,
-                        width: 14, height: 14, borderRadius: '50%', background: '#fff',
+                        position: 'absolute', top: 2, left: optionsMode ? 14 : 2,
+                        width: 12, height: 12, borderRadius: '50%', background: '#fff',
                         transition: 'left 0.15s',
                       }} />
                     </span>
-                    Options Mode
+                    {isMobile ? 'Options' : 'Options Mode'}
                   </button>
                 )}
                 <button onClick={() => setShowSectionModal(true)} style={{
-                  padding: '6px 14px', fontSize: '13px', fontWeight: 600, fontFamily: 'inherit',
+                  padding: isMobile ? '6px 10px' : '6px 14px', fontSize: isMobile ? '0.75rem' : '13px', fontWeight: 600, fontFamily: 'inherit',
                   background: COLORS.red, border: 'none',
-                  borderRadius: RADIUS.sm, color: '#fff', cursor: 'pointer',
+                  borderRadius: RADIUS.sm, color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap',
                 }}>
-                  + {optionsMode ? 'Add Option' : 'Add Section'}
+                  + {optionsMode ? 'Add Option' : 'Section'}
                 </button>
               </div>
             </div>
@@ -1230,8 +1257,51 @@ export default function DocumentDetail({
 
                   {/* Line items within this section */}
                   <div style={{ padding: '0 16px' }}>
-                  {/* Non-tint modules: inline-editable table (FWG pattern) */}
+                  {/* Non-tint modules: inline-editable items */}
                   {group.module_key !== 'auto_tint' && items.filter(li => li.description).length > 0 && (
+                    isMobile ? (
+                      /* Mobile: stacked card layout */
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {items.filter(li => li.description).map(li => (
+                          <div key={li.id} style={{ padding: '10px 0', borderBottom: `1px solid ${COLORS.border}` }}>
+                            <div style={{ marginBottom: 6 }}>
+                              <input type="text" value={li.description} onChange={(e) => {
+                                setLineItems(prev => prev.map(l => l.id === li.id ? { ...l, description: e.target.value } : l))
+                                setIsDirty(true)
+                              }} style={{ ...inputStyle, padding: '10px', fontSize: '0.9rem', width: '100%' }} />
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <div style={{ flex: 1 }}>
+                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Qty</label>
+                                <input type="number" value={li.quantity || ''} onChange={(e) => {
+                                  const qty = parseInt(e.target.value) || 0
+                                  setLineItems(prev => prev.map(l => l.id === li.id ? { ...l, quantity: qty, line_total: qty * l.unit_price } : l))
+                                  setIsDirty(true)
+                                }} style={{ ...inputStyle, padding: '10px', fontSize: '0.9rem', textAlign: 'right' as const }} />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Rate</label>
+                                <input type="number" step="0.01" value={li.unit_price || ''} onChange={(e) => {
+                                  const rate = parseFloat(e.target.value) || 0
+                                  setLineItems(prev => prev.map(l => l.id === li.id ? { ...l, unit_price: rate, line_total: l.quantity * rate } : l))
+                                  setIsDirty(true)
+                                }} style={{ ...inputStyle, padding: '10px', fontSize: '0.9rem', textAlign: 'right' as const }} />
+                              </div>
+                              <div style={{ textAlign: 'right', minWidth: 60 }}>
+                                <label style={{ ...labelStyle, fontSize: '0.65rem' }}>Total</label>
+                                <div style={{ color: '#22c55e', fontWeight: 600, fontSize: '0.9rem', padding: '10px 0' }}>{formatCurrency(li.line_total)}</div>
+                              </div>
+                              {!isPaid && (
+                                <button onClick={() => handleDeleteLineItem(li.id)} style={{ background: 'none', border: 'none', color: COLORS.textMuted, cursor: 'pointer', padding: 4, alignSelf: 'flex-end', marginBottom: 8 }}>
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      /* Desktop: table layout */
                     <table style={{ width: '100%', borderCollapse: 'collapse', margin: '0 -16px', maxWidth: 'calc(100% + 32px)' }}>
                       <thead>
                         <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
@@ -1279,8 +1349,9 @@ export default function DocumentDetail({
                         ))}
                       </tbody>
                     </table>
+                    )
                   )}
-                  {/* Auto Tint: card-style read-only items */}
+                  {/* Auto Tint: card-style items with structured edit */}
                   {group.module_key === 'auto_tint' && (<>
                   {items.map((li, idx) => {
                     const cf = li.custom_fields || {}
@@ -1360,6 +1431,38 @@ export default function DocumentDetail({
                       </div>
                     )
                   })}
+                  {/* Edit Services button for auto_tint */}
+                  {!isPaid && items.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setTintEditorGroupId(group.group_id)
+                        setTintEditorInitialLines(items.map(li => ({
+                          serviceKey: li.custom_fields?.serviceKey as string || '',
+                          label: li.description,
+                          filmId: li.custom_fields?.filmId as number || null,
+                          filmName: li.custom_fields?.filmName as string || null,
+                          filmAbbrev: li.custom_fields?.filmAbbrev as string || null,
+                          shadeFront: li.custom_fields?.shadeFront as string || null,
+                          shadeRear: li.custom_fields?.shadeRear as string || null,
+                          shade: li.custom_fields?.shade as string || null,
+                          price: li.line_total || 0,
+                          discountAmount: li.custom_fields?.discountAmount as number || 0,
+                          duration: li.custom_fields?.duration as number || 60,
+                        })))
+                        setShowTintEditor(true)
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: `${SPACING.sm}px ${SPACING.md}px`, marginTop: SPACING.sm,
+                        background: 'transparent', border: `1px solid ${COLORS.borderInput}`,
+                        borderRadius: RADIUS.sm, color: COLORS.textMuted, fontSize: FONT.sizeXs,
+                        fontWeight: FONT.weightSemibold, cursor: 'pointer',
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      Edit Services
+                    </button>
+                  )}
                   </>)}
                   </div>
 
@@ -1367,27 +1470,29 @@ export default function DocumentDetail({
                   {!isPaid && (
                     <div style={{ padding: '8px 0' }}>
                       {addingToGroup === group.group_id ? (
-                        <div style={{ display: 'flex', gap: SPACING.xs, alignItems: 'flex-end' }}>
+                        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 8 : SPACING.xs, alignItems: isMobile ? 'stretch' : 'flex-end' }}>
                           <div style={{ flex: 1 }}>
                             <input value={newItemDesc} onChange={(e) => setNewItemDesc(e.target.value)} placeholder="Description"
-                              style={{ ...inputStyle, fontSize: '12px', padding: '6px 10px' }}
+                              style={{ ...inputStyle, fontSize: isMobile ? '0.9rem' : '12px', padding: isMobile ? '10px' : '6px 10px' }}
                               onKeyDown={(e) => { if (e.key === 'Enter') handleAddLineItem(group.group_id); if (e.key === 'Escape') setAddingToGroup(null) }}
                               autoFocus />
                           </div>
-                          <div style={{ width: 60 }}>
-                            <input type="number" value={newItemQty} onChange={(e) => setNewItemQty(e.target.value)} placeholder="Qty"
-                              style={{ ...inputStyle, fontSize: '12px', padding: '6px 10px' }} />
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                            <div style={{ width: isMobile ? undefined : 60, flex: isMobile ? 1 : undefined }}>
+                              <input type="number" value={newItemQty} onChange={(e) => setNewItemQty(e.target.value)} placeholder="Qty"
+                                style={{ ...inputStyle, fontSize: isMobile ? '0.9rem' : '12px', padding: isMobile ? '10px' : '6px 10px' }} />
+                            </div>
+                            <div style={{ width: isMobile ? undefined : 80, flex: isMobile ? 1 : undefined }}>
+                              <input type="number" value={newItemPrice} onChange={(e) => setNewItemPrice(e.target.value)} placeholder="Price"
+                                style={{ ...inputStyle, fontSize: isMobile ? '0.9rem' : '12px', padding: isMobile ? '10px' : '6px 10px' }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleAddLineItem(group.group_id) }} />
+                            </div>
+                            <ActionButton variant="success" onClick={() => handleAddLineItem(group.group_id)} disabled={!newItemDesc.trim() || !newItemPrice}
+                              style={{ padding: isMobile ? '10px 16px' : '6px 10px', fontSize: isMobile ? '0.85rem' : '12px' }}>Add</ActionButton>
+                            <button onClick={() => setAddingToGroup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.textMuted, padding: 4 }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
                           </div>
-                          <div style={{ width: 80 }}>
-                            <input type="number" value={newItemPrice} onChange={(e) => setNewItemPrice(e.target.value)} placeholder="Price"
-                              style={{ ...inputStyle, fontSize: '12px', padding: '6px 10px' }}
-                              onKeyDown={(e) => { if (e.key === 'Enter') handleAddLineItem(group.group_id) }} />
-                          </div>
-                          <ActionButton variant="success" onClick={() => handleAddLineItem(group.group_id)} disabled={!newItemDesc.trim() || !newItemPrice}
-                            style={{ padding: '6px 10px', fontSize: '12px' }}>Add</ActionButton>
-                          <button onClick={() => setAddingToGroup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.textMuted, padding: 4 }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                          </button>
                         </div>
                       ) : (
                         <button onClick={() => { setAddingToGroup(group.group_id); setNewItemDesc(''); setNewItemPrice(''); setNewItemQty('1') }}
@@ -1423,8 +1528,12 @@ export default function DocumentDetail({
                   <span style={{ fontWeight: 600, fontSize: '14px', color: COLORS.textPrimary }}>Select Vehicle</span>
                   <span style={{ fontSize: '12px', color: COLORS.textMuted }}>Required for tint pricing</span>
                 </div>
-                <div style={{ padding: '20px 16px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr', gap: SPACING.sm, marginBottom: SPACING.md }}>
+                <div style={{ padding: isMobile ? '12px' : '20px 16px' }}>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr 1fr' : '120px 1fr 1fr',
+                    gap: SPACING.sm, marginBottom: SPACING.md,
+                  }}>
                     {/* Year */}
                     <div>
                       <label style={labelStyle}>Year</label>
@@ -1444,7 +1553,7 @@ export default function DocumentDetail({
                       </select>
                     </div>
                     {/* Model */}
-                    <div>
+                    <div style={{ gridColumn: isMobile ? '1 / -1' : undefined }}>
                       <label style={labelStyle}>Model</label>
                       <select value={pickModel} onChange={(e) => setPickModel(e.target.value)}
                         disabled={!pickMake} style={{ ...inputStyle, cursor: 'pointer' }}>
@@ -1488,14 +1597,14 @@ export default function DocumentDetail({
                 </div>
                 <div style={{ padding: '16px' }}>
                   <ServiceLineEditor
-                    initialLines={[]}
+                    initialLines={tintEditorInitialLines}
                     vehicleYear={doc.vehicle_year || (pickYear ? parseInt(pickYear) : null)}
                     vehicleMake={doc.vehicle_make || pickMake || null}
                     vehicleModel={doc.vehicle_model || pickModel || null}
                     classKeys={doc.class_keys || pickedClassKeys || null}
                     module="auto_tint"
                     onSave={handleTintEditorSave}
-                    onCancel={() => { setShowTintEditor(false); setTintEditorGroupId(null) }}
+                    onCancel={() => { setShowTintEditor(false); setTintEditorGroupId(null); setTintEditorInitialLines([]); }}
                   />
                 </div>
               </div>
@@ -1567,7 +1676,13 @@ export default function DocumentDetail({
         </div>
 
         {/* RIGHT COLUMN — payments, history, quick actions */}
-        <div style={{ width: 340, flexShrink: 0, borderLeft: `1px solid ${COLORS.border}`, overflowY: 'auto', padding: SPACING.lg }}>
+        <div style={{
+          width: isMobile ? '100%' : 340, flexShrink: 0,
+          borderLeft: isMobile ? 'none' : `1px solid ${COLORS.border}`,
+          borderTop: isMobile ? `1px solid ${COLORS.border}` : 'none',
+          overflowY: isMobile ? undefined : 'auto',
+          padding: isMobile ? SPACING.md : SPACING.lg,
+        }}>
 
           {/* Quick Info */}
           <div style={{ marginBottom: SPACING.lg }}>

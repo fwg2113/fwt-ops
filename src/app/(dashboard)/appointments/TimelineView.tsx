@@ -4,6 +4,17 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { COLORS, RADIUS, SPACING, FONT } from '@/app/components/dashboard/theme';
 import type { Appointment } from './AppointmentCard';
 import { MODULE_LABELS, MODULE_COLORS } from './AppointmentCard';
+import SendDirectionsModal from './SendDirectionsModal';
+
+// Short abbreviations for mobile module badges
+const MODULE_ABBREVS: Record<string, string> = {
+  auto_tint: 'WT',
+  flat_glass: 'FLAT',
+  detailing: 'Detail',
+  ceramic_coating: 'CC',
+  ppf: 'PPF',
+  wraps: 'WRAP',
+};
 import ConfigurableActions, { type ActionButtonConfig, DEFAULT_BUTTONS_CONFIG } from './ConfigurableActions';
 
 // ============================================================================
@@ -21,6 +32,8 @@ interface TeamMember {
 
 interface Props {
   appointments: Appointment[];
+  isMobile?: boolean;
+  isTablet?: boolean;
   onEdit: (apt: Appointment) => void;
   onStatusChange: (id: string, status: string) => void;
   onOrderChange: (positions: { id: string; minutes: number }[]) => void;
@@ -32,15 +45,19 @@ interface Props {
   onAssign?: (aptId: string, teamMemberId: string | null) => void;
   moduleColorMap?: Record<string, string>;
   moduleLabelMap?: Record<string, string>;
+  typeColorMap?: Record<string, string>;
 }
 
 // Timeline config
 const TIMELINE_START_HOUR = 7;
 const MIN_END_HOUR = 19; // default 7pm, extends dynamically if appointments run later
 const PIXELS_PER_HOUR = 120;
+const PIXELS_PER_HOUR_MOBILE = 260; // scaled so 30min cards (130px min) match the timeline
+const PIXELS_PER_HOUR_TABLET = 180; // accounts for bottom action bar on touch cards
 const PIXELS_PER_MIN = PIXELS_PER_HOUR / 60;
 const SNAP_MINUTES = 15;
 const TIME_GUTTER_WIDTH = 64;
+const TIME_GUTTER_WIDTH_MOBILE = 44;
 
 const TYPE_COLORS: Record<string, string> = {
   dropoff: '#3b82f6',
@@ -76,8 +93,8 @@ function minutesToPosition(minutes: number): number {
 }
 
 // Produce a solid dark card background from a module color.
-// Takes the hue from the module color, drops saturation to ~25%, lightness to ~18%.
-// Result: distinct module tones that are dark enough for white text, no transparency.
+// Takes the hue from the module color, keeps enough saturation and lightness
+// that each module is clearly distinct. Dark enough for white text.
 function solidCardBg(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -90,8 +107,8 @@ function solidCardBg(hex: string): string {
     else if (max === g) h = ((b - r) / d + 2) / 6;
     else h = ((r - g) / d + 4) / 6;
   }
-  // HSL to RGB with fixed S=0.25, L=0.18
-  const s = 0.25, l = 0.18;
+  // HSL to RGB: S=0.50 for rich color, L=0.28 for clearly visible on dark bg
+  const s = 0.50, l = 0.28;
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const x = c * (1 - Math.abs((h * 6) % 2 - 1));
   const m = l - c / 2;
@@ -264,6 +281,21 @@ function formatPhone(phone: string | null): string {
   return phone;
 }
 
+// Build individual service lines for mobile -- each service gets its own prominent line
+function buildMobileServiceLines(servicesJson: unknown): string[] {
+  if (!servicesJson || !Array.isArray(servicesJson)) return [];
+  return (servicesJson as Array<{ label?: string; filmAbbrev?: string; filmName?: string; shade?: string; description?: string }>)
+    .map(s => {
+      if (s.description && !s.label) return s.description; // generic line items
+      const parts: string[] = [];
+      if (s.label) parts.push(s.label);
+      if (s.filmAbbrev || s.filmName) parts.push(s.filmAbbrev || s.filmName || '');
+      if (s.shade) parts.push(s.shade);
+      return parts.join(' - ');
+    })
+    .filter(Boolean);
+}
+
 function buildServiceSummary(servicesJson: unknown): string {
   if (!servicesJson || !Array.isArray(servicesJson)) return '';
   return (servicesJson as Array<{ label?: string; filmAbbrev?: string; filmName?: string; shade?: string }>)
@@ -277,8 +309,10 @@ function buildServiceSummary(servicesJson: unknown): string {
 }
 
 export default function TimelineView({
-  appointments, onEdit, onStatusChange, onOrderChange, onDurationChange, onAction, buttonsConfig, onAddLinkedSlot, teamMembers, onAssign, moduleColorMap, moduleLabelMap,
+  appointments, isMobile, isTablet, onEdit, onStatusChange, onOrderChange, onDurationChange, onAction, buttonsConfig, onAddLinkedSlot, teamMembers, onAssign, moduleColorMap, moduleLabelMap, typeColorMap,
 }: Props) {
+  // isTouch = any touch device (phone or tablet) -- controls button sizing, badge position
+  const isTouch = isMobile || isTablet;
   const buttons = buttonsConfig || DEFAULT_BUTTONS_CONFIG;
 
   // Dynamic timeline end: extends past 7pm if any appointment runs later
@@ -294,8 +328,16 @@ export default function TimelineView({
     return Math.max(MIN_END_HOUR, Math.ceil(latestEnd / 60) + 1);
   }, [appointments]);
 
+  const PPH = isMobile ? PIXELS_PER_HOUR_MOBILE : isTablet ? PIXELS_PER_HOUR_TABLET : PIXELS_PER_HOUR;
+  const PPM = PPH / 60;
+  const GUTTER = isMobile ? TIME_GUTTER_WIDTH_MOBILE : TIME_GUTTER_WIDTH;
   const TOTAL_HOURS = TIMELINE_END_HOUR - TIMELINE_START_HOUR;
-  const TIMELINE_HEIGHT = TOTAL_HOURS * PIXELS_PER_HOUR;
+  const TIMELINE_HEIGHT = TOTAL_HOURS * PPH;
+
+  // Mobile-aware position calculator
+  const toPosition = useCallback((minutes: number) => {
+    return (minutes - TIMELINE_START_HOUR * 60) * PPM;
+  }, [PPM]);
 
   // Track which actions have been performed (turn button green)
   const [actioned, setActioned] = useState<Map<string, Set<string>>>(new Map());
@@ -316,6 +358,7 @@ export default function TimelineView({
 
   // Assign dropdown state
   const [assignDropdownId, setAssignDropdownId] = useState<string | null>(null);
+  const [directionsModalApt, setDirectionsModalApt] = useState<Appointment | null>(null);
 
   // Work order positions — use work_order_time if saved, otherwise fall back to appointment_time
   const [workOrder, setWorkOrder] = useState<Map<string, number>>(() => {
@@ -524,7 +567,7 @@ export default function TimelineView({
   for (let h = TIMELINE_START_HOUR; h <= TIMELINE_END_HOUR; h++) {
     const ampm = h >= 12 ? 'PM' : 'AM';
     const displayH = h === 0 ? 12 : h > 12 ? h - 12 : h;
-    hourMarkers.push({ hour: h, label: `${displayH}:00 ${ampm}`, top: (h - TIMELINE_START_HOUR) * PIXELS_PER_HOUR });
+    hourMarkers.push({ hour: h, label: isMobile ? `${displayH}${ampm}` : `${displayH}:00 ${ampm}`, top: (h - TIMELINE_START_HOUR) * PPH });
   }
 
   const activeAppointments = appointments.filter(a => a.status !== 'cancelled');
@@ -535,6 +578,54 @@ export default function TimelineView({
     (apt) => workOrder.get(apt.id) ?? timeToMinutes(apt.appointment_time),
     (apt) => localDurations.get(apt.id) || apt.duration_minutes || 60,
   );
+
+  // Mobile overlap resolution: push overlapping cards down so they don't cover each other
+  const mobileTopOffsets = useMemo(() => {
+    if (!isMobile) return new Map<string, number>();
+    const offsets = new Map<string, number>();
+    // Sort by start time
+    const sorted = [...activeAppointments].sort((a, b) => {
+      const aMin = workOrder.get(a.id) ?? timeToMinutes(a.appointment_time);
+      const bMin = workOrder.get(b.id) ?? timeToMinutes(b.appointment_time);
+      return aMin - bMin;
+    });
+    // Track the visual bottom of each placed card (in pixels)
+    const placedBottoms: { top: number; bottom: number }[] = [];
+    const MOBILE_MIN_CARD_HEIGHT = 130; // must match rendered min height
+    for (const apt of sorted) {
+      const startMin = workOrder.get(apt.id) ?? timeToMinutes(apt.appointment_time);
+      const duration = localDurations.get(apt.id) || apt.duration_minutes || 60;
+      const naturalTop = toPosition(startMin);
+      const cardHeight = Math.max(duration * PPM, MOBILE_MIN_CARD_HEIGHT);
+      // Find if this card overlaps any already-placed card
+      let adjustedTop = naturalTop;
+      for (const placed of placedBottoms) {
+        if (adjustedTop < placed.bottom && (adjustedTop + cardHeight) > placed.top) {
+          // Overlap -- push below
+          adjustedTop = placed.bottom + 4; // 4px gap
+        }
+      }
+      offsets.set(apt.id, adjustedTop - naturalTop);
+      placedBottoms.push({ top: adjustedTop, bottom: adjustedTop + cardHeight });
+    }
+    return offsets;
+  }, [isMobile, activeAppointments, workOrder, localDurations, toPosition, PPM]);
+
+  // Calculate extra height needed for pushed-down mobile cards
+  const mobileExtraHeight = useMemo(() => {
+    if (!isMobile || mobileTopOffsets.size === 0) return 0;
+    let maxBottom = 0;
+    for (const apt of activeAppointments) {
+      const startMin = workOrder.get(apt.id) ?? timeToMinutes(apt.appointment_time);
+      const duration = localDurations.get(apt.id) || apt.duration_minutes || 60;
+      const naturalTop = toPosition(startMin);
+      const offset = mobileTopOffsets.get(apt.id) || 0;
+      const cardHeight = Math.max(duration * PPM, 120);
+      const bottom = naturalTop + offset + cardHeight;
+      if (bottom > maxBottom) maxBottom = bottom;
+    }
+    return Math.max(0, maxBottom - TIMELINE_HEIGHT);
+  }, [isMobile, mobileTopOffsets, activeAppointments, workOrder, localDurations, toPosition, PPM, TIMELINE_HEIGHT]);
 
   // Apply linked column order swaps: override column indices based on user drag reordering
   linkedColumnOrder.forEach((order, groupId) => {
@@ -559,7 +650,8 @@ export default function TimelineView({
 
   return (
     <div>
-      {/* Save/Reset bar */}
+      {/* Save/Reset bar -- hidden on mobile (drag reordering not supported on touch) */}
+      {!isMobile && (
       <div style={{
         display: 'flex', gap: SPACING.md, marginBottom: SPACING.lg, justifyContent: 'flex-end',
       }}>
@@ -582,24 +674,26 @@ export default function TimelineView({
           {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : 'Save Order'}
         </button>
       </div>
+      )}
 
       {/* Timeline */}
       <div style={{
         position: 'relative', display: 'flex',
         background: COLORS.cardBg,
         border: `1px solid ${COLORS.borderAccent}`,
-        borderRadius: RADIUS.xl, overflow: 'hidden',
+        borderRadius: RADIUS.xl, overflow: 'auto',
+        minWidth: 0,
       }}>
         {/* Time gutter */}
         <div style={{
-          width: TIME_GUTTER_WIDTH, flexShrink: 0,
+          width: GUTTER, flexShrink: 0,
           borderRight: `1px solid ${COLORS.border}`,
-          position: 'relative', height: TIMELINE_HEIGHT,
+          position: 'relative', height: TIMELINE_HEIGHT + mobileExtraHeight,
         }}>
           {hourMarkers.map(m => (
             <div key={m.hour} style={{
-              position: 'absolute', top: m.top, right: 8,
-              fontSize: FONT.sizeXs, color: COLORS.textMuted,
+              position: 'absolute', top: m.top, right: isMobile ? 4 : 8,
+              fontSize: isMobile ? '0.6rem' : FONT.sizeXs, color: COLORS.textMuted,
               fontWeight: FONT.weightMedium, lineHeight: 1,
               transform: 'translateY(-50%)',
             }}>
@@ -609,7 +703,7 @@ export default function TimelineView({
         </div>
 
         {/* Main area */}
-        <div ref={timelineRef} style={{ flex: 1, position: 'relative', height: TIMELINE_HEIGHT }}>
+        <div ref={timelineRef} style={{ flex: 1, position: 'relative', height: TIMELINE_HEIGHT + mobileExtraHeight }}>
           {/* Hour lines */}
           {hourMarkers.map(m => (
             <div key={m.hour} style={{
@@ -620,7 +714,7 @@ export default function TimelineView({
           {/* Half-hour lines */}
           {hourMarkers.slice(0, -1).map(m => (
             <div key={`h-${m.hour}`} style={{
-              position: 'absolute', top: m.top + PIXELS_PER_HOUR / 2, left: 0, right: 0,
+              position: 'absolute', top: m.top + PPH / 2, left: 0, right: 0,
               borderTop: '1px dashed rgba(255,255,255,0.03)',
             }} />
           ))}
@@ -629,15 +723,16 @@ export default function TimelineView({
           {activeAppointments.map(apt => {
             const workMin = workOrder.get(apt.id) ?? timeToMinutes(apt.appointment_time);
             const duration = localDurations.get(apt.id) || apt.duration_minutes || 60;
-            const top = minutesToPosition(workMin);
-            const height = Math.max(duration * PIXELS_PER_MIN, 20);
-            const typeColor = TYPE_COLORS[apt.appointment_type] || '#6b7280';
+            const top = toPosition(workMin);
+            const MOBILE_MIN_CARD_H = 130; // must fit: time + services + customer + action bar
+            const height = Math.max(duration * PPM, isMobile ? MOBILE_MIN_CARD_H : 20);
+            const typeColor = typeColorMap?.[apt.appointment_type] || TYPE_COLORS[apt.appointment_type] || '#6b7280';
             const isPaid = apt.status === 'invoiced' || apt.status === 'paid';
             const leftBlockColor = isPaid ? '#22c55e' : typeColor;
             const modColor = moduleColorMap?.[apt.module] || MODULE_COLORS[apt.module] || '#6b7280';
             const statusColor = STATUS_COLORS[apt.status] || COLORS.textMuted;
-            const isCompact = duration <= 30;
-            const isTiny = duration <= 15;
+            const isCompact = !isMobile && duration <= 30;
+            const isTiny = !isMobile && duration <= 15;
             const isDragging = dragId === apt.id;
             const isResizing = resizeId === apt.id;
             const isInteracting = isDragging || isResizing;
@@ -646,31 +741,206 @@ export default function TimelineView({
             const workOrderTime = formatTime(workMin);
             const scheduledDiffers = Math.abs(workMin - timeToMinutes(apt.appointment_time)) >= 15;
 
-            // Column positioning for overlap handling
-            const colInfo = columnAssignments.get(apt.id) || { column: 0, totalColumns: 1 };
+            // Column positioning: single column on mobile, overlap columns on desktop
+            const colInfo = isMobile
+              ? { column: 0, totalColumns: 1 }
+              : (columnAssignments.get(apt.id) || { column: 0, totalColumns: 1 });
             const COL_GAP = 3; // px gap between columns
             const colWidthPercent = 100 / colInfo.totalColumns;
             const leftPercent = colInfo.column * colWidthPercent;
-            // Use calc() for left/width to account for edge padding and gaps
             const cardLeft = `calc(${leftPercent}% + ${COL_GAP / 2}px)`;
             const cardWidth = `calc(${colWidthPercent}% - ${COL_GAP}px)`;
-            const isNarrow = colInfo.totalColumns >= 3;
-            // Card text colors -- brighter than page defaults since cards have tinted backgrounds
+            const isNarrow = !isMobile && colInfo.totalColumns >= 3;
+            // Card text colors
             const cardTextPrimary = 'rgba(255,255,255,0.95)';
             const cardTextSecondary = 'rgba(255,255,255,0.7)';
             const cardTextMuted = 'rgba(255,255,255,0.5)';
 
+            // ---- MOBILE CARD LAYOUT ----
+            if (isMobile) {
+              // Build detailed service lines for mobile (each service on its own line)
+              const serviceLines = buildMobileServiceLines(apt.services_json);
+              const mobileModuleLabel = MODULE_ABBREVS[apt.module] || moduleLabelMap?.[apt.module] || MODULE_LABELS[apt.module] || apt.module;
+              const mobileOffset = mobileTopOffsets.get(apt.id) || 0;
+              const mobileTop = top + mobileOffset;
+
+              return (
+                <div
+                  key={apt.id}
+                  style={{
+                    position: 'absolute', top: mobileTop, left: 2, right: 2,
+                    height, display: 'flex', flexDirection: 'column',
+                    background: solidCardBg(modColor),
+                    border: `1px solid ${solidCardBg(modColor)}`,
+                    borderRadius: RADIUS.md,
+                    overflow: 'hidden',
+                    zIndex: 10,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    userSelect: 'none',
+                  }}
+                >
+                  {/* Top section: type strip + content */}
+                  <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                    {/* Left type strip */}
+                    <div style={{
+                      width: 6, flexShrink: 0,
+                      background: leftBlockColor,
+                    }} />
+
+                    {/* Content */}
+                    <div style={{
+                      flex: 1, minWidth: 0,
+                      padding: '6px 10px',
+                      display: 'flex', flexDirection: 'column',
+                      justifyContent: 'center', gap: 1,
+                    }}>
+                      {/* Row 1: Time + Type + Duration + Price + Status */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{
+                          fontSize: '0.85rem', fontWeight: 800, color: cardTextPrimary,
+                        }}>
+                          {workOrderTime}
+                        </span>
+                        <span style={{
+                          fontSize: '0.65rem', fontWeight: 600, color: cardTextSecondary,
+                          textTransform: 'uppercase',
+                        }}>
+                          {TYPE_LABELS[apt.appointment_type]} / {duration}m
+                        </span>
+                        <div style={{ flex: 1 }} />
+                        <span style={{
+                          fontSize: '0.85rem', fontWeight: 800, color: cardTextPrimary,
+                        }}>
+                          ${Number(apt.balance_due).toFixed(0)}
+                        </span>
+                        <span style={{
+                          width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                          background: apt.status === 'in_progress' || apt.status === 'completed' || apt.status === 'invoiced' ? '#22c55e' : '#6b7280',
+                        }} />
+                      </div>
+
+                      {/* Row 2: Services -- THE STAR OF THE SHOW */}
+                      <div style={{
+                        display: 'flex', flexDirection: 'column', gap: 1,
+                        overflow: 'hidden',
+                      }}>
+                        {serviceLines.length > 0 ? serviceLines.map((line, i) => (
+                          <div key={i} style={{
+                            fontSize: '0.82rem', fontWeight: 700, color: cardTextPrimary,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {line}
+                          </div>
+                        )) : serviceSummary ? (
+                          <div style={{
+                            fontSize: '0.82rem', fontWeight: 700, color: cardTextPrimary,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {serviceSummary}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {/* Row 3: Customer + team */}
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        fontSize: '0.7rem', color: cardTextMuted, marginTop: 1,
+                      }}>
+                        <span>{apt.customer_name}</span>
+                        {apt.assigned_team_member_name && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="8" cy="5" r="3" /><path d="M2 14c0-3 2.5-5 6-5s6 2 6 5" />
+                            </svg>
+                            {apt.assigned_team_member_name.split(' ')[0]}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Module badge -- top center, hidden on short cards */}
+                  {duration > 30 && (
+                    <div style={{
+                      position: 'absolute', top: 2, left: '50%', transform: 'translateX(-50%)',
+                      zIndex: 2, pointerEvents: 'none',
+                    }}>
+                      <span style={{
+                        fontSize: '1.1rem', fontWeight: 800,
+                        color: 'rgba(255,255,255,0.35)',
+                        letterSpacing: '2px',
+                        textTransform: 'uppercase',
+                      }}>
+                        {mobileModuleLabel}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Bottom action bar */}
+                  <div style={{
+                    display: 'flex', gap: 1, borderTop: '1px solid rgba(255,255,255,0.1)',
+                    background: 'rgba(0,0,0,0.2)', flexShrink: 0,
+                    flexWrap: 'wrap',
+                  }}>
+                    <ConfigurableActions
+                      appointment={apt}
+                      buttonsConfig={buttons}
+                      actioned={actioned.get(apt.id) || new Set()}
+                      onAction={(key, a, rect) => { markActioned(a.id, key); onAction(key, a, rect); }}
+                      compact={false}
+                      mobile={true}
+                    />
+                    {/* Directions + Send for off-site consultations */}
+                    {(() => {
+                      const locationMatch = apt.notes?.match(/Location:\s*(.+)/);
+                      if (!locationMatch) return null;
+                      const address = locationMatch[1].trim();
+                      const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+                      const assignedMember = teamMembers?.find(tm => tm.id === apt.assigned_team_member_id);
+                      const memberPhone = assignedMember?.phone;
+                      return (
+                        <>
+                          <button
+                            onClick={() => window.open(mapsUrl, '_blank')}
+                            style={{
+                              padding: '8px 0', flex: 1, textAlign: 'center',
+                              background: 'transparent', border: 'none', borderRight: '1px solid rgba(255,255,255,0.1)',
+                              color: 'rgba(255,255,255,0.85)', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                            }}
+                          >
+                            Map
+                          </button>
+                          <button
+                            onClick={() => setDirectionsModalApt(apt)}
+                            style={{
+                              padding: '8px 0', flex: 1, textAlign: 'center',
+                              background: 'transparent', border: 'none',
+                              color: '#3b82f6', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                            }}
+                          >
+                            Send
+                          </button>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              );
+            }
+
+            // ---- DESKTOP / TABLET CARD LAYOUT ----
             return (
               <div
                 key={apt.id}
                 style={{
                   position: 'absolute', top, left: cardLeft, width: cardWidth, height,
-                  display: 'flex',
+                  display: 'flex', flexDirection: isTouch ? 'column' : 'row',
                   background: solidCardBg(modColor),
-                  border: `1px solid ${modColor}40`,
+                  border: `1px solid ${solidCardBg(modColor)}`,
                   borderRadius: RADIUS.md,
                   overflow: 'hidden',
-                  cursor: isDragging ? 'grabbing' : 'grab',
+                  cursor: isTouch ? 'default' : (isDragging ? 'grabbing' : 'grab'),
                   zIndex: isInteracting ? 100 : 10,
                   opacity: isDragging ? 0.92 : 1,
                   boxShadow: isDragging
@@ -679,14 +949,59 @@ export default function TimelineView({
                   transition: isInteracting ? 'none' : 'top 0.3s ease, height 0.3s ease, box-shadow 0.2s',
                   userSelect: 'none',
                 }}
-                onMouseDown={e => handleDragStart(e, apt.id)}
+                onMouseDown={isTouch ? undefined : (e => handleDragStart(e, apt.id))}
               >
-                {/* Type block (far left) — green when paid, type color otherwise */}
+                {/* Module badge: centered on desktop, top-right on tablet */}
+                {isTouch ? (
+                  !isTiny && !isNarrow && (
+                    <div style={{
+                      position: 'absolute', top: 4, right: 8,
+                      zIndex: 2, pointerEvents: 'none',
+                    }}>
+                      <span style={{
+                        fontSize: '0.65rem', fontWeight: 800,
+                        color: 'rgba(255,255,255,0.7)',
+                        border: '1px solid rgba(255,255,255,0.3)',
+                        padding: '2px 8px', borderRadius: 4,
+                        textTransform: 'uppercase', letterSpacing: '1px',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {moduleLabelMap?.[apt.module] || MODULE_LABELS[apt.module] || apt.module}
+                      </span>
+                    </div>
+                  )
+                ) : (
+                  !isTiny && (
+                  <div style={{
+                    position: 'absolute', bottom: isCompact ? 2 : 4, left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 1, pointerEvents: 'none',
+                  }}>
+                    <span style={{
+                      fontSize: isCompact ? '0.55rem' : '0.65rem',
+                      fontWeight: 800,
+                      color: 'rgba(255,255,255,0.5)',
+                      border: '1px solid rgba(255,255,255,0.25)',
+                      padding: isCompact ? '1px 6px' : '2px 10px',
+                      borderRadius: RADIUS.sm,
+                      textTransform: 'uppercase',
+                      letterSpacing: '1px',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {moduleLabelMap?.[apt.module] || MODULE_LABELS[apt.module] || apt.module}
+                    </span>
+                  </div>
+                  )
+                )}
+
+                {/* Main row: type block + content + info strip */}
+                <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+                {/* Type block (far left) */}
                 <div style={{
                   width: isNarrow ? 60 : 92,
                   flexShrink: 0,
-                  background: `${leftBlockColor}80`,
-                  borderRight: `1px solid ${leftBlockColor}99`,
+                  background: leftBlockColor,
+                  borderRight: `1px solid ${leftBlockColor}`,
                   display: 'flex', flexDirection: 'column',
                   alignItems: 'center', justifyContent: 'center',
                   padding: isTiny ? '1px 4px' : '4px 6px',
@@ -728,29 +1043,18 @@ export default function TimelineView({
                   padding: isTiny ? '2px 8px' : isCompact ? '4px 10px' : `${SPACING.sm}px ${SPACING.md}px`,
                   display: 'flex', flexDirection: 'column', overflow: 'hidden',
                 }}>
-                  {/* Row 1: Vehicle + module badge + link indicator + status */}
+                  {/* Row 1: Vehicle (or consultation description) + link indicator + status */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 0 }}>
                     <span style={{
                       fontSize: isTiny ? '0.6rem' : isCompact ? FONT.sizeXs : FONT.sizeSm,
                       fontWeight: FONT.weightSemibold, color: cardTextPrimary,
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
-                      {apt.vehicle_year} {apt.vehicle_make} {apt.vehicle_model}
+                      {apt.appointment_type === 'consultation'
+                        ? serviceSummary.split(':')[0] || serviceSummary
+                        : `${apt.vehicle_year} ${apt.vehicle_make} ${apt.vehicle_model}`
+                      }
                     </span>
-                    {!isTiny && (apt.module !== 'auto_tint' || apt.linked_group_id) && (() => {
-                      const modColor = moduleColorMap?.[apt.module] || MODULE_COLORS[apt.module] || '#6b7280';
-                      return (
-                        <span style={{
-                          fontSize: '0.55rem', fontWeight: FONT.weightSemibold,
-                          color: modColor, background: `${modColor}18`,
-                          border: `1px solid ${modColor}35`,
-                          padding: '1px 5px', borderRadius: RADIUS.sm,
-                          whiteSpace: 'nowrap', flexShrink: 0,
-                        }}>
-                          {moduleLabelMap?.[apt.module] || MODULE_LABELS[apt.module] || apt.module}
-                        </span>
-                      );
-                    })()}
                     {!isTiny && apt.linked_group_id && (
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', gap: 2,
@@ -779,28 +1083,29 @@ export default function TimelineView({
                         )}
                       </span>
                     )}
-                    {!isTiny && (
-                      <span style={{
-                        width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                        background: apt.status === 'in_progress' || apt.status === 'completed' || apt.status === 'invoiced' ? '#22c55e' : '#6b7280',
-                      }} />
-                    )}
+                    <span style={{
+                      width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                      background: apt.status === 'in_progress' || apt.status === 'completed' || apt.status === 'invoiced' ? '#22c55e' : '#6b7280',
+                    }} />
                   </div>
 
-                  {/* Row 2: Services (emphasized — this is the actual work) */}
+                  {/* Row 2: Services / consultation notes */}
                   {!isTiny && (
                     <div style={{
                       fontSize: isCompact ? FONT.sizeXs : FONT.sizeSm,
-                      fontWeight: FONT.weightSemibold,
-                      color: cardTextPrimary,
+                      fontWeight: apt.appointment_type === 'consultation' ? FONT.weightMedium : FONT.weightSemibold,
+                      color: apt.appointment_type === 'consultation' ? cardTextSecondary : cardTextPrimary,
                       marginTop: 2,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
-                      {serviceSummary}
+                      {apt.appointment_type === 'consultation'
+                        ? (serviceSummary.includes(':') ? serviceSummary.split(':').slice(1).join(':').trim() : '')
+                        : serviceSummary
+                      }
                     </div>
                   )}
 
-                  {/* Row 3: Customer + assigned team member (normal cards) */}
+                  {/* Row 3: Customer + assigned team member */}
                   {!isCompact && (
                     <div style={{
                       display: 'flex', alignItems: 'center', gap: SPACING.sm,
@@ -875,12 +1180,14 @@ export default function TimelineView({
                   )}
                 </div>
 
-                {/* Action buttons (middle-right) — driven by shop config */}
-                {!isNarrow && (
+                {/* Desktop only: Action buttons (middle-right) + Info strip (far right) */}
+                {!isTouch && !isNarrow && (
+                <>
                 <div
                   onMouseDown={e => e.stopPropagation()}
                   style={{
                     display: 'flex', flexDirection: 'row', alignItems: 'flex-start',
+                    flexWrap: 'wrap',
                     gap: isTiny ? 2 : 3,
                     padding: isTiny ? '2px 4px' : isCompact ? '4px 6px' : `${SPACING.sm}px 6px`,
                     flexShrink: 0,
@@ -893,7 +1200,7 @@ export default function TimelineView({
                     onAction={(key, a, rect) => { markActioned(a.id, key); onAction(key, a, rect); }}
                     compact={isTiny}
                   />
-                  {/* Directions button for off-site appointments with a location */}
+                  {/* Directions + Send buttons for off-site appointments */}
                   {(() => {
                     const locationMatch = apt.notes?.match(/Location:\s*(.+)/);
                     if (!locationMatch) return null;
@@ -921,99 +1228,32 @@ export default function TimelineView({
                           </svg>
                           {isTiny ? '' : 'Directions'}
                         </button>
-                        {(() => {
-                          // Find assigned team member's phone
-                          const assignedMember = teamMembers?.find(tm => tm.id === apt.assigned_team_member_id);
-                          const memberPhone = assignedMember?.phone;
-                          const smsBody = `Directions for your ${formatTime(workOrder.get(apt.id) ?? timeToMinutes(apt.appointment_time))} consultation: ${mapsUrl}`;
-
-                          if (memberPhone) {
-                            return (
-                              <button
-                                onMouseDown={e => e.stopPropagation()}
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  const btn = e.currentTarget as HTMLButtonElement;
-                                  btn.textContent = 'Sending...';
-                                  // Send via Twilio API
-                                  fetch('/api/auto/send-sms', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ to: memberPhone, message: smsBody }),
-                                  }).then(res => {
-                                    if (res.ok) {
-                                      btn.textContent = 'Sent!';
-                                      btn.style.color = '#22c55e';
-                                      btn.style.borderColor = '#22c55e';
-                                    } else {
-                                      window.open(`sms:${memberPhone}?body=${encodeURIComponent(smsBody)}`, '_self');
-                                    }
-                                    setTimeout(() => { btn.textContent = 'Send'; btn.style.color = '#3b82f6'; btn.style.borderColor = 'rgba(255,255,255,0.2)'; }, 2000);
-                                  }).catch(() => {
-                                    window.open(`sms:${memberPhone}?body=${encodeURIComponent(smsBody)}`, '_self');
-                                  });
-                                }}
-                                title={`Send directions to ${assignedMember.name}`}
-                                style={{
-                                  padding: isTiny ? '2px 6px' : '3px 10px',
-                                  borderRadius: 4, cursor: 'pointer',
-                                  background: 'rgba(0,0,0,0.35)',
-                                  border: '1px solid rgba(255,255,255,0.2)',
-                                  color: '#3b82f6',
-                                  fontSize: isTiny ? '0.55rem' : FONT.sizeXs,
-                                  fontWeight: 600, whiteSpace: 'nowrap', lineHeight: 1.2,
-                                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                                }}
-                              >
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.11 2 2 0 0 1 4.11 2h3"/>
-                                </svg>
-                                {isTiny ? '' : 'Send'}
-                              </button>
-                            );
-                          }
-                          // No phone -- show copy link fallback
-                          return (
-                            <button
-                              onMouseDown={e => e.stopPropagation()}
-                              onClick={e => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(mapsUrl);
-                                const btn = e.currentTarget as HTMLButtonElement;
-                                const origText = btn.querySelector('span')?.textContent || '';
-                                const span = btn.querySelector('span');
-                                if (span) { span.textContent = 'Copied!'; }
-                                btn.style.color = '#22c55e';
-                                btn.style.borderColor = '#22c55e';
-                                setTimeout(() => { if (span) span.textContent = origText; btn.style.color = '#3b82f6'; btn.style.borderColor = 'rgba(255,255,255,0.2)'; }, 1500);
-                              }}
-                              title="Copy directions link (add phone to team member to enable sending)"
-                              style={{
-                                padding: isTiny ? '2px 6px' : '3px 10px',
-                                borderRadius: 4, cursor: 'pointer',
-                                background: 'rgba(0,0,0,0.35)',
-                                border: '1px solid rgba(255,255,255,0.2)',
-                                color: '#3b82f6',
-                                fontSize: isTiny ? '0.55rem' : FONT.sizeXs,
-                                fontWeight: 600, whiteSpace: 'nowrap', lineHeight: 1.2,
-                                display: 'inline-flex', alignItems: 'center', gap: 3,
-                              }}
-                            >
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                              </svg>
-                              {!isTiny && <span>Copy Link</span>}
-                            </button>
-                          );
-                        })()}
+                        <button
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => { e.stopPropagation(); setDirectionsModalApt(apt); }}
+                          title="Send directions to team"
+                          style={{
+                            padding: isTiny ? '2px 6px' : '3px 10px',
+                            borderRadius: 4, cursor: 'pointer',
+                            background: 'rgba(0,0,0,0.35)',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                            color: '#3b82f6',
+                            fontSize: isTiny ? '0.55rem' : FONT.sizeXs,
+                            fontWeight: 600, whiteSpace: 'nowrap', lineHeight: 1.2,
+                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                          }}
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.11 2 2 0 0 1 4.11 2h3"/>
+                          </svg>
+                          {isTiny ? '' : 'Send'}
+                        </button>
                       </>
                     );
                   })()}
                 </div>
-                )}
 
-                {/* Info strip (far right) — price, scheduled time, duration */}
-                {!isNarrow && (
+                {apt.appointment_type !== 'consultation' && (
                 <div style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start',
                   padding: isTiny ? '2px 8px' : isCompact ? '4px 12px' : `${SPACING.sm}px 12px`,
@@ -1028,10 +1268,7 @@ export default function TimelineView({
                     ${Number(apt.balance_due).toFixed(0)}
                   </span>
                   {!isTiny && scheduledDiffers && (
-                    <span style={{
-                      fontSize: '0.6rem', color: cardTextMuted,
-                      whiteSpace: 'nowrap',
-                    }}>
+                    <span style={{ fontSize: '0.6rem', color: cardTextMuted, whiteSpace: 'nowrap' }}>
                       Sched {scheduledTime}
                     </span>
                   )}
@@ -1042,8 +1279,32 @@ export default function TimelineView({
                   )}
                 </div>
                 )}
+                </>
+                )}
+                </div>
 
-                {/* Resize handle */}
+                {/* Tablet: bottom action bar (touch-friendly) */}
+                {isTouch && (
+                  <div
+                    onMouseDown={e => e.stopPropagation()}
+                    style={{
+                      display: 'flex', gap: 1, borderTop: '1px solid rgba(255,255,255,0.1)',
+                      background: 'rgba(0,0,0,0.2)', flexShrink: 0,
+                    }}
+                  >
+                    <ConfigurableActions
+                      appointment={apt}
+                      buttonsConfig={buttons}
+                      actioned={actioned.get(apt.id) || new Set()}
+                      onAction={(key, a, rect) => { markActioned(a.id, key); onAction(key, a, rect); }}
+                      compact={false}
+                      mobile={true}
+                    />
+                  </div>
+                )}
+
+                {/* Resize handle (desktop only) */}
+                {!isTouch && (
                 <div
                   onMouseDown={e => handleResizeStart(e, apt.id)}
                   style={{
@@ -1056,12 +1317,13 @@ export default function TimelineView({
                   onMouseEnter={e => { const el = e.currentTarget; el.style.background = `${typeColor}20`; el.style.borderTopColor = typeColor; }}
                   onMouseLeave={e => { if (!isResizing) { const el = e.currentTarget; el.style.background = 'transparent'; el.style.borderTopColor = 'transparent'; } }}
                 />
+                )}
               </div>
             );
           })}
 
-          {/* Linked appointment connectors */}
-          {(() => {
+          {/* Linked appointment connectors (desktop only) */}
+          {!isMobile && (() => {
             // Find linked groups with multiple cards visible
             const linkedGroups = new Map<string, Array<{ id: string; col: ColumnAssignment; top: number; height: number }>>();
             activeAppointments.forEach(apt => {
@@ -1074,8 +1336,8 @@ export default function TimelineView({
               linkedGroups.get(apt.linked_group_id)!.push({
                 id: apt.id,
                 col: colInfo,
-                top: minutesToPosition(workMin),
-                height: Math.max(duration * PIXELS_PER_MIN, 20),
+                top: toPosition(workMin),
+                height: Math.max(duration * PPM, 20),
               });
             });
 
@@ -1136,10 +1398,31 @@ export default function TimelineView({
             return connectors;
           })()}
 
-          {/* Current time line */}
-          <CurrentTimeLine endHour={TIMELINE_END_HOUR} />
+          {/* Current time line -- uses PPH for mobile-aware positioning */}
+          <CurrentTimeLine endHour={TIMELINE_END_HOUR} ppm={PPM} />
         </div>
       </div>
+
+      {/* Send Directions Modal */}
+      {directionsModalApt && (() => {
+        const apt = directionsModalApt;
+        const locationMatch = apt.notes?.match(/Location:\s*(.+)/);
+        const address = locationMatch ? locationMatch[1].trim() : '';
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+        const workMin = workOrder.get(apt.id) ?? timeToMinutes(apt.appointment_time);
+        return (
+          <SendDirectionsModal
+            customerName={apt.customer_name}
+            appointmentTime={formatTime(workMin)}
+            notes={buildServiceSummary(apt.services_json)}
+            address={address}
+            mapsUrl={mapsUrl}
+            teamMembers={teamMembers || []}
+            assignedTeamMemberId={apt.assigned_team_member_id}
+            onClose={() => setDirectionsModalApt(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -1248,7 +1531,7 @@ function AssignDropdown({
   );
 }
 
-function CurrentTimeLine({ endHour }: { endHour: number }) {
+function CurrentTimeLine({ endHour, ppm }: { endHour: number; ppm: number }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60000);
@@ -1258,9 +1541,11 @@ function CurrentTimeLine({ endHour }: { endHour: number }) {
   const mins = now.getHours() * 60 + now.getMinutes();
   if (mins < TIMELINE_START_HOUR * 60 || mins > endHour * 60) return null;
 
+  const top = (mins - TIMELINE_START_HOUR * 60) * ppm;
+
   return (
     <div style={{
-      position: 'absolute', top: minutesToPosition(mins), left: 0, right: 0,
+      position: 'absolute', top, left: 0, right: 0,
       zIndex: 50, pointerEvents: 'none', display: 'flex', alignItems: 'center',
     }}>
       <div style={{ width: 8, height: 8, borderRadius: '50%', background: COLORS.red, marginLeft: -4 }} />

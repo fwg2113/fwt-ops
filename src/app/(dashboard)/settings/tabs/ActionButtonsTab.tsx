@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { DashboardCard, Button, FormField, TextInput, SelectInput, ColorPicker } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import { type ActionButtonConfig, DEFAULT_BUTTONS_CONFIG } from '@/app/(dashboard)/appointments/ConfigurableActions';
+import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 interface Props {
   data: Record<string, unknown>;
@@ -15,6 +16,7 @@ interface Props {
 // ACTION BUTTONS SETTINGS TAB
 // ============================================================================
 export default function ActionButtonsTab({ data, onSave, onRefresh }: Props) {
+  const isMobile = useIsMobile();
   const config = data.shopConfig as Record<string, unknown> || {};
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -234,33 +236,49 @@ export default function ActionButtonsTab({ data, onSave, onRefresh }: Props) {
                 <div
                   onClick={() => setExpandedButton(isExpanded ? null : btn.key)}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: SPACING.md,
-                    padding: `${SPACING.md}px ${SPACING.lg}px`, cursor: 'pointer',
+                    display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 6 : SPACING.md,
+                    padding: isMobile ? `${SPACING.md}px ${SPACING.md}px` : `${SPACING.md}px ${SPACING.lg}px`, cursor: 'pointer',
                   }}
                 >
-                  <Toggle label="" checked={btn.enabled} onChange={v => { updateButton(btn.key, { enabled: v }); }} />
+                  {/* Row 1 (mobile) or inline (desktop): toggle + pills + chevron */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? SPACING.sm : SPACING.md }}>
+                    <Toggle label="" checked={btn.enabled} onChange={v => { updateButton(btn.key, { enabled: v }); }} />
 
-                  {/* Mini preview: before + after */}
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <MiniButton color={btn.defaultColor} label={btn.label} />
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke={COLORS.textMuted} strokeWidth="1.5" style={{ alignSelf: 'center' }}>
-                      <path d="M4 2l4 4-4 4"/>
+                    {/* Mini preview: before + after */}
+                    <div style={{ display: 'flex', gap: 6, flex: isMobile ? 1 : undefined, minWidth: 0 }}>
+                      <MiniButton color={btn.defaultColor} label={btn.label} />
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke={COLORS.textMuted} strokeWidth="1.5" style={{ alignSelf: 'center', flexShrink: 0 }}>
+                        <path d="M4 2l4 4-4 4"/>
+                      </svg>
+                      <MiniButton color={btn.clickedColor} label={btn.clickedLabel} filled />
+                    </div>
+
+                    {!isMobile && (
+                      <span style={{ flex: 1, fontSize: FONT.sizeSm, color: COLORS.textMuted }}>
+                        {btn.behavior === 'status_change' ? `Changes status to "${btn.statusTarget}"` :
+                         btn.behavior === 'message_modal' ? 'Opens message modal' :
+                         btn.behavior === 'invoice_modal' ? 'Opens invoice options' :
+                         btn.behavior === 'edit_modal' ? 'Opens edit modal' :
+                         btn.behavior === 'headsup_send' ? 'Sends heads-up' : btn.behavior}
+                      </span>
+                    )}
+
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke={COLORS.textMuted} strokeWidth="2"
+                      style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+                      <path d="M4 6l4 4 4-4"/>
                     </svg>
-                    <MiniButton color={btn.clickedColor} label={btn.clickedLabel} filled />
                   </div>
 
-                  <span style={{ flex: 1, fontSize: FONT.sizeSm, color: COLORS.textMuted }}>
-                    {btn.behavior === 'status_change' ? `Changes status to "${btn.statusTarget}"` :
-                     btn.behavior === 'message_modal' ? 'Opens message modal' :
-                     btn.behavior === 'invoice_modal' ? 'Opens invoice options' :
-                     btn.behavior === 'edit_modal' ? 'Opens edit modal' :
-                     btn.behavior === 'headsup_send' ? 'Sends heads-up' : btn.behavior}
-                  </span>
-
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke={COLORS.textMuted} strokeWidth="2"
-                    style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
-                    <path d="M4 6l4 4 4-4"/>
-                  </svg>
+                  {/* Row 2 (mobile only): description text */}
+                  {isMobile && (
+                    <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, paddingLeft: 48 }}>
+                      {btn.behavior === 'status_change' ? `Changes status to "${btn.statusTarget}"` :
+                       btn.behavior === 'message_modal' ? 'Opens message modal' :
+                       btn.behavior === 'invoice_modal' ? 'Opens invoice options' :
+                       btn.behavior === 'edit_modal' ? 'Opens edit modal' :
+                       btn.behavior === 'headsup_send' ? 'Sends heads-up' : btn.behavior}
+                    </div>
+                  )}
                 </div>
 
                 {/* Expanded editor */}
@@ -268,7 +286,7 @@ export default function ActionButtonsTab({ data, onSave, onRefresh }: Props) {
                   <div style={{ padding: `0 ${SPACING.lg}px ${SPACING.lg}px`, borderTop: `1px solid ${COLORS.border}` }}>
                     {/* Appearance */}
                     <SectionLabel>Appearance</SectionLabel>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md, marginBottom: SPACING.lg }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md, marginBottom: SPACING.lg }}>
                       <div>
                         <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 4 }}>Default State</div>
                         <FormField label="Label">
@@ -291,7 +309,7 @@ export default function ActionButtonsTab({ data, onSave, onRefresh }: Props) {
 
                     {/* Behavior */}
                     <SectionLabel>Behavior</SectionLabel>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.md, marginBottom: SPACING.lg }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md, marginBottom: SPACING.lg }}>
                       <FormField label="When clicked">
                         <SelectInput value={btn.behavior} onChange={e => updateButton(btn.key, { behavior: e.target.value as ActionButtonConfig['behavior'] })}>
                           <option value="status_change">Change appointment status</option>
@@ -325,7 +343,7 @@ export default function ActionButtonsTab({ data, onSave, onRefresh }: Props) {
 
                     {/* Visibility */}
                     <SectionLabel>Visibility</SectionLabel>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: SPACING.lg }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.lg }}>
                       <div>
                         <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: SPACING.sm }}>Show for appointment status</div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
