@@ -267,6 +267,11 @@ function AppointmentsPageInner() {
 
   return (
     <div>
+      {/* Sticky header on mobile so user can always access nav/filters */}
+      <div style={isMobile ? {
+        position: 'sticky', top: 0, zIndex: 20,
+        background: COLORS.pageBg, paddingTop: 4, paddingBottom: 4,
+      } : undefined}>
       <PageHeader
         title="Appointments"
         subtitle="Daily Schedule"
@@ -484,6 +489,7 @@ function AppointmentsPageInner() {
           )}
         </div>
       )}
+      </div>{/* end sticky header wrapper */}
 
       {/* Timeline View */}
       {loading ? (

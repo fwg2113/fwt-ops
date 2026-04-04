@@ -537,6 +537,57 @@ export default function TimelineView({
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
   }, [resizeId, localDurations, onDurationChange]);
 
+  // ============================================================================
+  // TOUCH DRAG + RESIZE (mobile)
+  // ============================================================================
+  const touchDragRef = useRef<{ id: string; startY: number; startMin: number } | null>(null);
+  const touchResizeRef = useRef<{ id: string; startY: number; startDuration: number } | null>(null);
+
+  const handleTouchDragStart = useCallback((e: React.TouchEvent, id: string) => {
+    const touch = e.touches[0];
+    const startMin = workOrder.get(id) || 0;
+    touchDragRef.current = { id, startY: touch.clientY, startMin };
+  }, [workOrder]);
+
+  const handleTouchDragMove = useCallback((e: React.TouchEvent) => {
+    if (!touchDragRef.current) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const deltaY = touch.clientY - touchDragRef.current.startY;
+    const deltaMins = Math.round((deltaY / PPM) / SNAP_MINUTES) * SNAP_MINUTES;
+    const newMin = Math.max(TIMELINE_START_HOUR * 60, Math.min(TIMELINE_END_HOUR * 60 - 15, touchDragRef.current.startMin + deltaMins));
+    setWorkOrder(prev => { const n = new Map(prev); n.set(touchDragRef.current!.id, newMin); return n; });
+  }, [PPM, TIMELINE_END_HOUR]);
+
+  const handleTouchDragEnd = useCallback(() => {
+    touchDragRef.current = null;
+  }, []);
+
+  const handleTouchResizeStart = useCallback((e: React.TouchEvent, id: string) => {
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const startDuration = localDurations.get(id) || 60;
+    touchResizeRef.current = { id, startY: touch.clientY, startDuration };
+  }, [localDurations]);
+
+  const handleTouchResizeMove = useCallback((e: React.TouchEvent) => {
+    if (!touchResizeRef.current) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const deltaY = touch.clientY - touchResizeRef.current.startY;
+    const deltaMins = Math.round((deltaY / PPM) / SNAP_MINUTES) * SNAP_MINUTES;
+    const newDuration = Math.max(15, touchResizeRef.current.startDuration + deltaMins);
+    setLocalDurations(prev => { const n = new Map(prev); n.set(touchResizeRef.current!.id, newDuration); return n; });
+  }, [PPM]);
+
+  const handleTouchResizeEnd = useCallback(() => {
+    if (touchResizeRef.current) {
+      const dur = localDurations.get(touchResizeRef.current.id);
+      if (dur) onDurationChange(touchResizeRef.current.id, dur);
+    }
+    touchResizeRef.current = null;
+  }, [localDurations, onDurationChange]);
+
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   function handleSaveOrder() {
@@ -650,8 +701,8 @@ export default function TimelineView({
 
   return (
     <div>
-      {/* Save/Reset bar -- hidden on mobile (drag reordering not supported on touch) */}
-      {!isMobile && (
+      {/* Save/Reset bar */}
+      {(
       <div style={{
         display: 'flex', gap: SPACING.md, marginBottom: SPACING.lg, justifyContent: 'flex-end',
       }}>
@@ -681,7 +732,8 @@ export default function TimelineView({
         position: 'relative', display: 'flex',
         background: COLORS.cardBg,
         border: `1px solid ${COLORS.borderAccent}`,
-        borderRadius: RADIUS.xl, overflow: 'auto',
+        borderRadius: RADIUS.xl,
+        overflow: isMobile ? 'visible' : 'auto',
         minWidth: 0,
       }}>
         {/* Time gutter */}
@@ -764,6 +816,9 @@ export default function TimelineView({
               const mobileOffset = mobileTopOffsets.get(apt.id) || 0;
               const mobileTop = top + mobileOffset;
 
+              const isTouchDragging = touchDragRef.current?.id === apt.id;
+              const isTouchResizing = touchResizeRef.current?.id === apt.id;
+
               return (
                 <div
                   key={apt.id}
@@ -774,11 +829,32 @@ export default function TimelineView({
                     border: `1px solid ${solidCardBg(modColor)}`,
                     borderRadius: RADIUS.md,
                     overflow: 'hidden',
-                    zIndex: 10,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    zIndex: isTouchDragging || isTouchResizing ? 100 : 10,
+                    boxShadow: isTouchDragging ? '0 8px 24px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0,0,0,0.3)',
                     userSelect: 'none',
+                    opacity: isTouchDragging ? 0.92 : 1,
+                    transition: isTouchDragging || isTouchResizing ? 'none' : 'box-shadow 0.2s',
                   }}
                 >
+                  {/* Drag grip handle (top) */}
+                  <div
+                    onTouchStart={e => handleTouchDragStart(e, apt.id)}
+                    onTouchMove={handleTouchDragMove}
+                    onTouchEnd={handleTouchDragEnd}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      height: 18, flexShrink: 0, cursor: 'grab',
+                      background: 'rgba(255,255,255,0.05)',
+                      borderBottom: '1px solid rgba(255,255,255,0.08)',
+                      touchAction: 'none',
+                    }}
+                  >
+                    <div style={{
+                      width: 32, height: 4, borderRadius: 2,
+                      background: 'rgba(255,255,255,0.3)',
+                    }} />
+                  </div>
+
                   {/* Top section: type strip + content */}
                   <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
                     {/* Left type strip */}
@@ -924,6 +1000,25 @@ export default function TimelineView({
                         </>
                       );
                     })()}
+                  </div>
+
+                  {/* Resize grip handle (bottom) */}
+                  <div
+                    onTouchStart={e => handleTouchResizeStart(e, apt.id)}
+                    onTouchMove={handleTouchResizeMove}
+                    onTouchEnd={handleTouchResizeEnd}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      height: 18, flexShrink: 0, cursor: 'ns-resize',
+                      background: 'rgba(255,255,255,0.05)',
+                      borderTop: '1px solid rgba(255,255,255,0.08)',
+                      touchAction: 'none',
+                    }}
+                  >
+                    <div style={{
+                      width: 32, height: 4, borderRadius: 2,
+                      background: 'rgba(255,255,255,0.3)',
+                    }} />
                   </div>
                 </div>
               );
