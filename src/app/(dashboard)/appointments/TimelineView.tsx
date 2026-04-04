@@ -939,7 +939,7 @@ export default function TimelineView({
                   {/* Module badge -- top center, hidden on short cards */}
                   {duration > 30 && (
                     <div style={{
-                      position: 'absolute', top: 2, left: '50%', transform: 'translateX(-50%)',
+                      position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)',
                       zIndex: 2, pointerEvents: 'none',
                     }}>
                       <span style={{
