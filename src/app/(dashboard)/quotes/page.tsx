@@ -57,7 +57,8 @@ export default function QuoteBuilderPage() {
   return <DocumentListView docType="quote" />
 }
 
-export function DocumentListView({ docType = 'quote' }: { docType?: 'quote' | 'invoice' }) {
+export function DocumentListView({ docType: docTypeProp = 'quote' }: { docType?: 'quote' | 'invoice' }) {
+  const docType: 'quote' | 'invoice' = docTypeProp;
   const router = useRouter()
   const isMobile = useIsMobile()
   const [documents, setDocuments] = useState<Document[]>([])
@@ -319,7 +320,7 @@ export function DocumentListView({ docType = 'quote' }: { docType?: 'quote' | 'i
               borderRadius: RADIUS.md, color: 'white', fontSize: '1rem', fontWeight: 700, cursor: 'pointer',
             }}
           >
-            + New {docType === 'invoice' ? 'Invoice' : 'Quote'}
+            + New Quote
           </button>
         </div>
       )}
