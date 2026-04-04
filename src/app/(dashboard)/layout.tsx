@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Sidebar from '@/app/components/Sidebar'
 import { DashboardThemeProvider, useDashboardTheme } from '@/app/components/dashboard'
-import { useIsMobile } from '@/app/hooks/useIsMobile'
+import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile'
 
 export default function DashboardLayout({
   children,
@@ -21,11 +21,13 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { colors } = useDashboardTheme()
   const isMobile = useIsMobile()
+  const isTablet = useIsTablet()
+  const useDrawer = isMobile || isTablet // hamburger drawer for both phone + tablet
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: colors.pageBg }}>
-      {/* Mobile Header */}
-      {isMobile && (
+      {/* Mobile/Tablet Header */}
+      {useDrawer && (
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0,
@@ -68,8 +70,8 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {/* Sidebar Overlay (mobile only) */}
-      {isMobile && sidebarOpen && (
+      {/* Sidebar Overlay */}
+      {useDrawer && sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
           style={{
@@ -82,7 +84,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Sidebar */}
-      {isMobile ? (
+      {useDrawer ? (
         <div style={{
           position: 'fixed', top: 0, left: 0, bottom: 0,
           zIndex: 1001,
@@ -100,9 +102,9 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <main style={{
         flex: 1,
-        marginLeft: isMobile ? 0 : 240,
-        paddingTop: isMobile ? 56 : 0,
-        padding: isMobile ? '68px 12px 24px' : 24,
+        marginLeft: useDrawer ? 0 : 240,
+        paddingTop: useDrawer ? 56 : 0,
+        padding: useDrawer ? (isMobile ? '68px 12px 24px' : '68px 24px 24px') : 24,
         minHeight: '100vh',
         overflowX: 'hidden',
       }}>
