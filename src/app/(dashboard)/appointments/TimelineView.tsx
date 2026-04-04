@@ -1189,14 +1189,37 @@ export default function TimelineView({
                     {!isTiny && apt.linked_group_id && (
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', gap: 2,
-                        fontSize: '0.55rem', fontWeight: FONT.weightMedium,
-                        color: COLORS.textMuted, flexShrink: 0,
-                      }} title="Linked appointment group">
-                        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M6.5 9.5a3.5 3.5 0 0 0 5 0l2-2a3.5 3.5 0 0 0-5-5l-1 1" />
-                          <path d="M9.5 6.5a3.5 3.5 0 0 0-5 0l-2 2a3.5 3.5 0 0 0 5 5l1-1" />
-                        </svg>
-                        1/{(apt.linked_slots?.length || 0) + 1}
+                        flexShrink: 0,
+                      }}>
+                        <button
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => { e.stopPropagation(); setLinkedLocked(prev => !prev); }}
+                          title={linkedLocked ? 'Linked -- click to unlink (move independently)' : 'Unlinked -- click to link (move together)'}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                            padding: '1px 6px', borderRadius: 8, cursor: 'pointer',
+                            background: linkedLocked ? `${COLORS.info}20` : 'transparent',
+                            border: `1px solid ${linkedLocked ? COLORS.info + '50' : COLORS.borderInput}`,
+                            color: linkedLocked ? COLORS.info : COLORS.textMuted,
+                            fontSize: '0.55rem', fontWeight: 600,
+                          }}
+                        >
+                          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            {linkedLocked ? (
+                              <>
+                                <path d="M6.5 9.5a3.5 3.5 0 0 0 5 0l2-2a3.5 3.5 0 0 0-5-5l-1 1" />
+                                <path d="M9.5 6.5a3.5 3.5 0 0 0-5 0l-2 2a3.5 3.5 0 0 0 5 5l1-1" />
+                              </>
+                            ) : (
+                              <>
+                                <path d="M6.5 9.5a3.5 3.5 0 0 0 5 0l2-2a3.5 3.5 0 0 0-5-5l-1 1" />
+                                <path d="M9.5 6.5a3.5 3.5 0 0 0-5 0l-2 2a3.5 3.5 0 0 0 5 5l1-1" />
+                                <line x1="4" y1="4" x2="12" y2="12" strokeWidth="2" />
+                              </>
+                            )}
+                          </svg>
+                          {(apt.linked_slots?.length || 0) + 1}
+                        </button>
                         {onAddLinkedSlot && (
                           <button
                             onMouseDown={e => e.stopPropagation()}
@@ -1206,7 +1229,7 @@ export default function TimelineView({
                               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                               width: 14, height: 14, borderRadius: '50%', padding: 0,
                               background: 'transparent', border: `1px solid ${COLORS.borderInput}`,
-                              color: COLORS.textMuted, cursor: 'pointer', marginLeft: 2,
+                              color: COLORS.textMuted, cursor: 'pointer',
                             }}
                           >
                             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
