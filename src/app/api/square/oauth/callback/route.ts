@@ -6,8 +6,11 @@
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { squareClient, SQUARE_APP_ID, SQUARE_OAUTH_SECRET } from '@/app/lib/square';
+import { SquareClient, SquareEnvironment } from 'square';
+import { SQUARE_APP_ID, SQUARE_OAUTH_SECRET } from '@/app/lib/square';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
+
+const isSandbox = process.env.SQUARE_ENVIRONMENT === 'sandbox';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -32,8 +35,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Exchange authorization code for access token
-    const result = await squareClient.oAuth.obtainToken({
+    // Exchange authorization code for access token (unauthenticated client)
+    const oauthClient = new SquareClient({
+      environment: isSandbox ? SquareEnvironment.Sandbox : SquareEnvironment.Production,
+    });
+    const result = await oauthClient.oAuth.obtainToken({
       clientId: SQUARE_APP_ID,
       clientSecret: SQUARE_OAUTH_SECRET,
       grantType: 'authorization_code',
@@ -60,8 +66,9 @@ export async function GET(request: NextRequest) {
 
     // Redirect back to settings with success
     return NextResponse.redirect(new URL('/settings?tab=payment&square=connected', request.url));
-  } catch (err) {
-    console.error('Square OAuth token exchange error:', err);
-    return NextResponse.redirect(new URL('/settings?tab=payment&error=Failed+to+connect+Square', request.url));
+  } catch (err: any) {
+    const detail = err?.errors?.[0]?.detail || err?.message || String(err);
+    console.error('Square OAuth token exchange error:', detail, err);
+    return NextResponse.redirect(new URL(`/settings?tab=payment&error=${encodeURIComponent(detail)}`, request.url));
   }
 }
