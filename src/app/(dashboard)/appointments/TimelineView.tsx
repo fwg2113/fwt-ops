@@ -545,18 +545,21 @@ export default function TimelineView({
 
   const handleTouchDragStart = useCallback((e: React.TouchEvent, id: string) => {
     const touch = e.touches[0];
+    if (!touch) return;
     const startMin = workOrder.get(id) || 0;
     touchDragRef.current = { id, startY: touch.clientY, startMin };
   }, [workOrder]);
 
   const handleTouchDragMove = useCallback((e: React.TouchEvent) => {
     if (!touchDragRef.current) return;
-    e.preventDefault();
     const touch = e.touches[0];
+    if (!touch) return;
+    try { e.preventDefault(); } catch { /* passive listener */ }
     const deltaY = touch.clientY - touchDragRef.current.startY;
     const deltaMins = Math.round((deltaY / PPM) / SNAP_MINUTES) * SNAP_MINUTES;
     const newMin = Math.max(TIMELINE_START_HOUR * 60, Math.min(TIMELINE_END_HOUR * 60 - 15, touchDragRef.current.startMin + deltaMins));
-    setWorkOrder(prev => { const n = new Map(prev); n.set(touchDragRef.current!.id, newMin); return n; });
+    const dragId = touchDragRef.current.id;
+    setWorkOrder(prev => { const n = new Map(prev); n.set(dragId, newMin); return n; });
   }, [PPM, TIMELINE_END_HOUR]);
 
   const handleTouchDragEnd = useCallback(() => {
@@ -566,18 +569,21 @@ export default function TimelineView({
   const handleTouchResizeStart = useCallback((e: React.TouchEvent, id: string) => {
     e.stopPropagation();
     const touch = e.touches[0];
+    if (!touch) return;
     const startDuration = localDurations.get(id) || 60;
     touchResizeRef.current = { id, startY: touch.clientY, startDuration };
   }, [localDurations]);
 
   const handleTouchResizeMove = useCallback((e: React.TouchEvent) => {
     if (!touchResizeRef.current) return;
-    e.preventDefault();
     const touch = e.touches[0];
+    if (!touch) return;
+    try { e.preventDefault(); } catch { /* passive listener */ }
     const deltaY = touch.clientY - touchResizeRef.current.startY;
     const deltaMins = Math.round((deltaY / PPM) / SNAP_MINUTES) * SNAP_MINUTES;
     const newDuration = Math.max(15, touchResizeRef.current.startDuration + deltaMins);
-    setLocalDurations(prev => { const n = new Map(prev); n.set(touchResizeRef.current!.id, newDuration); return n; });
+    const resizeId = touchResizeRef.current.id;
+    setLocalDurations(prev => { const n = new Map(prev); n.set(resizeId, newDuration); return n; });
   }, [PPM]);
 
   const handleTouchResizeEnd = useCallback(() => {
