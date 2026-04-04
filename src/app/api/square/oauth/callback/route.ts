@@ -39,11 +39,16 @@ export async function GET(request: NextRequest) {
     const oauthClient = new SquareClient({
       environment: isSandbox ? SquareEnvironment.Sandbox : SquareEnvironment.Production,
     });
+    // Build the redirect_uri to match what was sent in the authorization request
+    const origin = request.url.split('/api/')[0];
+    const redirectUri = `${origin}/api/square/oauth/callback`;
+
     const result = await oauthClient.oAuth.obtainToken({
       clientId: SQUARE_APP_ID,
       clientSecret: SQUARE_OAUTH_SECRET,
       grantType: 'authorization_code',
       code,
+      redirectUri,
     });
 
     if (!result.accessToken) {
