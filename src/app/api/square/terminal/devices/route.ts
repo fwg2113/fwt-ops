@@ -127,18 +127,20 @@ export async function GET(request: NextRequest) {
       console.error('List device codes error:', e);
     }
 
-    // Also try listing devices directly (finds terminals on the account even without API pairing)
+    // Also try listing devices directly -- only include AVAILABLE (online) ones
     try {
       const devicesResponse: any = await tenantSquare.devices.list();
       const allDevices = devicesResponse.devices || devicesResponse.data || [];
       for (const device of allDevices) {
         const alreadyListed = devices.some(d => d.deviceId === device.id);
-        if (!alreadyListed && device.id) {
+        const statusCategory = device.status?.category || '';
+        // Only show devices that are online/available, skip OFFLINE ones
+        if (!alreadyListed && device.id && statusCategory !== 'OFFLINE') {
           devices.push({
             deviceId: device.id,
             name: device.attributes?.name || device.name || 'Square Terminal',
             code: null,
-            status: device.status?.category === 'AVAILABLE' ? 'AVAILABLE' : (device.status?.category || 'UNKNOWN'),
+            status: statusCategory === 'AVAILABLE' ? 'AVAILABLE' : statusCategory || 'UNKNOWN',
             model: device.attributes?.model || device.attributes?.type || null,
             serialNumber: device.attributes?.serialNumber || null,
           });
