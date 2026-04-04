@@ -1493,6 +1493,69 @@ export default function TimelineView({
             return connectors;
           })()}
 
+          {/* Mobile linked appointment connectors -- between stacked cards */}
+          {isMobile && (() => {
+            const linkedGroups = new Map<string, Array<{ id: string; top: number; height: number }>>();
+            activeAppointments.forEach(apt => {
+              if (!apt.linked_group_id) return;
+              const workMin = workOrder.get(apt.id) ?? timeToMinutes(apt.appointment_time);
+              const duration = localDurations.get(apt.id) || apt.duration_minutes || 60;
+              const offset = mobileTopOffsets.get(apt.id) || 0;
+              const cardTop = toPosition(workMin) + offset;
+              const MOBILE_MIN_CARD_H = 130;
+              const cardHeight = Math.max(duration * PPM, MOBILE_MIN_CARD_H) + 18 + 18; // + drag grip + resize grip
+              if (!linkedGroups.has(apt.linked_group_id)) linkedGroups.set(apt.linked_group_id, []);
+              linkedGroups.get(apt.linked_group_id)!.push({ id: apt.id, top: cardTop, height: cardHeight });
+            });
+
+            const connectors: React.ReactNode[] = [];
+            linkedGroups.forEach((cards, groupId) => {
+              if (cards.length < 2) return;
+              const sorted = [...cards].sort((a, b) => a.top - b.top);
+              for (let i = 0; i < sorted.length - 1; i++) {
+                const upper = sorted[i];
+                const lower = sorted[i + 1];
+                // Position between the bottom of upper card and top of lower card
+                const gapCenter = upper.top + upper.height + (lower.top - (upper.top + upper.height)) / 2;
+
+                connectors.push(
+                  <button
+                    key={`mlink-${groupId}-${i}`}
+                    onClick={() => setLinkedLocked(prev => !prev)}
+                    style={{
+                      position: 'absolute',
+                      top: gapCenter - 14,
+                      left: '50%', transform: 'translateX(-50%)',
+                      width: 28, height: 28,
+                      borderRadius: '50%',
+                      background: linkedLocked ? `${COLORS.info}30` : COLORS.inputBg,
+                      border: `2px solid ${linkedLocked ? COLORS.info : COLORS.borderInput}`,
+                      color: linkedLocked ? COLORS.info : COLORS.textMuted,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', zIndex: 50, padding: 0,
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      {linkedLocked ? (
+                        <>
+                          <path d="M6.5 9.5a3.5 3.5 0 0 0 5 0l2-2a3.5 3.5 0 0 0-5-5l-1 1" />
+                          <path d="M9.5 6.5a3.5 3.5 0 0 0-5 0l-2 2a3.5 3.5 0 0 0 5 5l1-1" />
+                        </>
+                      ) : (
+                        <>
+                          <path d="M6.5 9.5a3.5 3.5 0 0 0 5 0l2-2a3.5 3.5 0 0 0-5-5l-1 1" />
+                          <path d="M9.5 6.5a3.5 3.5 0 0 0-5 0l-2 2a3.5 3.5 0 0 0 5 5l1-1" />
+                          <line x1="4" y1="4" x2="12" y2="12" strokeWidth="2" />
+                        </>
+                      )}
+                    </svg>
+                  </button>
+                );
+              }
+            });
+            return connectors;
+          })()}
+
           {/* Current time line -- uses PPH for mobile-aware positioning */}
           <CurrentTimeLine endHour={TIMELINE_END_HOUR} ppm={PPM} />
         </div>
