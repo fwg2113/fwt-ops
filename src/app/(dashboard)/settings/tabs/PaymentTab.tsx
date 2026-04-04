@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardCard, Button, FormField, TextInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
@@ -157,12 +157,12 @@ function TerminalDevices() {
   const [pollCount, setPollCount] = useState(0);
 
   // Load devices on mount
-  useState(() => {
+  useEffect(() => {
     fetch('/api/square/terminal/devices')
       .then(r => r.json())
       .then(data => { setDevices(data.devices || []); setLoading(false); })
       .catch(() => setLoading(false));
-  });
+  }, []);
 
   async function startPairing() {
     setPairing(true);
@@ -253,7 +253,13 @@ function TerminalDevices() {
             </div>
           ) : (
             <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.lg }}>
-              No terminals paired yet. Pair a Square Terminal to accept card payments at the counter.
+              No terminals paired yet. To pair your Square Terminal:
+              <ol style={{ margin: '8px 0 0 0', paddingLeft: 20, lineHeight: 1.8 }}>
+                <li>Click "Pair New Terminal" below to generate a device code</li>
+                <li>On your Terminal, sign out if currently signed in</li>
+                <li>On the sign-in screen, tap "Use a device code"</li>
+                <li>Enter the code shown here</li>
+              </ol>
             </div>
           )}
 
@@ -273,7 +279,7 @@ function TerminalDevices() {
                 {pairingCode}
               </div>
               <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
-                On your Terminal: Sign out first, then enter this code on the sign-in screen. Or go to Settings &gt; Hardware &gt; General &gt; Device Code.
+                Sign out of your Terminal, then tap "Use a device code" on the sign-in screen.
               </div>
               <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 4 }}>
                 Waiting for pairing... ({pollCount * 2}s)
