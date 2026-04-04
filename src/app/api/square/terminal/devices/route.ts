@@ -92,37 +92,60 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // List all paired device codes
-    const response: any = await tenantSquare.devices.codes.list({
-      status: 'PAIRED',
-    });
-    const deviceCodes = response.deviceCodes || response.data || [];
-
-    // For each paired code, get device details
+    // Try listing paired device codes first
     const devices = [];
-    for (const code of deviceCodes) {
-      if (code.deviceId) {
-        try {
-          const deviceRes: any = await tenantSquare.devices.get({ deviceId: code.deviceId });
-          const device = deviceRes.device || deviceRes.data;
+    try {
+      const response: any = await tenantSquare.devices.codes.list({
+        status: 'PAIRED',
+      });
+      const deviceCodes = response.deviceCodes || response.data || [];
+
+      for (const code of deviceCodes) {
+        if (code.deviceId) {
+          try {
+            const deviceRes: any = await tenantSquare.devices.get({ deviceId: code.deviceId });
+            const device = deviceRes.device || deviceRes.data;
+            devices.push({
+              deviceId: code.deviceId,
+              name: code.name || device?.attributes?.name || 'Terminal',
+              code: code.code,
+              status: 'PAIRED',
+              model: device?.attributes?.model || null,
+              serialNumber: device?.attributes?.serialNumber || null,
+            });
+          } catch {
+            devices.push({
+              deviceId: code.deviceId,
+              name: code.name || 'Terminal',
+              code: code.code,
+              status: 'PAIRED',
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('List device codes error:', e);
+    }
+
+    // Also try listing devices directly (finds terminals on the account even without API pairing)
+    try {
+      const devicesResponse: any = await tenantSquare.devices.list();
+      const allDevices = devicesResponse.devices || devicesResponse.data || [];
+      for (const device of allDevices) {
+        const alreadyListed = devices.some(d => d.deviceId === device.id);
+        if (!alreadyListed && device.id) {
           devices.push({
-            deviceId: code.deviceId,
-            name: code.name || device?.attributes?.name || 'Terminal',
-            code: code.code,
-            status: 'PAIRED',
-            model: device?.attributes?.model || null,
-            serialNumber: device?.attributes?.serialNumber || null,
-          });
-        } catch {
-          // If device details fail, still include basic info
-          devices.push({
-            deviceId: code.deviceId,
-            name: code.name || 'Terminal',
-            code: code.code,
-            status: 'PAIRED',
+            deviceId: device.id,
+            name: device.attributes?.name || device.name || 'Square Terminal',
+            code: null,
+            status: device.status?.category === 'AVAILABLE' ? 'AVAILABLE' : (device.status?.category || 'UNKNOWN'),
+            model: device.attributes?.model || device.attributes?.type || null,
+            serialNumber: device.attributes?.serialNumber || null,
           });
         }
       }
+    } catch (e) {
+      console.error('List devices error:', e);
     }
 
     return NextResponse.json({ devices });

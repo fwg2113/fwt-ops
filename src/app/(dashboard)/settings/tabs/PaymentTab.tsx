@@ -245,8 +245,9 @@ function TerminalDevices() {
                   </div>
                   <span style={{
                     padding: '3px 8px', borderRadius: 4, fontSize: FONT.sizeXs, fontWeight: 600,
-                    background: 'rgba(34,197,94,0.15)', color: '#22c55e',
-                  }}>Connected</span>
+                    background: d.status === 'PAIRED' ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)',
+                    color: d.status === 'PAIRED' ? '#22c55e' : '#3b82f6',
+                  }}>{d.status === 'PAIRED' ? 'Paired' : d.status === 'AVAILABLE' ? 'Available' : d.status}</span>
                 </div>
               ))}
             </div>
@@ -272,7 +273,7 @@ function TerminalDevices() {
                 {pairingCode}
               </div>
               <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
-                On your Terminal: Settings &gt; Device &gt; General &gt; Device Code
+                On your Terminal: Sign out first, then enter this code on the sign-in screen. Or go to Settings &gt; Hardware &gt; General &gt; Device Code.
               </div>
               <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 4 }}>
                 Waiting for pairing... ({pollCount * 2}s)
