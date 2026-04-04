@@ -24,6 +24,8 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
     'ORDERS_WRITE',
     'ORDERS_READ',
     'MERCHANT_PROFILE_READ',
+    'DEVICE_CREDENTIAL_MANAGEMENT',
+    'ITEMS_READ',
   ].join('+');
 
   const authUrl = `${SQUARE_BASE_URL}/oauth2/authorize?client_id=${SQUARE_APP_ID}&scope=${scopes}&session=false&state=${shopId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
