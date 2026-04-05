@@ -17,6 +17,7 @@ interface TeamMember {
   department: string | null;
   active: boolean;
   login_mode: string | null;
+  auth_user_id: string | null;
 }
 
 interface TeamRole {
@@ -126,6 +127,8 @@ export default function TeamTab({ data, onRefresh }: Props) {
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState<MemberForm>({ ...EMPTY_FORM });
+  const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [inviteStatus, setInviteStatus] = useState<Record<string, 'sent' | 'error'>>({});
   const [adding, setAdding] = useState(false);
 
   const fetchTeam = useCallback(async () => {
@@ -260,6 +263,37 @@ export default function TeamTab({ data, onRefresh }: Props) {
     } catch {
       // Could show an error toast here
     }
+  }
+
+  async function handleInvite(member: TeamMember) {
+    if (!member.email) {
+      alert('This team member needs an email address before they can be invited.');
+      return;
+    }
+    setInvitingId(member.id);
+    try {
+      const res = await fetch('/api/auth/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teamMemberId: member.id,
+          email: member.email,
+          role: member.role || 'installer',
+          name: member.name,
+          shopId: 1,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to send invite');
+      }
+      setInviteStatus(prev => ({ ...prev, [member.id]: 'sent' }));
+      await fetchTeam();
+    } catch (err: any) {
+      setInviteStatus(prev => ({ ...prev, [member.id]: 'error' }));
+      alert(err.message || 'Failed to send invite');
+    }
+    setInvitingId(null);
   }
 
   async function handleToggleActive(member: TeamMember) {
@@ -564,6 +598,43 @@ export default function TeamTab({ data, onRefresh }: Props) {
                   >
                     {member.active ? 'Active' : 'Inactive'}
                   </button>
+
+                  {/* Invite / Auth Status */}
+                  {member.auth_user_id ? (
+                    <span style={{
+                      fontSize: FONT.sizeXs, color: COLORS.success, fontWeight: 600,
+                      padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4,
+                    }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                      Login
+                    </span>
+                  ) : member.email ? (
+                    <button
+                      onClick={() => handleInvite(member)}
+                      disabled={invitingId === member.id}
+                      title="Send invite email to set up their login"
+                      style={{
+                        background: inviteStatus[member.id] === 'sent' ? COLORS.successBg : 'rgba(59,130,246,0.1)',
+                        color: inviteStatus[member.id] === 'sent' ? COLORS.success : '#3b82f6',
+                        border: `1px solid ${inviteStatus[member.id] === 'sent' ? COLORS.success : '#3b82f680'}`,
+                        borderRadius: RADIUS.sm,
+                        padding: '4px 10px',
+                        fontSize: FONT.sizeXs,
+                        fontWeight: FONT.weightSemibold,
+                        cursor: 'pointer',
+                        opacity: invitingId === member.id ? 0.6 : 1,
+                      }}
+                    >
+                      {invitingId === member.id ? 'Sending...' : inviteStatus[member.id] === 'sent' ? 'Invited' : 'Invite'}
+                    </button>
+                  ) : (
+                    <span style={{
+                      fontSize: FONT.sizeXs, color: COLORS.textMuted, fontStyle: 'italic',
+                      padding: '4px 8px',
+                    }}>
+                      No email
+                    </span>
+                  )}
 
                   {/* Edit */}
                   <button
