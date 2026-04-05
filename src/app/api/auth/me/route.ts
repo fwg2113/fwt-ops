@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       shopId: teamMember.shop_id,
-      role: teamMember.role || 'technician',
+      role: teamMember.role || 'installer',
       name: teamMember.name,
       teamMemberId: teamMember.id,
       modulePermissions: teamMember.module_permissions || [],

@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
           name: body.name || email.split('@')[0],
           email,
           phone: body.phone || null,
-          role: role || 'technician',
+          role: role || 'installer',
           module_permissions: body.modulePermissions || ['auto_tint'],
           active: true,
         })
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       data: {
         shop_id: shopId,
         team_member_id: tmId,
-        role: role || 'technician',
+        role: role || 'installer',
       },
     });
 
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
         .update({
           auth_user_id: authUser.user.id,
           email,
-          role: role || 'technician',
+          role: role || 'installer',
         })
         .eq('id', tmId);
     }

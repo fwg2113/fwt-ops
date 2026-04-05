@@ -66,7 +66,7 @@ const EMPTY_FORM: MemberForm = {
 const ROLE_VARIANT: Record<string, 'red' | 'warning' | 'info' | 'success' | 'neutral'> = {
   Owner: 'red',
   Manager: 'warning',
-  Technician: 'info',
+  Installer: 'info',
   Apprentice: 'neutral',
 };
 
