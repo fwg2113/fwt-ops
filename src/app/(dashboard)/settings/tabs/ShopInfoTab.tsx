@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { DashboardCard, Button, FormField, TextInput, SelectInput } from '@/app/components/dashboard';
-import { COLORS, SPACING, FONT } from '@/app/components/dashboard/theme';
+import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
 
 interface Props {
@@ -77,6 +77,8 @@ export default function ShopInfoTab({ data, onSave, onRefresh }: Props) {
           <Toggle label="Fast Lane (FLQA)" checked={quickTintQuote} onChange={setQuickTintQuote} />
         </div>
       </DashboardCard>
+
+      {/* Login Mode is configured per team member in Settings > Team */}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button variant="primary" onClick={handleSave} disabled={saving}

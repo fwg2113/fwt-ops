@@ -2,6 +2,22 @@
 
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect, useMemo } from 'react'
+import { useStationMode } from './StationModeProvider'
+
+// Map sidebar hrefs to permission keys
+const ROUTE_PERMISSIONS: Record<string, string> = {
+  '/': 'dashboard',
+  '/appointments': 'appointments',
+  '/consultations': 'consultations',
+  '/customers': 'customers',
+  '/quotes': 'quotes',
+  '/invoicing': 'invoices',
+  '/bookkeeping': 'bookkeeping',
+  '/bookkeeping/ledger': 'bookkeeping',
+  '/bookkeeping/pl': 'bookkeeping',
+  '/settings': 'settings',
+  '/time-clock': 'dashboard', // everyone can access time clock
+}
 
 interface NavItem {
   href: string;
@@ -252,6 +268,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [modules, setModules] = useState<Record<string, boolean>>({})
   const [shopName, setShopName] = useState('')
+  const { isStationMode, hasPermission, requestEscalation } = useStationMode()
 
   // Fetch module toggles + shop name from config
   // Service modules (auto_tint, flat_glass, etc.) read from shop_modules table
@@ -409,12 +426,18 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
             </div>
             {section.items.map((item) => {
               const isActive = pathname === item.href
+              const permKey = ROUTE_PERMISSIONS[item.href]
+              const isLocked = isStationMode && permKey && !hasPermission(permKey)
               return (
                 <a
                   key={item.href}
                   href={item.href}
                   onClick={(e) => {
                     e.preventDefault()
+                    if (isLocked) {
+                      requestEscalation()
+                      return
+                    }
                     router.push(item.href)
                     onNavigate?.()
                   }}
@@ -423,19 +446,25 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
                     alignItems: 'center',
                     gap: '12px',
                     padding: '10px 20px',
-                    color: isActive ? RED : '#6b7280',
+                    color: isActive ? RED : isLocked ? '#4b5563' : '#6b7280',
                     textDecoration: 'none',
                     borderLeft: isActive ? `3px solid ${RED}` : '3px solid transparent',
                     background: isActive ? 'var(--dash-active-bg, rgba(220, 38, 38, 0.08))' : 'transparent',
-                    transition: 'all 0.15s ease'
+                    transition: 'all 0.15s ease',
+                    opacity: isLocked ? 0.5 : 1,
                   }}
                 >
                   <span style={{ color: isActive ? RED : '#6b7280' }}>
                     {icons[item.icon]}
                   </span>
-                  <span style={{ fontSize: '14px', fontWeight: 500, color: isActive ? 'var(--dash-text-primary, #f1f5f9)' : 'var(--dash-text-secondary, #e5e7eb)', flex: 1 }}>
-                    {item.label}{item.labelAccent && <span style={{ color: RED }}> {item.labelAccent}</span>}
+                  <span style={{ fontSize: '14px', fontWeight: 500, color: isActive ? 'var(--dash-text-primary, #f1f5f9)' : isLocked ? '#4b5563' : 'var(--dash-text-secondary, #e5e7eb)', flex: 1 }}>
+                    {item.label}{item.labelAccent && <span style={{ color: isLocked ? '#4b5563' : RED }}> {item.labelAccent}</span>}
                   </span>
+                  {isLocked && (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  )}
                 </a>
               )
             })}

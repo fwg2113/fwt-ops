@@ -16,6 +16,7 @@ interface TeamMember {
   module_permissions: string[];
   department: string | null;
   active: boolean;
+  login_mode: string | null;
 }
 
 interface TeamRole {
@@ -52,6 +53,7 @@ interface MemberForm {
   role_id: number | '';
   module_permissions: string[];
   active: boolean;
+  login_mode: string;
 }
 
 const EMPTY_FORM: MemberForm = {
@@ -62,6 +64,7 @@ const EMPTY_FORM: MemberForm = {
   role_id: '',
   module_permissions: [],
   active: true,
+  login_mode: 'user',
 };
 
 const ROLE_VARIANT: Record<string, 'red' | 'warning' | 'info' | 'success' | 'neutral'> = {
@@ -174,6 +177,7 @@ export default function TeamTab({ data, onRefresh }: Props) {
       role_id: member.role_id,
       module_permissions: [...member.module_permissions],
       active: member.active,
+      login_mode: member.login_mode || 'user',
     });
   }
 
@@ -198,6 +202,7 @@ export default function TeamTab({ data, onRefresh }: Props) {
           role_id: editForm.role_id,
           module_permissions: editForm.module_permissions,
           active: editForm.active,
+          login_mode: editForm.login_mode,
         }),
       });
       if (!res.ok) throw new Error('Failed to update team member');
@@ -226,6 +231,7 @@ export default function TeamTab({ data, onRefresh }: Props) {
           role_id: addForm.role_id,
           module_permissions: addForm.module_permissions,
           active: addForm.active,
+          login_mode: addForm.login_mode,
         }),
       });
       if (!res.ok) throw new Error('Failed to add team member');
@@ -344,9 +350,9 @@ export default function TeamTab({ data, onRefresh }: Props) {
           </div>
         </div>
 
-        {/* Row 3: PIN + Active */}
+        {/* Row 3: PIN + Login Mode + Active */}
         <div style={{ display: 'flex', gap: SPACING.md, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ flex: 1, minWidth: 200, maxWidth: 200 }}>
+          <div style={{ flex: 1, minWidth: 140, maxWidth: 180 }}>
             <FormField label="PIN" hint="For clock-in / POS">
               <TextInput
                 value={form.pin}
@@ -354,6 +360,17 @@ export default function TeamTab({ data, onRefresh }: Props) {
                 placeholder="1234"
                 style={{ fontFamily: 'monospace', letterSpacing: '2px' }}
               />
+            </FormField>
+          </div>
+          <div style={{ flex: 1, minWidth: 160, maxWidth: 220 }}>
+            <FormField label="Login Mode">
+              <SelectInput
+                value={form.login_mode}
+                onChange={e => setForm({ ...form, login_mode: e.target.value })}
+              >
+                <option value="user">User (Email Login)</option>
+                <option value="station">Station (PIN Locks)</option>
+              </SelectInput>
             </FormField>
           </div>
           <div style={{ marginBottom: SPACING.lg }}>
@@ -677,6 +694,30 @@ export default function TeamTab({ data, onRefresh }: Props) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ id: roleId, permissions }),
             });
+            onRefresh();
+          }}
+          onRename={async (roleId, name) => {
+            await fetch('/api/auto/team/roles', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: roleId, name }),
+            });
+            onRefresh();
+          }}
+          onCreate={async (name) => {
+            await fetch('/api/auto/team/roles', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            });
+            onRefresh();
+          }}
+          onDelete={async (roleId) => {
+            const res = await fetch(`/api/auto/team/roles?id=${roleId}`, { method: 'DELETE' });
+            if (!res.ok) {
+              const data = await res.json();
+              throw new Error(data.error || 'Failed to delete');
+            }
             onRefresh();
           }}
         />

@@ -65,7 +65,7 @@ export default function TimeClockPage() {
   }, [result]);
 
   const handleSubmit = async () => {
-    if (pin.length < 4) return;
+    if (pin.length < 3) return;
     setLoading(true);
     setError('');
     setResult(null);
@@ -195,19 +195,22 @@ export default function TimeClockPage() {
         minHeight: dotSize + 16,
         alignItems: 'center',
       }}>
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div
-            key={i}
-            style={{
-              width: dotSize,
-              height: dotSize,
-              borderRadius: '50%',
-              background: i < pin.length ? COLORS.red : 'transparent',
-              border: `2px solid ${i < pin.length ? COLORS.red : COLORS.borderInput}`,
+        {pin.length > 0 ? (
+          Array.from({ length: pin.length }).map((_, i) => (
+            <div key={i} style={{
+              width: dotSize, height: dotSize, borderRadius: '50%',
+              background: COLORS.red, border: `2px solid ${COLORS.red}`,
               transition: 'all 0.15s',
-            }}
-          />
-        ))}
+            }} />
+          ))
+        ) : (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} style={{
+              width: dotSize, height: dotSize, borderRadius: '50%',
+              background: 'transparent', border: `2px solid ${COLORS.borderInput}`,
+            }} />
+          ))
+        )}
       </div>
 
       {/* Result / Error message */}

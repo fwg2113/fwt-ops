@@ -5,11 +5,13 @@ import { supabaseAdmin } from '@/app/lib/supabase-server';
 // Verifies a team member PIN for station mode and time clock
 export async function POST(req: NextRequest) {
   try {
-    const { pin, shopId } = await req.json();
+    const body = await req.json();
+    const pin = body.pin;
+    const shopId = body.shopId || 1;
 
-    if (!pin || !shopId) {
+    if (!pin) {
       return NextResponse.json(
-        { error: 'pin and shopId are required' },
+        { error: 'PIN is required' },
         { status: 400 }
       );
     }

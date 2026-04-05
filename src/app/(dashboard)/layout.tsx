@@ -5,6 +5,8 @@ import Sidebar from '@/app/components/Sidebar'
 import { DashboardThemeProvider, useDashboardTheme } from '@/app/components/dashboard'
 import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile'
 import AuthProvider from '@/app/components/AuthProvider'
+import StationModeProvider from '@/app/components/StationModeProvider'
+import PinEscalationOverlay from '@/app/components/PinEscalationOverlay'
 
 export default function DashboardLayout({
   children,
@@ -13,9 +15,12 @@ export default function DashboardLayout({
 }) {
   return (
     <AuthProvider>
-      <DashboardThemeProvider>
-        <DashboardLayoutInner>{children}</DashboardLayoutInner>
-      </DashboardThemeProvider>
+      <StationModeProvider>
+        <DashboardThemeProvider>
+          <DashboardLayoutInner>{children}</DashboardLayoutInner>
+          <PinEscalationOverlay />
+        </DashboardThemeProvider>
+      </StationModeProvider>
     </AuthProvider>
   )
 }

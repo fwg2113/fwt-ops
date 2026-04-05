@@ -11,6 +11,8 @@ interface AuthUser {
   role: string;
   name: string;
   teamMemberId: string | null;
+  loginMode: 'user' | 'station';
+  rolePermissions: Record<string, boolean>;
 }
 
 interface AuthContextType {
@@ -80,6 +82,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           role: data.role,
           name: data.name,
           teamMemberId: data.teamMemberId,
+          loginMode: data.loginMode || 'user',
+          rolePermissions: data.rolePermissions || {},
         });
       } else {
         // User exists in auth but not linked to a shop -- shouldn't happen in normal flow

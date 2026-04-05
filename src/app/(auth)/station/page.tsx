@@ -21,7 +21,7 @@ export default function StationLoginPage() {
   }, [shake]);
 
   const handleSubmit = async () => {
-    if (pin.length < 4) return;
+    if (pin.length < 3) return;
     setLoading(true);
     setError('');
 
@@ -153,7 +153,10 @@ export default function StationLoginPage() {
           animation: shake ? 'shake 0.5s ease-in-out' : undefined,
         }}
       >
-        {Array.from({ length: 6 }).map((_, i) => (
+        {(pin.length > 0
+          ? Array.from({ length: pin.length })
+          : Array.from({ length: 4 })
+        ).map((_, i) => (
           <div
             key={i}
             style={{

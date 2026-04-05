@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const admin = createClient(supabaseUrl, supabaseServiceKey);
     const { data: teamMember } = await admin
       .from('team_members')
-      .select('id, shop_id, name, role, module_permissions, active')
+      .select('id, shop_id, name, role, role_id, module_permissions, login_mode, active, team_roles(permissions)')
       .eq('auth_user_id', user.id)
       .eq('active', true)
       .single();
@@ -37,12 +37,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'No team member record found' }, { status: 403 });
     }
 
+    const roleData = teamMember.team_roles as unknown as { permissions: Record<string, boolean> } | null;
+
     return NextResponse.json({
       shopId: teamMember.shop_id,
       role: teamMember.role || 'installer',
       name: teamMember.name,
       teamMemberId: teamMember.id,
       modulePermissions: teamMember.module_permissions || [],
+      loginMode: teamMember.login_mode || 'user',
+      rolePermissions: roleData?.permissions || {},
     });
   } catch (err) {
     console.error('Auth /me error:', err);

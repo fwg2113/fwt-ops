@@ -37,7 +37,7 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
     const supabase = getAdminClient();
     const body = await req.json();
 
-    const { name, email, phone, pin, role_id, module_permissions, active } = body;
+    const { name, email, phone, pin, role_id, module_permissions, active, login_mode } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
@@ -51,11 +51,12 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
         email: email || null,
         phone: phone || null,
         pin: pin || null,
-        role: 'technician', // legacy field, kept for backwards compat
+        role: 'installer', // legacy field, kept for backwards compat
         role_id: role_id || null,
         module_permissions: module_permissions || ['auto_tint'],
         department: (module_permissions || ['auto_tint']).join(','), // legacy field sync
         active: active !== false,
+        login_mode: login_mode || 'user',
       })
       .select()
       .single();
