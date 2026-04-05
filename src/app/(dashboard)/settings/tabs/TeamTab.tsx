@@ -600,32 +600,28 @@ export default function TeamTab({ data, onRefresh }: Props) {
                   </button>
 
                   {/* Invite / Auth Status */}
-                  {member.auth_user_id ? (
-                    <span style={{
-                      fontSize: FONT.sizeXs, color: COLORS.success, fontWeight: 600,
-                      padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4,
-                    }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-                      Login
-                    </span>
-                  ) : member.email ? (
+                  {member.email ? (
                     <button
                       onClick={() => handleInvite(member)}
                       disabled={invitingId === member.id}
-                      title="Send invite email to set up their login"
+                      title={member.auth_user_id ? 'Resend login invite' : 'Send invite email to set up their login'}
                       style={{
-                        background: inviteStatus[member.id] === 'sent' ? COLORS.successBg : 'rgba(59,130,246,0.1)',
-                        color: inviteStatus[member.id] === 'sent' ? COLORS.success : '#3b82f6',
-                        border: `1px solid ${inviteStatus[member.id] === 'sent' ? COLORS.success : '#3b82f680'}`,
+                        background: inviteStatus[member.id] === 'sent' ? COLORS.successBg : member.auth_user_id ? 'rgba(34,197,94,0.1)' : 'rgba(59,130,246,0.1)',
+                        color: inviteStatus[member.id] === 'sent' ? COLORS.success : member.auth_user_id ? COLORS.success : '#3b82f6',
+                        border: `1px solid ${inviteStatus[member.id] === 'sent' ? COLORS.success : member.auth_user_id ? COLORS.success + '50' : '#3b82f680'}`,
                         borderRadius: RADIUS.sm,
                         padding: '4px 10px',
                         fontSize: FONT.sizeXs,
                         fontWeight: FONT.weightSemibold,
                         cursor: 'pointer',
                         opacity: invitingId === member.id ? 0.6 : 1,
+                        display: 'flex', alignItems: 'center', gap: 4,
                       }}
                     >
-                      {invitingId === member.id ? 'Sending...' : inviteStatus[member.id] === 'sent' ? 'Invited' : 'Invite'}
+                      {member.auth_user_id && (
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                      )}
+                      {invitingId === member.id ? 'Sending...' : inviteStatus[member.id] === 'sent' ? 'Sent' : member.auth_user_id ? 'Resend' : 'Invite'}
                     </button>
                   ) : (
                     <span style={{

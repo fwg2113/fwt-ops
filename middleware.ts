@@ -5,6 +5,7 @@ import { createSupabaseMiddleware } from '@/app/lib/supabase-middleware';
 const PUBLIC_ROUTES = [
   '/login',
   '/reset-password',
+  '/set-password',
   '/book',
   '/invoice',
   '/checkout',
