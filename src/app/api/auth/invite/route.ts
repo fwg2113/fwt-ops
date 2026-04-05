@@ -52,33 +52,14 @@ export async function POST(req: NextRequest) {
       .eq('id', tmId)
       .single();
 
-    // If re-inviting or email changed, delete old auth user first
+    // If member already has auth, delete old account and re-create fresh
     if (existingTm?.auth_user_id) {
-      if (reinvite) {
-        // Delete old auth user so we can create fresh
-        try {
-          await admin.auth.admin.deleteUser(existingTm.auth_user_id);
-        } catch {
-          // If delete fails, try updating email instead
-        }
-        // Clear the link
-        await admin.from('team_members').update({ auth_user_id: null }).eq('id', tmId);
-      } else {
-        // Already has auth -- just resend the invite email
-        try {
-          // Generate a password reset link which serves as a re-invite
-          await admin.auth.admin.generateLink({
-            type: 'magiclink',
-            email,
-            options: {
-              redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com'}/set-password`,
-            },
-          });
-          return NextResponse.json({ success: true, resent: true, teamMemberId: tmId });
-        } catch {
-          // Fall through to create new invite
-        }
+      try {
+        await admin.auth.admin.deleteUser(existingTm.auth_user_id);
+      } catch {
+        // OK if delete fails
       }
+      await admin.from('team_members').update({ auth_user_id: null }).eq('id', tmId);
     }
 
     // Create Supabase Auth user with invite
