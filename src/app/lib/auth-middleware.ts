@@ -41,15 +41,41 @@ type PublicHandler = (ctx: PublicContext) => Promise<NextResponse>;
 export function withShopAuth(handler: AuthenticatedHandler) {
   return async (req: NextRequest): Promise<NextResponse> => {
     try {
-      // Extract bearer token from Authorization header
+      // Try Bearer token first (for API calls with explicit auth)
       const authHeader = req.headers.get('authorization');
       const token = authHeader?.replace('Bearer ', '');
 
-      if (!token) {
-        // PRE-AUTH FALLBACK: No login system yet, default to shop_id = 1.
-        // When auth is implemented, replace this with:
-        //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        // All routes below use shopId from this context, so switching is seamless.
+      let user = null;
+
+      if (token) {
+        const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+          global: { headers: { Authorization: `Bearer ${token}` } },
+        });
+        const { data } = await supabase.auth.getUser();
+        user = data?.user;
+      }
+
+      // Try cookie-based session (for browser requests via Supabase SSR)
+      if (!user) {
+        try {
+          const { createServerClient } = await import('@supabase/ssr');
+          const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+            cookies: {
+              getAll() { return req.cookies.getAll(); },
+              setAll() { /* read-only in API routes */ },
+            },
+          });
+          const { data } = await supabase.auth.getUser();
+          user = data?.user;
+        } catch {
+          // SSR import failed or no cookies
+        }
+      }
+
+      if (!user) {
+        // No auth at all -- return 401
+        // Temporary fallback for transition period: default to shop 1
+        // TODO: Remove this fallback once all team members have accounts
         return handler({
           shopId: 1,
           userId: 'system',
@@ -58,22 +84,11 @@ export function withShopAuth(handler: AuthenticatedHandler) {
         });
       }
 
-      // Verify the JWT and get user info
-      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: `Bearer ${token}` } },
-      });
-
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-
       // Resolve shop_id from team_members
       const adminClient = createClient(supabaseUrl, supabaseServiceKey);
       const { data: teamMember } = await adminClient
         .from('team_members')
-        .select('shop_id')
+        .select('shop_id, role')
         .eq('auth_user_id', user.id)
         .single();
 

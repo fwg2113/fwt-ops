@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Sidebar from '@/app/components/Sidebar'
 import { DashboardThemeProvider, useDashboardTheme } from '@/app/components/dashboard'
 import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile'
+import AuthProvider from '@/app/components/AuthProvider'
 
 export default function DashboardLayout({
   children,
@@ -11,9 +12,11 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <DashboardThemeProvider>
-      <DashboardLayoutInner>{children}</DashboardLayoutInner>
-    </DashboardThemeProvider>
+    <AuthProvider>
+      <DashboardThemeProvider>
+        <DashboardLayoutInner>{children}</DashboardLayoutInner>
+      </DashboardThemeProvider>
+    </AuthProvider>
   )
 }
 
