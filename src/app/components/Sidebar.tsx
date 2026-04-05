@@ -90,6 +90,7 @@ const ALL_SECTIONS: NavSection[] = [
   {
     title: 'ACCOUNT',
     items: [
+      { href: '/time-clock', label: 'Time', labelAccent: 'Clock', icon: 'clock' },
       { href: '/settings', label: 'System', labelAccent: 'Settings', icon: 'cog' },
     ]
   }

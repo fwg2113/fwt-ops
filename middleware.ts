@@ -16,6 +16,11 @@ const PUBLIC_ROUTES = [
   '/api/square/webhook',
   '/api/square/oauth/callback',
   '/api/documents/', // public token access
+  '/station', // station-based PIN login
+  '/api/auth/verify-pin', // PIN verification (used by station + time clock)
+  '/api/auth/station-login', // station login
+  '/api/auto/time-clock', // time clock (PIN-authenticated)
+  '/api/auth/setup-owner', // one-time owner setup
 ];
 
 function isPublicRoute(pathname: string): boolean {

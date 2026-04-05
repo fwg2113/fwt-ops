@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DashboardCard, Button, FormField, TextInput, SelectInput, StatusBadge } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import RolePermissionsEditor from './RolePermissionsEditor';
 
 interface TeamMember {
   id: string;
@@ -660,6 +661,26 @@ export default function TeamTab({ data, onRefresh }: Props) {
           </>
         )}
       </DashboardCard>
+
+      {/* Role Permissions */}
+      <div style={{ marginTop: SPACING.xl }}>
+        <RolePermissionsEditor
+          roles={roles.map(r => ({
+            id: r.id,
+            name: r.name,
+            permissions: (r.permissions || {}) as Record<string, boolean>,
+            is_system: r.is_system,
+          }))}
+          onSave={async (roleId, permissions) => {
+            await fetch('/api/auto/team/roles', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: roleId, permissions }),
+            });
+            onRefresh();
+          }}
+        />
+      </div>
     </div>
   );
 }
