@@ -237,7 +237,7 @@ export default function PhoneWidget() {
         const res = await fetch('/api/voice/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ identity: 'ops-dashboard' })
+          body: JSON.stringify({ identity: 'fwt-dashboard' })
         })
 
         if (!res.ok) {
@@ -297,7 +297,7 @@ export default function PhoneWidget() {
             const res = await fetch('/api/voice/token', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ identity: 'ops-dashboard' })
+              body: JSON.stringify({ identity: 'fwt-dashboard' })
             })
             const { token: newToken } = await res.json()
             device.updateToken(newToken)

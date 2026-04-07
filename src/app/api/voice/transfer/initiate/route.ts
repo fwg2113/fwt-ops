@@ -22,8 +22,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Call not found or not in progress' }, { status: 404 });
   }
 
-  // Format phone
-  const formatted = targetPhone.startsWith('+') ? targetPhone : `+1${targetPhone.replace(/\D/g, '')}`;
+  // Format target -- could be a phone number or SIP URI
+  const formatted = targetPhone.startsWith('sip:') ? targetPhone
+    : targetPhone.startsWith('+') ? targetPhone
+    : `+1${targetPhone.replace(/\D/g, '')}`;
   const conferenceName = `call-${callSid}`;
 
   // Set transfer state

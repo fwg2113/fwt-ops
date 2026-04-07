@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     .join('\n        ');
 
   // Browser client (dashboard)
-  const clientIdentity = 'ops-dashboard';
+  const clientIdentity = 'fwt-dashboard';
   const clientParams = `<Parameter name="categoryKey" value="${category.key}" /><Parameter name="categoryLabel" value="${category.label}" />`;
 
   const greetingTwiml = catGreeting?.url

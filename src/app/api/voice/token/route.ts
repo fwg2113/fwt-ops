@@ -6,7 +6,7 @@ import twilio from 'twilio';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const identity = body.identity || 'ops-dashboard';
+    const identity = body.identity || 'fwt-dashboard';
 
     const accountSid = process.env.TWILIO_ACCOUNT_SID!;
     const apiKey = process.env.TWILIO_API_KEY!;
