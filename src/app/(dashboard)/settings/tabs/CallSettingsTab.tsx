@@ -5,6 +5,9 @@ import { DashboardCard, Button, FormField, TextInput } from '@/app/components/da
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
 
+type DaySchedule = { start: string; end: string } | null;
+type WeekSchedule = Record<string, DaySchedule> | null;
+
 interface TeamPhone {
   id: string;
   name: string;
@@ -12,7 +15,23 @@ interface TeamPhone {
   enabled: boolean;
   ring_order: number;
   sip_uri: string | null;
+  schedule: WeekSchedule;
 }
+
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+const DAY_LABELS: Record<string, string> = {
+  mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun',
+};
+
+const DEFAULT_SCHEDULE: Record<string, DaySchedule> = {
+  mon: { start: '08:00', end: '18:00' },
+  tue: { start: '08:00', end: '18:00' },
+  wed: { start: '08:00', end: '18:00' },
+  thu: { start: '08:00', end: '18:00' },
+  fri: { start: '08:00', end: '18:00' },
+  sat: null,
+  sun: null,
+};
 
 interface GreetingRecording {
   id: string;
@@ -46,6 +65,10 @@ export default function CallSettingsTab() {
   const [saving, setSaving] = useState(false);
 
   // Recording
+  // Schedule
+  const [expandedSchedule, setExpandedSchedule] = useState<string | null>(null);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [recordingType, setRecordingType] = useState<string>('main');
@@ -101,6 +124,73 @@ export default function CallSettingsTab() {
     if (!confirm('Remove this team member from the phone system?')) return;
     await fetch('/api/voice/call-settings', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
     setTeamPhones(prev => prev.filter(p => p.id !== id));
+  }
+
+  // --- Schedule CRUD ---
+  async function saveSchedule(id: string, schedule: WeekSchedule) {
+    setSavingSchedule(true);
+    await fetch('/api/voice/call-settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, schedule }),
+    });
+    setTeamPhones(prev => prev.map(p => p.id === id ? { ...p, schedule } : p));
+    setSavingSchedule(false);
+  }
+
+  function toggleDayEnabled(tp: TeamPhone, day: string) {
+    const current = tp.schedule || { ...DEFAULT_SCHEDULE };
+    const updated = { ...current };
+    if (updated[day]) {
+      updated[day] = null;
+    } else {
+      updated[day] = { start: '08:00', end: '18:00' };
+    }
+    saveSchedule(tp.id, updated);
+  }
+
+  function updateDayTime(tp: TeamPhone, day: string, field: 'start' | 'end', value: string) {
+    const current = tp.schedule || { ...DEFAULT_SCHEDULE };
+    const daySchedule = current[day];
+    if (!daySchedule) return;
+    const updated = { ...current, [day]: { ...daySchedule, [field]: value } };
+    saveSchedule(tp.id, updated);
+  }
+
+  function enableSchedule(tp: TeamPhone) {
+    saveSchedule(tp.id, { ...DEFAULT_SCHEDULE });
+    setExpandedSchedule(tp.id);
+  }
+
+  function clearSchedule(tp: TeamPhone) {
+    if (!confirm(`Remove schedule for ${tp.name}? Their phone will ring at all hours when enabled.`)) return;
+    saveSchedule(tp.id, null);
+    setExpandedSchedule(null);
+  }
+
+  // Get schedule summary text
+  function getScheduleSummary(schedule: WeekSchedule): string {
+    if (!schedule) return 'Rings anytime';
+    const activeDays = DAY_KEYS.filter(d => schedule[d]);
+    if (activeDays.length === 0) return 'No days set';
+    if (activeDays.length === 7) {
+      // Check if all same hours
+      const first = schedule[activeDays[0]]!;
+      const allSame = activeDays.every(d => {
+        const s = schedule[d];
+        return s && s.start === first.start && s.end === first.end;
+      });
+      if (allSame) return `Every day ${first.start}--${first.end}`;
+    }
+    if (activeDays.length === 5 && !schedule.sat && !schedule.sun) {
+      const first = schedule[activeDays[0]]!;
+      const allSame = activeDays.every(d => {
+        const s = schedule[d];
+        return s && s.start === first.start && s.end === first.end;
+      });
+      if (allSame) return `Mon--Fri ${first.start}--${first.end}`;
+    }
+    return activeDays.map(d => DAY_LABELS[d]).join(', ');
   }
 
   // --- WebM to WAV conversion ---
@@ -324,31 +414,149 @@ export default function CallSettingsTab() {
 
         {teamPhones.map((tp, idx) => (
           <div key={tp.id} style={{
-            display: 'flex', alignItems: isMobile ? 'stretch' : 'center',
-            flexDirection: isMobile ? 'column' : 'row',
-            gap: SPACING.sm, padding: `${SPACING.sm}px 0`,
+            padding: `${SPACING.sm}px 0`,
             borderBottom: idx < teamPhones.length - 1 ? `1px solid ${COLORS.border}` : 'none',
           }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>{tp.name}</div>
-              <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, fontFamily: 'monospace' }}>{tp.phone}</div>
-              {tp.sip_uri && <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{tp.sip_uri}</div>}
+            <div style={{
+              display: 'flex', alignItems: isMobile ? 'stretch' : 'center',
+              flexDirection: isMobile ? 'column' : 'row',
+              gap: SPACING.sm,
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: COLORS.textPrimary, fontSize: FONT.sizeSm }}>{tp.name}</div>
+                <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, fontFamily: 'monospace' }}>{tp.phone}</div>
+                {tp.sip_uri && <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{tp.sip_uri}</div>}
+                <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  {getScheduleSummary(tp.schedule)}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'center' }}>
+                <button
+                  onClick={() => setExpandedSchedule(expandedSchedule === tp.id ? null : tp.id)}
+                  style={{
+                    padding: '4px 10px', borderRadius: RADIUS.sm, cursor: 'pointer',
+                    background: 'transparent', border: `1px solid ${COLORS.borderInput}`,
+                    color: COLORS.textMuted, fontSize: FONT.sizeXs, fontWeight: 600,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  Hours
+                </button>
+                <button onClick={() => toggleEnabled(tp.id, !tp.enabled)} style={{
+                  padding: '4px 12px', borderRadius: RADIUS.sm, cursor: 'pointer',
+                  background: tp.enabled ? 'rgba(22,163,74,0.1)' : 'rgba(239,68,68,0.1)',
+                  border: `1px solid ${tp.enabled ? '#86efac' : '#fca5a5'}`,
+                  color: tp.enabled ? '#16a34a' : '#ef4444', fontSize: FONT.sizeXs, fontWeight: 700,
+                }}>
+                  {tp.enabled ? 'Active' : 'Disabled'}
+                </button>
+                <button onClick={() => deletePhone(tp.id)} style={{ background: 'none', border: 'none', color: COLORS.textMuted, cursor: 'pointer', padding: 4 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'center' }}>
-              <button onClick={() => toggleEnabled(tp.id, !tp.enabled)} style={{
-                padding: '4px 12px', borderRadius: RADIUS.sm, cursor: 'pointer',
-                background: tp.enabled ? 'rgba(22,163,74,0.1)' : 'rgba(239,68,68,0.1)',
-                border: `1px solid ${tp.enabled ? '#86efac' : '#fca5a5'}`,
-                color: tp.enabled ? '#16a34a' : '#ef4444', fontSize: FONT.sizeXs, fontWeight: 700,
+
+            {/* Schedule Editor (expanded) */}
+            {expandedSchedule === tp.id && (
+              <div style={{
+                marginTop: SPACING.sm, padding: SPACING.md,
+                background: COLORS.inputBg, borderRadius: RADIUS.sm,
+                border: `1px solid ${COLORS.border}`,
               }}>
-                {tp.enabled ? 'Active' : 'Disabled'}
-              </button>
-              <button onClick={() => deletePhone(tp.id)} style={{ background: 'none', border: 'none', color: COLORS.textMuted, cursor: 'pointer', padding: 4 }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                </svg>
-              </button>
-            </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
+                  <span style={{ fontSize: FONT.sizeSm, fontWeight: 700, color: COLORS.textPrimary }}>
+                    Ring Schedule -- {tp.name}
+                  </span>
+                  {tp.schedule ? (
+                    <button onClick={() => clearSchedule(tp)} style={{
+                      padding: '3px 10px', borderRadius: RADIUS.sm, cursor: 'pointer',
+                      background: 'transparent', border: `1px solid ${COLORS.border}`,
+                      color: COLORS.textMuted, fontSize: FONT.sizeXs,
+                    }}>
+                      Clear (ring anytime)
+                    </button>
+                  ) : (
+                    <button onClick={() => enableSchedule(tp)} style={{
+                      padding: '3px 10px', borderRadius: RADIUS.sm, cursor: 'pointer',
+                      background: COLORS.red, border: 'none',
+                      color: 'white', fontSize: FONT.sizeXs, fontWeight: 600,
+                    }}>
+                      Set Schedule
+                    </button>
+                  )}
+                </div>
+
+                {tp.schedule ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.xs }}>
+                    {DAY_KEYS.map(day => {
+                      const dayData = tp.schedule![day];
+                      const isOn = !!dayData;
+                      return (
+                        <div key={day} style={{
+                          display: 'flex', alignItems: 'center', gap: SPACING.sm,
+                          padding: `${SPACING.xs}px 0`,
+                        }}>
+                          <button
+                            onClick={() => toggleDayEnabled(tp, day)}
+                            style={{
+                              width: 48, padding: '4px 0', borderRadius: RADIUS.sm, cursor: 'pointer',
+                              background: isOn ? 'rgba(22,163,74,0.1)' : 'rgba(239,68,68,0.05)',
+                              border: `1px solid ${isOn ? '#86efac' : COLORS.border}`,
+                              color: isOn ? '#16a34a' : COLORS.textMuted,
+                              fontSize: FONT.sizeXs, fontWeight: 700, textAlign: 'center',
+                            }}
+                          >
+                            {DAY_LABELS[day]}
+                          </button>
+                          {isOn ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.xs }}>
+                              <input
+                                type="time"
+                                value={dayData!.start}
+                                onChange={e => updateDayTime(tp, day, 'start', e.target.value)}
+                                style={{
+                                  padding: '4px 8px', background: COLORS.pageBg,
+                                  border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm,
+                                  color: COLORS.textPrimary, fontSize: FONT.sizeXs,
+                                }}
+                              />
+                              <span style={{ color: COLORS.textMuted, fontSize: FONT.sizeXs }}>to</span>
+                              <input
+                                type="time"
+                                value={dayData!.end}
+                                onChange={e => updateDayTime(tp, day, 'end', e.target.value)}
+                                style={{
+                                  padding: '4px 8px', background: COLORS.pageBg,
+                                  border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm,
+                                  color: COLORS.textPrimary, fontSize: FONT.sizeXs,
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <span style={{ color: COLORS.textMuted, fontSize: FONT.sizeXs, fontStyle: 'italic' }}>Off</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <p style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, margin: `${SPACING.xs}px 0 0 0`, fontStyle: 'italic' }}>
+                      Times are in your shop timezone. The dashboard browser client always rings regardless of schedule.
+                    </p>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, margin: 0 }}>
+                    No schedule set -- phone rings at all hours when enabled. Click "Set Schedule" to configure specific days and hours.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         ))}
 

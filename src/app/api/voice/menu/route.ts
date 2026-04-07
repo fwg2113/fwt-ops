@@ -11,6 +11,29 @@ const CATEGORY_MAP: Record<string, { key: string; label: string }> = {
   '6': { key: 'general', label: 'General Inquiry' },
 };
 
+const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+
+// Check if a team member is available right now based on their schedule + shop timezone
+function isAvailableNow(schedule: Record<string, { start: string; end: string } | null> | null, timezone: string): boolean {
+  // No schedule = always available (backwards compatible)
+  if (!schedule) return true;
+
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+  const dayKey = DAY_KEYS[now.getDay()];
+  const daySchedule = schedule[dayKey];
+
+  // null for this day = off
+  if (!daySchedule) return false;
+
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const [startH, startM] = daySchedule.start.split(':').map(Number);
+  const [endH, endM] = daySchedule.end.split(':').map(Number);
+  const startMinutes = startH * 60 + startM;
+  const endMinutes = endH * 60 + endM;
+
+  return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+}
+
 // POST /api/voice/menu
 // Twilio webhook: handles digit selection from IVR menu
 export async function POST(request: NextRequest) {
@@ -26,13 +49,24 @@ export async function POST(request: NextRequest) {
     await supabaseAdmin.from('calls').update({ category: category.key }).eq('call_sid', callSid);
   }
 
+  // Fetch shop timezone
+  const { data: shopConfig } = await supabaseAdmin
+    .from('shop_config')
+    .select('shop_timezone')
+    .eq('id', 1)
+    .single();
+  const timezone = shopConfig?.shop_timezone || 'America/New_York';
+
   // Fetch enabled team members ordered by ring_order
-  const { data: teamMembers } = await supabaseAdmin
+  const { data: allMembers } = await supabaseAdmin
     .from('call_settings')
     .select('*')
     .eq('shop_id', 1)
     .eq('enabled', true)
     .order('ring_order', { ascending: true });
+
+  // Filter by schedule availability
+  const teamMembers = (allMembers || []).filter(m => isAvailableNow(m.schedule, timezone));
 
   const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
   const statusUrl = `${origin}/api/voice/status`;
