@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   ${greetingTwiml}
-  <Dial callerId="${dialCallerId}" timeout="40" answerOnBridge="true" action="${completeUrl}" method="POST">
+  <Dial callerId="${dialCallerId}" timeout="40" action="${completeUrl}" method="POST">
     <Client statusCallback="${statusUrl}" statusCallbackEvent="initiated ringing answered completed" statusCallbackMethod="POST">
       <Identity>${clientIdentity}</Identity>
       ${clientParams}
