@@ -60,18 +60,24 @@ export async function POST(request: NextRequest) {
           // For SIP calls, show customer's caller ID; for phone calls, show business number
           const targetFrom = targetSettings?.sip_uri ? (call.caller_phone || twilioNumber) : twilioNumber;
 
-          // Send SMS to transfer target so they know it's a transfer BEFORE they answer
-          const targetName = call.transfer_target_name || targetSettings?.name || '';
-          const callerDisplay = call.caller_phone || 'Unknown';
-          const answeredByName = call.answered_by || 'Team';
-          if (targetSettings?.sip_uri) {
-            // Find the target's actual phone for SMS (look up from team members)
-            // SIP users might have a separate phone -- for now send to the Twilio number notification
-            // Actually send to the transfer_target_phone if it's a real phone, or skip if SIP-only
+          // Send SMS to transfer target's real phone so they know it's a transfer BEFORE answering
+          const transferFrom = call.answered_by || 'Team';
+          const targetRealName = call.transfer_target_name || targetSettings?.name || '';
+          // Look up target's real phone number from team_members table
+          if (targetRealName) {
+            const { data: teamMember } = await supabaseAdmin
+              .from('team_members')
+              .select('phone')
+              .eq('shop_id', 1)
+              .ilike('name', `%${targetRealName}%`)
+              .eq('active', true)
+              .maybeSingle();
+            if (teamMember?.phone) {
+              const cleanPhone = teamMember.phone.replace(/[^\d+]/g, '');
+              const formatted = cleanPhone.startsWith('+') ? cleanPhone : cleanPhone.length === 10 ? `+1${cleanPhone}` : `+${cleanPhone}`;
+              sendSms(formatted, `Transfer from ${transferFrom}. Customer: ${call.caller_phone || 'Unknown'}`).catch(() => {});
+            }
           }
-          // Send SMS notification via Twilio to a known phone if we have one
-          // For now, the whisper message after answer will inform them
-          // TODO: add real phone numbers to call_settings for SMS notifications
 
           const result = await createCall({
             to: targetTo,
