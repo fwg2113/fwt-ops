@@ -225,7 +225,11 @@ export default function PhoneWidget() {
     }
   }, [transferState])
 
-  // Initialize Twilio Device
+  // Keep a ref to pollActiveCalls so the main useEffect doesn't re-run when transferState changes
+  const pollActiveCallsRef = useRef(pollActiveCalls)
+  pollActiveCallsRef.current = pollActiveCalls
+
+  // Initialize Twilio Device -- runs ONCE on mount, never re-runs
   useEffect(() => {
     let device: any
     let mounted = true
@@ -326,9 +330,9 @@ export default function PhoneWidget() {
     init()
     loadTeamMembers()
 
-    // Poll for active calls every 3 seconds
-    pollActiveCalls()
-    pollRef.current = setInterval(pollActiveCalls, 3000)
+    // Poll for active calls every 3 seconds using ref (so it doesn't re-trigger this effect)
+    pollActiveCallsRef.current()
+    pollRef.current = setInterval(() => pollActiveCallsRef.current(), 3000)
 
     return () => {
       mounted = false
@@ -337,7 +341,8 @@ export default function PhoneWidget() {
       if (pollRef.current) clearInterval(pollRef.current)
       device?.destroy()
     }
-  }, [lookupCaller, startRingtone, stopRingtone, loadTwilioSDK, loadTeamMembers, pollActiveCalls])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadTwilioSDK])
 
   // Load recent calls when expanded in ready state
   useEffect(() => {
