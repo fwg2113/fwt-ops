@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     .eq('enabled', true)
     .order('ring_order', { ascending: true });
 
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com';
+  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
   const statusUrl = `${origin}/api/voice/status`;
   const completeUrl = `${origin}/api/voice/complete?callSid=${callSid}&amp;category=${category.key}`;
 

@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     await supabaseAdmin.from('calls').update({ conference_sid: conferenceSid }).eq('id', call.id);
   }
 
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com';
+  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
   const twilioNumber = process.env.TWILIO_PHONE_NUMBER || '';
 
   if (event === 'participant-join') {

@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   }).eq('id', call.id);
 
   // Redirect agent's call leg to conference
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com';
+  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
   const confJoinUrl = `${origin}/api/voice/conference/join?conf=${encodeURIComponent(conferenceName)}&role=agent&callSid=${callSid}`;
 
   try {

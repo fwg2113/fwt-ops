@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     .eq('greeting_type', 'main')
     .single();
 
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com';
+  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
   const menuUrl = `${origin}/api/voice/menu?callSid=${callSid}`;
   const retryUrl = `${origin}/api/voice/incoming?retry=${retry + 1}`;
 

@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
   // If transfer is initiating, put caller into the conference
   if (call?.transfer_status === 'initiating' && call.conference_name) {
-    const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com';
+    const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
     const confJoinUrl = `${origin}/api/voice/conference/join?conf=${encodeURIComponent(call.conference_name)}&role=caller&callSid=${paramCallSid}`;
 
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     }).eq('id', call.id);
   }
 
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com';
+  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
   const vmUrl = `${origin}/api/voice/voicemail?callSid=${paramCallSid}&from=${encodeURIComponent(from)}&customerName=${encodeURIComponent(customerName)}`;
 
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>

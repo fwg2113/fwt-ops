@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   const role = url.searchParams.get('role') || 'agent';
   const whisper = url.searchParams.get('whisper') || '';
 
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com';
+  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
   const eventsUrl = `${origin}/api/voice/conference/events?conf=${encodeURIComponent(conf)}`;
 
   // Caller has endConferenceOnExit=true (conference ends when they hang up)
