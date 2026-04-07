@@ -2,12 +2,19 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { playBuiltinSound, playCustomSound } from '@/app/lib/notificationSounds';
 
 // Client-side supabase for realtime subscriptions
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+type CustomSound = {
+  id: string;
+  label: string;
+  dataUrl: string;
+};
 
 type CallRecord = {
   id: string;
@@ -50,28 +57,25 @@ function formatPhone(phone: string): string {
   return phone;
 }
 
-// Simple built-in notification sound using Web Audio API
-function playNotificationSound() {
-  try {
-    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    // Doorbell-like tone
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc1.type = 'sine';
-    osc2.type = 'sine';
-    osc1.frequency.value = 880;
-    osc2.frequency.value = 1108;
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
-    osc1.connect(gain);
-    osc2.connect(gain);
-    gain.connect(ctx.destination);
-    osc1.start(ctx.currentTime);
-    osc2.start(ctx.currentTime);
-    osc1.stop(ctx.currentTime + 0.8);
-    osc2.stop(ctx.currentTime + 0.8);
-  } catch { /* Web Audio not available */ }
+function playSoundByKey(key: string, customSounds: CustomSound[]) {
+  if (key.startsWith('custom:')) {
+    const customId = key.replace('custom:', '');
+    const customSound = customSounds.find(cs => cs.id === customId);
+    if (customSound) {
+      playCustomSound(customSound.dataUrl);
+    } else {
+      playBuiltinSound('doorbell');
+    }
+  } else {
+    playBuiltinSound(key);
+  }
+}
+
+function isWithinActiveHours(startHour: number, endHour: number): boolean {
+  const hour = new Date().getHours();
+  return startHour <= endHour
+    ? hour >= startHour && hour < endHour
+    : hour >= startHour || hour < endHour;
 }
 
 const SAFETY_TIMEOUT_MS = 120_000;
@@ -79,8 +83,38 @@ const SAFETY_TIMEOUT_MS = 120_000;
 export default function IncomingCallToast() {
   const [toasts, setToasts] = useState<Map<string, ToastState>>(new Map());
   const [hasInteracted, setHasInteracted] = useState(false);
+  const settingsRef = useRef<{
+    sound_enabled: boolean;
+    call_sound_key: string;
+    start_hour: number;
+    end_hour: number;
+  }>({ sound_enabled: true, call_sound_key: 'doorbell', start_hour: 9, end_hour: 17 });
+  const customSoundsRef = useRef<CustomSound[]>([]);
   const hasInteractedRef = useRef(false);
   hasInteractedRef.current = hasInteracted;
+
+  // Load notification settings
+  const loadSettings = useCallback(async () => {
+    try {
+      const [notifRes, soundsRes] = await Promise.all([
+        fetch('/api/settings/notifications'),
+        fetch('/api/settings/notification-sounds'),
+      ]);
+      const notifData = await notifRes.json();
+      const soundsData = await soundsRes.json();
+      settingsRef.current = {
+        sound_enabled: notifData.sound_enabled ?? true,
+        call_sound_key: notifData.call_sound_key ?? 'doorbell',
+        start_hour: notifData.start_hour ?? 9,
+        end_hour: notifData.end_hour ?? 17,
+      };
+      customSoundsRef.current = soundsData.sounds || [];
+    } catch { /* use defaults */ }
+  }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   // Track user interaction for Web Audio API
   useEffect(() => {
@@ -134,8 +168,9 @@ export default function IncomingCallToast() {
           });
 
           // Play sound
-          if (hasInteractedRef.current) {
-            playNotificationSound();
+          const s = settingsRef.current;
+          if (s.sound_enabled && hasInteractedRef.current && isWithinActiveHours(s.start_hour, s.end_hour)) {
+            playSoundByKey(s.call_sound_key || 'doorbell', customSoundsRef.current);
           }
         }
       )
