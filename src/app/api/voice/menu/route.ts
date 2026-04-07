@@ -61,10 +61,15 @@ export async function POST(request: NextRequest) {
     ? `<Play>${catGreeting.url}</Play>`
     : '';
 
+  // Use caller's number as callerId so SIP phones show who's calling
+  const from = form.get('From') as string || '';
+  const to = form.get('To') as string || '';
+  const dialCallerId = from || to;
+
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   ${greetingTwiml}
-  <Dial timeout="30" action="${completeUrl}" method="POST">
+  <Dial callerId="${dialCallerId}" timeout="40" answerOnBridge="true" action="${completeUrl}" method="POST">
     <Client statusCallback="${statusUrl}" statusCallbackEvent="initiated ringing answered completed" statusCallbackMethod="POST">
       <Identity>${clientIdentity}</Identity>
       ${clientParams}
