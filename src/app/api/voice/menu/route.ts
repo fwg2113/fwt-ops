@@ -4,9 +4,9 @@ import { supabaseAdmin } from '@/app/lib/supabase-server';
 // IVR menu categories
 const CATEGORY_MAP: Record<string, { key: string; label: string }> = {
   '1': { key: 'auto-tint', label: 'Automotive Window Tint' },
-  '2': { key: 'flat-glass', label: 'Residential & Commercial' },
+  '2': { key: 'flat-glass', label: 'Residential and Commercial' },
   '3': { key: 'ppf', label: 'Paint Protection Film' },
-  '4': { key: 'wraps-graphics', label: 'Wraps & Graphics' },
+  '4': { key: 'wraps-graphics', label: 'Wraps and Graphics' },
   '5': { key: 'apparel', label: 'Custom Apparel' },
   '6': { key: 'general', label: 'General Inquiry' },
 };
@@ -53,9 +53,12 @@ export async function POST(request: NextRequest) {
     .map(m => `<Sip statusCallback="${statusUrl}" statusCallbackEvent="initiated ringing answered completed" statusCallbackMethod="POST">${m.sip_uri}</Sip>`)
     .join('\n        ');
 
+  // XML-safe escape for TwiML attributes
+  const xmlEsc = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
   // Browser client (dashboard)
   const clientIdentity = 'fwt-dashboard';
-  const clientParams = `<Parameter name="categoryKey" value="${category.key}" /><Parameter name="categoryLabel" value="${category.label}" />`;
+  const clientParams = `<Parameter name="categoryKey" value="${xmlEsc(category.key)}" /><Parameter name="categoryLabel" value="${xmlEsc(category.label)}" />`;
 
   const greetingTwiml = catGreeting?.url
     ? `<Play>${catGreeting.url}</Play>`
