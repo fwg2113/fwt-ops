@@ -11,6 +11,110 @@ import { createQuoteForAppointment } from '@/app/lib/invoice-utils';
 import { notifyNewBooking } from '@/app/lib/notifications';
 import { syncBookingToCalendar } from '@/app/lib/google-calendar';
 
+// Handle remote invoice payments (customer paid via Square Payment Link)
+async function handleInvoicePayment(payment: any): Promise<boolean> {
+  const orderId = payment.order_id;
+  const amountCents = payment.amountMoney?.amount;
+  const amount = amountCents ? Number(amountCents) / 100 : 0;
+  if (!amount) return false;
+
+  // Try to find a document by the Square session key stored in stripe_checkout_session_id
+  // or by the order's referenceId (which we set to the document ID)
+  let doc = null;
+
+  // First try: look for document with matching session key
+  if (orderId) {
+    const { data } = await supabaseAdmin
+      .from('documents')
+      .select('id, shop_id, balance_due, total_paid, status, doc_number, customer_name, vehicle_make, vehicle_model')
+      .eq('stripe_checkout_session_id', orderId)
+      .not('status', 'in', '("paid","void")')
+      .single();
+    doc = data;
+  }
+
+  // Second try: match by referenceId on the Square order (set to document ID)
+  if (!doc && payment.orderId) {
+    try {
+      // The referenceId is the document UUID
+      const { data } = await supabaseAdmin
+        .from('documents')
+        .select('id, shop_id, balance_due, total_paid, status, doc_number, customer_name, vehicle_make, vehicle_model')
+        .eq('id', payment.orderId)
+        .not('status', 'in', '("paid","void")')
+        .single();
+      doc = data;
+    } catch {
+      // Not a UUID match, skip
+    }
+  }
+
+  if (!doc) return false;
+
+  const shopId = doc.shop_id || 1;
+
+  // Record the payment in document_payments
+  await supabaseAdmin
+    .from('document_payments')
+    .insert({
+      document_id: doc.id,
+      shop_id: shopId,
+      amount,
+      payment_method: 'credit_card',
+      processor: 'square',
+      reference_id: payment.id || orderId,
+      status: 'confirmed',
+      notes: 'Remote payment via Square',
+    });
+
+  // Update document totals
+  const newTotalPaid = (doc.total_paid || 0) + amount;
+  const newBalanceDue = Math.max(0, (doc.balance_due || 0) - amount);
+  const newStatus = newBalanceDue <= 0 ? 'paid' : 'partial';
+
+  await supabaseAdmin
+    .from('documents')
+    .update({
+      total_paid: newTotalPaid,
+      balance_due: newBalanceDue,
+      status: newStatus,
+      payment_method: 'credit_card',
+      ...(newStatus === 'paid' ? { paid_at: new Date().toISOString(), payment_confirmed_at: new Date().toISOString() } : {}),
+    })
+    .eq('id', doc.id);
+
+  // Auto-post revenue transaction to bookkeeping
+  try {
+    const { data: txnId } = await supabaseAdmin
+      .rpc('generate_transaction_id', { p_shop_id: shopId });
+
+    await supabaseAdmin
+      .from('transactions')
+      .insert({
+        shop_id: shopId,
+        transaction_id: txnId || `TXN-${Date.now()}`,
+        txn_date: new Date().toISOString().split('T')[0],
+        brand: 'default',
+        direction: 'IN',
+        event_type: 'SALE',
+        amount,
+        account: 'Square',
+        category: 'Auto Tint Revenue',
+        vendor_or_customer: doc.customer_name || null,
+        invoice_id: doc.doc_number || null,
+        payment_method: 'credit_card',
+        processor: 'square',
+        memo: [doc.vehicle_make, doc.vehicle_model].filter(Boolean).join(' ') || null,
+        posted_by: 'system',
+      });
+  } catch (txnErr) {
+    console.error('Revenue auto-post error:', txnErr);
+  }
+
+  console.log(`Square invoice payment confirmed: ${doc.doc_number}, $${amount}`);
+  return true;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text();
@@ -34,8 +138,12 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (!pendingBooking) {
-        // Try finding by payment link ID in case orderId doesn't match
-        console.log('Square webhook: no pending booking found for order', orderId);
+        // Not a booking deposit -- check if this is a remote invoice payment
+        const handled = await handleInvoicePayment(payment);
+        if (handled) {
+          return NextResponse.json({ received: true });
+        }
+        console.log('Square webhook: no pending booking or invoice found for order', orderId);
         return NextResponse.json({ received: true });
       }
 

@@ -4,8 +4,8 @@ import { createQuoteForAppointment } from '@/app/lib/invoice-utils';
 import { notifyNewBooking } from '@/app/lib/notifications';
 import { syncBookingToCalendar } from '@/app/lib/google-calendar';
 
-// GET /api/auto/checkout/verify?session_id=cs_xxx
-// Confirms a booking after Stripe payment. If the webhook hasn't run yet,
+// GET /api/auto/checkout/verify?session_id=xxx
+// Confirms a booking after Square payment. If the webhook hasn't run yet,
 // this endpoint does the confirmation directly -- payment already succeeded
 // by the time the customer reaches the confirmation page.
 export async function GET(request: NextRequest) {

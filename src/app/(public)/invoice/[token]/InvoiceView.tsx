@@ -213,6 +213,7 @@ export default function InvoiceView({ document: docProp, shop, resolvedBrands, m
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const searchParams = useSearchParams();
   const signOnly = searchParams.get('sign') === 'true';
+  const justPaid = searchParams.get('paid') === 'true';
 
   const doc = docProp;
   const lineItems: LineItem[] = Array.isArray(doc.document_line_items)
@@ -467,7 +468,7 @@ export default function InvoiceView({ document: docProp, shop, resolvedBrands, m
     }
   }
 
-  // Stripe payment handler
+  // Square payment handler (remote invoice payment)
   async function handleCardPayment() {
     try {
       const res = await fetch('/api/auto/invoices/pay', {
@@ -1498,9 +1499,41 @@ export default function InvoiceView({ document: docProp, shop, resolvedBrands, m
         )}
 
         {/* ================================================================ */}
+        {/* PAYMENT SUCCESS BANNER (shown after Square redirect) */}
+        {/* ================================================================ */}
+        {(justPaid || isPaid) && (
+          <div className="invoice-card no-print" style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            padding: '32px',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+            marginBottom: '24px',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              width: '56px', height: '56px', borderRadius: '50%',
+              background: '#dcfce7', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', margin: '0 auto 16px',
+            }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1a1a1a', margin: '0 0 8px 0' }}>
+              {isPaid ? 'Payment Received' : 'Payment Processing'}
+            </h2>
+            <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
+              {isPaid
+                ? 'Thank you! Your payment has been confirmed.'
+                : 'Your payment is being processed. This page will update shortly.'}
+            </p>
+          </div>
+        )}
+
+        {/* ================================================================ */}
         {/* PAYMENT OPTIONS (only if unpaid, invoice only) */}
         {/* ================================================================ */}
-        {canPay && !paymentBlocked && !signOnly && (
+        {canPay && !paymentBlocked && !signOnly && !justPaid && (
           <div className="invoice-card" style={{
             background: '#ffffff',
             borderRadius: '16px',
