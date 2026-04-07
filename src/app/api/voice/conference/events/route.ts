@@ -72,16 +72,25 @@ export async function POST(request: NextRequest) {
             const transferFrom = freshCall.answered_by || 'Team';
             const targetRealName = freshCall.transfer_target_name || targetSettings?.name || '';
             if (targetRealName) {
-              const firstName = targetRealName.split(' ')[0];
-              const { data: teamMember } = await supabaseAdmin
-                .from('team_members')
-                .select('phone')
-                .eq('shop_id', 1)
-                .ilike('name', `${firstName}%`)
-                .eq('active', true)
-                .maybeSingle();
-              if (teamMember?.phone) {
-                const digits = teamMember.phone.replace(/\D/g, '');
+              // Try full name match first (e.g. "Joe Volpe" -> "Joe Volpe")
+              // Then fall back to first name with limit(1) to avoid multiple match failure
+              let teamMemberPhone: string | null = null;
+              const { data: exactMatch } = await supabaseAdmin
+                .from('team_members').select('phone').eq('shop_id', 1)
+                .ilike('name', targetRealName).eq('active', true).maybeSingle();
+              if (exactMatch?.phone) {
+                teamMemberPhone = exactMatch.phone;
+              } else {
+                const firstName = targetRealName.split(' ')[0];
+                const { data: prefixMatches } = await supabaseAdmin
+                  .from('team_members').select('phone').eq('shop_id', 1)
+                  .ilike('name', `${firstName}%`).eq('active', true).limit(1);
+                if (prefixMatches && prefixMatches.length > 0) {
+                  teamMemberPhone = prefixMatches[0].phone;
+                }
+              }
+              if (teamMemberPhone) {
+                const digits = teamMemberPhone.replace(/\D/g, '');
                 const formatted = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith('1') ? `+${digits}` : `+1${digits}`;
                 sendSms(formatted, `Transfer from ${transferFrom}. Customer: ${freshCall.caller_phone || 'Unknown'}`).catch(err => console.error('Transfer SMS error:', err));
               }
