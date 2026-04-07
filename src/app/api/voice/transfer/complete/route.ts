@@ -5,40 +5,61 @@ import { holdParticipant, removeParticipant, setEndConferenceOnExit } from '@/ap
 // POST /api/voice/transfer/complete
 // Complete warm transfer: unhold caller, remove agent, let target stay
 export async function POST(request: NextRequest) {
-  const { callSid } = await request.json();
-
-  const { data: call } = await supabaseAdmin
-    .from('calls')
-    .select('*')
-    .eq('call_sid', callSid)
-    .single();
-
-  if (!call || !call.conference_sid) {
-    return NextResponse.json({ error: 'Call not in conference' }, { status: 400 });
-  }
-
-  if (!['connecting', 'briefing'].includes(call.transfer_status || '')) {
-    return NextResponse.json({ error: 'Transfer not in progress' }, { status: 400 });
-  }
-
   try {
-    // Unhold caller
+    const { callSid } = await request.json();
+
+    if (!callSid) {
+      return NextResponse.json({ error: 'callSid is required' }, { status: 400 });
+    }
+
+    const { data: call, error } = await supabaseAdmin
+      .from('calls')
+      .select('conference_sid, agent_call_sid, call_sid, transfer_status, transfer_target_name, transfer_target_call_sid')
+      .eq('call_sid', callSid)
+      .maybeSingle();
+
+    if (error || !call) {
+      return NextResponse.json({ error: 'Call not found' }, { status: 404 });
+    }
+
+    if (!call.conference_sid) {
+      return NextResponse.json({ error: 'No active conference for this call' }, { status: 400 });
+    }
+
+    if (!['connecting', 'briefing'].includes(call.transfer_status || '')) {
+      return NextResponse.json({ error: `Cannot complete transfer in state: ${call.transfer_status}` }, { status: 400 });
+    }
+
+    // 1. Unhold the caller -- they can now hear the transfer target
     await holdParticipant(call.conference_sid, call.call_sid, false);
 
-    // Set target to end conference on exit
-    if (call.transfer_target_call_sid) {
-      await setEndConferenceOnExit(call.conference_sid, call.transfer_target_call_sid, true);
-    }
-
-    // Remove agent from conference
+    // 2. Remove the agent from the conference (agent is done)
     if (call.agent_call_sid) {
-      await removeParticipant(call.conference_sid, call.agent_call_sid);
+      try {
+        await removeParticipant(call.conference_sid, call.agent_call_sid);
+      } catch (e) {
+        // Agent may have already hung up
+        console.log('Agent may have already left:', e);
+      }
     }
 
-    await supabaseAdmin.from('calls').update({
-      transfer_status: 'completed',
-      answered_by: call.transfer_target_name || 'Transferred',
-    }).eq('id', call.id);
+    // 3. Let the transfer target end the conference when they hang up
+    if (call.transfer_target_call_sid) {
+      try {
+        await setEndConferenceOnExit(call.conference_sid, call.transfer_target_call_sid, true);
+      } catch (e) {
+        console.log('Could not set endConferenceOnExit on target:', e);
+      }
+    }
+
+    // 4. Update the call record
+    await supabaseAdmin
+      .from('calls')
+      .update({
+        transfer_status: 'completed',
+        answered_by: call.transfer_target_name || 'Transferred',
+      })
+      .eq('call_sid', callSid);
 
     return NextResponse.json({ success: true });
   } catch (error) {
