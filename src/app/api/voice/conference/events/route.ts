@@ -143,6 +143,12 @@ export async function POST(request: NextRequest) {
             transfer_target_call_sid: null,
           }).eq('id', call.id);
         }
+
+        // If transfer was cancelled (status is null) or briefing and agent leaves,
+        // end the call for the caller too -- they're alone in the conference
+        if (!status || status === 'briefing') {
+          try { await hangupCall(freshCall.call_sid); } catch {}
+        }
       }
     }
 
