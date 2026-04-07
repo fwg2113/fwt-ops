@@ -7,8 +7,9 @@ import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile'
 import AuthProvider from '@/app/components/AuthProvider'
 import StationModeProvider from '@/app/components/StationModeProvider'
 import PinEscalationOverlay from '@/app/components/PinEscalationOverlay'
-import IncomingCallToast from '@/app/components/IncomingCallToast'
-import PhoneWidget from '@/app/components/PhoneWidget'
+import dynamic from 'next/dynamic'
+const IncomingCallToast = dynamic(() => import('@/app/components/IncomingCallToast'), { ssr: false })
+const PhoneWidget = dynamic(() => import('@/app/components/PhoneWidget'), { ssr: false })
 
 export default function DashboardLayout({
   children,

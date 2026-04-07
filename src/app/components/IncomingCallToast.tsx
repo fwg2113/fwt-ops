@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { playBuiltinSound, playCustomSound } from '@/app/lib/notificationSounds';
+import { playSound, playCustomSound } from '@/app/lib/notificationSounds';
 
-// Client-side supabase for realtime subscriptions
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Stable client-side supabase instance for realtime subscriptions
+// Must be created ONCE outside the component to avoid reconnection on every render
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 type CustomSound = {
   id: string;
@@ -64,10 +64,11 @@ function playSoundByKey(key: string, customSounds: CustomSound[]) {
     if (customSound) {
       playCustomSound(customSound.dataUrl);
     } else {
-      playBuiltinSound('doorbell');
+      // Fallback to doorbell if custom sound not found
+      playSound('doorbell');
     }
   } else {
-    playBuiltinSound(key);
+    playSound(key);
   }
 }
 

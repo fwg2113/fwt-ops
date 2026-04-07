@@ -145,7 +145,7 @@ export function playCustomSound(url: string) {
 export function playSound(key: SoundKey, customSoundUrl?: string) {
   if (key.startsWith('custom:') && customSoundUrl) {
     playCustomSound(customSoundUrl);
-  } else if (!key.startsWith('custom:')) {
+  } else {
     playBuiltinSound(key);
   }
 }
