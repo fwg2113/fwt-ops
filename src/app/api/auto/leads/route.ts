@@ -3,11 +3,25 @@ import { withShopAuth, getAdminClient } from '@/app/lib/auth-middleware';
 import { sendSms, sendEmailRaw } from '@/app/lib/messaging';
 import crypto from 'crypto';
 
-// GET /api/auto/leads
-// Returns all leads (for lead tracking dashboard)
-export const GET = withShopAuth(async ({ shopId }) => {
+// GET /api/auto/leads?count_only=1
+// Returns all leads (for lead tracking dashboard) or just pending count for sidebar badge
+export const GET = withShopAuth(async ({ shopId, req }) => {
   try {
+    const { searchParams } = new URL(req.url);
+    const countOnly = searchParams.get('count_only');
     const supabase = getAdminClient();
+
+    if (countOnly) {
+      // Lightweight count for sidebar badge: leads that are sent or opened (not booked/expired)
+      const { count, error } = await supabase
+        .from('auto_leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('shop_id', shopId)
+        .in('status', ['sent', 'opened']);
+
+      if (error) return NextResponse.json({ pendingCount: 0 });
+      return NextResponse.json({ pendingCount: count || 0 });
+    }
 
     const { data, error } = await supabase
       .from('auto_leads')
@@ -20,7 +34,17 @@ export const GET = withShopAuth(async ({ shopId }) => {
       return NextResponse.json({ error: 'Failed to load leads' }, { status: 500 });
     }
 
-    return NextResponse.json({ leads: data || [] });
+    // Also return followup settings for the modal defaults
+    const { data: shopConfig } = await supabase
+      .from('shop_config')
+      .select('followup_enabled, followup_default_discount_type, followup_default_discount_amount, followup_auto_enabled, followup_auto_days, followup_expiry_days')
+      .eq('id', shopId)
+      .single();
+
+    return NextResponse.json({
+      leads: data || [],
+      followupSettings: shopConfig || {},
+    });
   } catch (error) {
     console.error('Leads error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -38,6 +62,7 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
       vehicle_year, vehicle_make, vehicle_model, vehicle_id,
       class_keys, services, total_price, send_method,
       charge_deposit, deposit_amount, options_mode,
+      pre_appointment_type, pre_appointment_date, pre_appointment_time,
     } = body;
 
     const supabase = getAdminClient();
@@ -95,6 +120,9 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
         deposit_amount: deposit_amount ?? 0,
         send_method: send_method || 'copy',
         options_mode: options_mode || false,
+        pre_appointment_type: pre_appointment_type || null,
+        pre_appointment_date: pre_appointment_date || null,
+        pre_appointment_time: pre_appointment_time || null,
         status: 'sent',
       })
       .select()
@@ -234,17 +262,129 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
 });
 
 // PATCH /api/auto/leads
-// Update lead status (e.g., when link is opened or booking is completed)
+// Update lead status OR send follow-up with incentive
 export const PATCH = withShopAuth(async ({ shopId, req }) => {
   try {
     const body = await req.json();
-    const { id, token, ...updates } = body;
+    const { id, token, action, ...updates } = body;
 
+    const supabase = getAdminClient();
+
+    // ========== FOLLOW-UP ACTION ==========
+    if (action === 'followup') {
+      if (!id) return NextResponse.json({ error: 'Lead ID required for follow-up' }, { status: 400 });
+
+      const { discount_type, discount_amount, send_method, message } = body;
+
+      // Get the existing lead
+      const { data: lead, error: leadErr } = await supabase
+        .from('auto_leads')
+        .select('*')
+        .eq('id', id)
+        .eq('shop_id', shopId)
+        .single();
+
+      if (leadErr || !lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+
+      // Generate a new token for the follow-up link (fresh link, same lead data)
+      const newToken = crypto.randomBytes(16).toString('hex');
+
+      // Update the lead with follow-up info + new token + discount
+      // Strip pre-set appointment -- original date/time is likely stale
+      const followupUpdates: Record<string, unknown> = {
+        token: newToken,
+        followup_count: (lead.followup_count || 0) + 1,
+        last_followup_at: new Date().toISOString(),
+        status: 'sent', // reset to sent
+        link_opened_at: null, // reset open tracking
+        pre_appointment_type: null,
+        pre_appointment_date: null,
+        pre_appointment_time: null,
+      };
+
+      // Apply discount if provided
+      if (discount_type && discount_amount && discount_amount > 0) {
+        followupUpdates.followup_discount_type = discount_type;
+        followupUpdates.followup_discount_amount = discount_amount;
+      } else {
+        followupUpdates.followup_discount_type = null;
+        followupUpdates.followup_discount_amount = null;
+      }
+
+      const { data: updated, error: updateErr } = await supabase
+        .from('auto_leads')
+        .update(followupUpdates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (updateErr) return NextResponse.json({ error: 'Failed to update lead' }, { status: 500 });
+
+      // Build the new booking URL
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || req.headers.get('origin') || '';
+      const bookingUrl = `${baseUrl}/book/lead/${newToken}`;
+
+      // Get shop name
+      const { data: shopConfig } = await supabase
+        .from('shop_config')
+        .select('shop_name')
+        .eq('id', shopId)
+        .single();
+      const shopName = shopConfig?.shop_name || 'Your Shop';
+
+      // Build discount text
+      let discountText = '';
+      if (discount_type && discount_amount && discount_amount > 0) {
+        discountText = discount_type === 'dollar'
+          ? ` We're offering $${discount_amount} off as a special incentive.`
+          : ` We're offering ${discount_amount}% off as a special incentive.`;
+      }
+
+      const vehicleStr = [lead.vehicle_year, lead.vehicle_make, lead.vehicle_model].filter(Boolean).join(' ');
+      let sent = false;
+      const methods = Array.isArray(send_method) ? send_method : [send_method];
+
+      // Send via SMS
+      if (methods.includes('sms') && lead.customer_phone) {
+        const smsText = message
+          || `${shopName}: Just following up on your ${vehicleStr} tint quote ($${Number(lead.total_price).toLocaleString()}).${discountText} Book here: ${bookingUrl}`;
+        sent = await sendSms(lead.customer_phone, smsText) || sent;
+      }
+
+      // Send via Email
+      if (methods.includes('email') && lead.customer_email) {
+        const html = `
+          <div style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #1a1a1a;">Following Up on Your Quote</h2>
+            <p>Hi ${lead.customer_name || 'there'},</p>
+            <p>We wanted to follow up on the window tint quote we put together for your <strong>${vehicleStr}</strong>.</p>
+            <p><strong>Quote Total: $${Number(lead.total_price).toLocaleString()}</strong></p>
+            ${discount_type && discount_amount > 0 ? `<p style="color: #16a34a; font-weight: 700;">${discount_type === 'dollar' ? `Special Offer: $${discount_amount} OFF` : `Special Offer: ${discount_amount}% OFF`} -- book now to claim this deal!</p>` : ''}
+            <p style="margin: 24px 0;">
+              <a href="${bookingUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 700;">
+                View Quote &amp; Book Now
+              </a>
+            </p>
+            <p style="color: #666; font-size: 14px;">This link is unique to you and contains your pre-selected services.</p>
+            <p style="color: #999; font-size: 12px;">${shopName}</p>
+          </div>
+        `;
+        const emailSent = await sendEmailRaw(
+          lead.customer_email,
+          `Following Up -- Your ${vehicleStr} Tint Quote`,
+          html,
+          shopName
+        );
+        sent = emailSent || sent;
+      }
+
+      return NextResponse.json({ lead: updated, booking_url: bookingUrl, sent });
+    }
+
+    // ========== STANDARD STATUS UPDATE ==========
     if (!id && !token) {
       return NextResponse.json({ error: 'Lead ID or token required' }, { status: 400 });
     }
-
-    const supabase = getAdminClient();
 
     let query = supabase.from('auto_leads').update(updates).eq('shop_id', shopId);
     if (id) query = query.eq('id', id);

@@ -57,8 +57,18 @@ export const GET = withShopAuth(async ({ shopId }) => {
       supabase.from('shop_modules').select('*, service_modules(module_key, label, color, parent_category, pricing_model, icon_name)').eq('shop_id', shopId).order('sort_order'),
     ]);
 
+    // Strip sensitive fields from shop_config before sending to client
+    const safeConfig = { ...shopConfigRes.data };
+    const sensitiveFields = [
+      'square_access_token', 'square_refresh_token', 'square_merchant_id',
+      'stripe_secret_key', 'twilio_auth_token', 'plaid_secret',
+    ];
+    for (const field of sensitiveFields) {
+      delete (safeConfig as Record<string, unknown>)[field];
+    }
+
     return NextResponse.json({
-      shopConfig: shopConfigRes.data,
+      shopConfig: safeConfig,
       schedule: scheduleRes.data || [],
       dropoffSlots: dropoffSlotsRes.data || [],
       waitingSlots: waitingSlotsRes.data || [],

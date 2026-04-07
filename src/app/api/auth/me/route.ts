@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const admin = createClient(supabaseUrl, supabaseServiceKey);
     const { data: teamMember } = await admin
       .from('team_members')
-      .select('id, shop_id, name, role, role_id, module_permissions, login_mode, active, team_roles(permissions)')
+      .select('id, shop_id, name, role, role_id, module_permissions, login_mode, view_preferences, active, team_roles(permissions)')
       .eq('auth_user_id', user.id)
       .eq('active', true)
       .single();
@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
       modulePermissions: teamMember.module_permissions || [],
       loginMode: teamMember.login_mode || 'user',
       rolePermissions: roleData?.permissions || {},
+      viewPreferences: teamMember.view_preferences || {},
     });
   } catch (err) {
     console.error('Auth /me error:', err);

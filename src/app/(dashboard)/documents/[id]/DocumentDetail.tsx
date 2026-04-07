@@ -208,7 +208,10 @@ export default function DocumentDetail({
   const [showSendModal, setShowSendModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
-  const [sendMethod, setSendMethod] = useState<'sms' | 'email'>('sms')
+  const defaultSendSms = (shopConfig as Record<string, unknown>)?.default_send_sms !== false
+  const defaultSendEmail = (shopConfig as Record<string, unknown>)?.default_send_email !== false
+  const [sendViaSms, setSendViaSms] = useState(defaultSendSms)
+  const [sendViaEmail, setSendViaEmail] = useState(defaultSendEmail)
   const [sending, setSending] = useState(false)
 
   // Quote approval mode (for send modal)
@@ -408,10 +411,14 @@ export default function DocumentDetail({
       })
     }
 
+    const sendMethods: string[] = []
+    if (sendViaSms) sendMethods.push('sms')
+    if (sendViaEmail) sendMethods.push('email')
+
     await fetch('/api/auto/invoices/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ invoiceId: doc.id, method: sendMethod }),
+      body: JSON.stringify({ invoiceId: doc.id, methods: sendMethods }),
     })
     setDoc(prev => ({ ...prev, status: 'sent', sent_at: new Date().toISOString() }))
     setShowSendModal(false)
@@ -1841,28 +1848,33 @@ export default function DocumentDetail({
       {/* ================================================================ */}
       {showSendModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: COLORS.pageBg, border: `1px solid ${COLORS.border}`, borderRadius: RADIUS.lg, padding: SPACING.xl, width: 400 }}>
+          <div style={{ background: COLORS.pageBg, border: `1px solid ${COLORS.border}`, borderRadius: RADIUS.lg, padding: isMobile ? SPACING.lg : SPACING.xl, width: isMobile ? 'calc(100% - 32px)' : 420, maxWidth: '100%', maxHeight: isMobile ? '90vh' : undefined, overflowY: isMobile ? 'auto' : undefined }}>
             <h3 style={{ margin: `0 0 ${SPACING.md}px`, color: COLORS.textPrimary, fontSize: '18px', fontWeight: 600 }}>
               Send {isQuote ? 'Quote' : 'Invoice'}
             </h3>
             <p style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.lg }}>
               Send to {customerName}{customerPhone ? ` at ${customerPhone}` : ''}{customerEmail ? ` / ${customerEmail}` : ''}
             </p>
-            <div style={{ display: 'flex', gap: SPACING.sm, marginBottom: SPACING.lg }}>
-              <button onClick={() => setSendMethod('sms')} style={{
-                flex: 1, padding: SPACING.md, borderRadius: RADIUS.sm, cursor: 'pointer',
-                background: sendMethod === 'sms' ? `${COLORS.borderAccentSolid}20` : 'transparent',
-                border: sendMethod === 'sms' ? `2px solid ${COLORS.borderAccentSolid}` : `1px solid ${COLORS.border}`,
-                color: sendMethod === 'sms' ? COLORS.borderAccentSolid : COLORS.textMuted,
-                fontSize: FONT.sizeSm, fontWeight: 600,
-              }}>SMS</button>
-              <button onClick={() => setSendMethod('email')} style={{
-                flex: 1, padding: SPACING.md, borderRadius: RADIUS.sm, cursor: 'pointer',
-                background: sendMethod === 'email' ? `${COLORS.borderAccentSolid}20` : 'transparent',
-                border: sendMethod === 'email' ? `2px solid ${COLORS.borderAccentSolid}` : `1px solid ${COLORS.border}`,
-                color: sendMethod === 'email' ? COLORS.borderAccentSolid : COLORS.textMuted,
-                fontSize: FONT.sizeSm, fontWeight: 600,
-              }}>Email</button>
+            <div style={{ fontSize: FONT.sizeXs, fontWeight: 600, color: COLORS.textPrimary, marginBottom: SPACING.xs }}>Send via</div>
+            <div style={{ display: 'flex', gap: SPACING.md, marginBottom: SPACING.lg }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={sendViaSms} onChange={e => setSendViaSms(e.target.checked)}
+                  style={{ width: 18, height: 18, accentColor: COLORS.borderAccentSolid, cursor: 'pointer' }}
+                  disabled={!customerPhone}
+                />
+                <span style={{ fontSize: FONT.sizeSm, color: customerPhone ? COLORS.textPrimary : COLORS.textMuted }}>
+                  SMS{!customerPhone ? ' (no phone)' : ''}
+                </span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={sendViaEmail} onChange={e => setSendViaEmail(e.target.checked)}
+                  style={{ width: 18, height: 18, accentColor: COLORS.borderAccentSolid, cursor: 'pointer' }}
+                  disabled={!customerEmail}
+                />
+                <span style={{ fontSize: FONT.sizeSm, color: customerEmail ? COLORS.textPrimary : COLORS.textMuted }}>
+                  Email{!customerEmail ? ' (no email)' : ''}
+                </span>
+              </label>
             </div>
 
             {/* Quote Approval Mode (only for quotes) */}
@@ -1983,8 +1995,8 @@ export default function DocumentDetail({
             })()}
 
             <div style={{ display: 'flex', gap: SPACING.sm }}>
-              <ActionButton variant="primary" onClick={handleSendDocument} disabled={sending} style={{ flex: 1, justifyContent: 'center' }}>
-                {sending ? 'Sending...' : 'Send Now'}
+              <ActionButton variant="primary" onClick={handleSendDocument} disabled={sending || (!sendViaSms && !sendViaEmail)} style={{ flex: 1, justifyContent: 'center' }}>
+                {sending ? 'Sending...' : `Send${sendViaSms && sendViaEmail ? ' via SMS + Email' : sendViaSms ? ' via SMS' : sendViaEmail ? ' via Email' : ''}`}
               </ActionButton>
               <ActionButton onClick={() => setShowSendModal(false)}>Cancel</ActionButton>
             </div>

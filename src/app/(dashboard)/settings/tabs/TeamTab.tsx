@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { DashboardCard, Button, FormField, TextInput, SelectInput, StatusBadge } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import RolePermissionsEditor from './RolePermissionsEditor';
+import PayStructureEditor from './PayStructureEditor';
 
 interface TeamMember {
   id: string;
@@ -14,6 +15,7 @@ interface TeamMember {
   role: string;
   role_id: number;
   module_permissions: string[];
+  brand_ids: number[];
   department: string | null;
   active: boolean;
   login_mode: string | null;
@@ -46,6 +48,13 @@ interface Props {
   onRefresh: () => void;
 }
 
+interface Brand {
+  id: number;
+  name: string;
+  short_name: string | null;
+  primary_color: string;
+}
+
 interface MemberForm {
   name: string;
   email: string;
@@ -53,6 +62,7 @@ interface MemberForm {
   pin: string;
   role_id: number | '';
   module_permissions: string[];
+  brand_ids: number[];
   active: boolean;
   login_mode: string;
 }
@@ -64,6 +74,7 @@ const EMPTY_FORM: MemberForm = {
   pin: '',
   role_id: '',
   module_permissions: [],
+  brand_ids: [],
   active: true,
   login_mode: 'user',
 };
@@ -115,6 +126,7 @@ function UserIcon() {
 
 export default function TeamTab({ data, onRefresh }: Props) {
   const shopModules = ((data.shopModules || []) as ShopModule[]).filter(m => m.enabled);
+  const brands = (data.brands || []) as Brand[];
 
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [roles, setRoles] = useState<TeamRole[]>([]);
@@ -179,6 +191,7 @@ export default function TeamTab({ data, onRefresh }: Props) {
       pin: member.pin || '',
       role_id: member.role_id,
       module_permissions: [...member.module_permissions],
+      brand_ids: [...(member.brand_ids || [])],
       active: member.active,
       login_mode: member.login_mode || 'user',
     });
@@ -204,6 +217,7 @@ export default function TeamTab({ data, onRefresh }: Props) {
           pin: editForm.pin.trim() || null,
           role_id: editForm.role_id,
           module_permissions: editForm.module_permissions,
+          brand_ids: editForm.brand_ids,
           active: editForm.active,
           login_mode: editForm.login_mode,
         }),
@@ -233,6 +247,7 @@ export default function TeamTab({ data, onRefresh }: Props) {
           pin: addForm.pin.trim() || null,
           role_id: addForm.role_id,
           module_permissions: addForm.module_permissions,
+          brand_ids: addForm.brand_ids,
           active: addForm.active,
           login_mode: addForm.login_mode,
         }),
@@ -458,6 +473,52 @@ export default function TeamTab({ data, onRefresh }: Props) {
                       background: mod.service_modules.color, flexShrink: 0,
                     }} />
                     {mod.service_modules.label}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Brand Assignment */}
+        {brands.length > 1 && (
+          <div>
+            <div style={{
+              fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold,
+              color: COLORS.textPrimary, marginBottom: SPACING.md,
+              textTransform: 'uppercase', letterSpacing: '0.5px',
+            }}>
+              Brands
+            </div>
+            <div style={{ display: 'flex', gap: SPACING.lg, flexWrap: 'wrap' }}>
+              {brands.map(brand => {
+                const checked = form.brand_ids.includes(brand.id);
+                return (
+                  <label key={brand.id} style={{
+                    display: 'flex', alignItems: 'center', gap: SPACING.sm,
+                    cursor: 'pointer', fontSize: FONT.sizeSm, color: COLORS.textSecondary,
+                    padding: `${SPACING.xs}px ${SPACING.md}px`,
+                    background: checked ? 'rgba(255,255,255,0.04)' : 'transparent',
+                    borderRadius: RADIUS.sm,
+                    border: `1px solid ${checked ? (brand.primary_color || COLORS.red) : COLORS.border}`,
+                    transition: 'all 0.15s',
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        const next = checked
+                          ? form.brand_ids.filter(id => id !== brand.id)
+                          : [...form.brand_ids, brand.id];
+                        setForm({ ...form, brand_ids: next });
+                      }}
+                      style={{ width: 16, height: 16, accentColor: brand.primary_color || COLORS.red, cursor: 'pointer' }}
+                    />
+                    <span style={{
+                      width: 8, height: 8, borderRadius: '50%',
+                      background: brand.primary_color || COLORS.red, flexShrink: 0,
+                    }} />
+                    {brand.short_name || brand.name}
                   </label>
                 );
               })}
@@ -693,6 +754,17 @@ export default function TeamTab({ data, onRefresh }: Props) {
                       Cancel
                     </Button>
                   </div>
+
+                  {/* Pay Structure */}
+                  <PayStructureEditor
+                    teamMemberId={member.id}
+                    teamMemberName={member.name}
+                    shopModules={shopModules.map(m => ({
+                      module_key: m.service_modules.module_key,
+                      label: m.service_modules.label,
+                      color: m.service_modules.color,
+                    }))}
+                  />
                 </div>
               )}
             </div>

@@ -20,6 +20,7 @@ import CheckoutTab from './tabs/CheckoutTab';
 import ActionButtonsTab from './tabs/ActionButtonsTab';
 import PaymentTab from './tabs/PaymentTab';
 import DiscountsWarrantyTab from './tabs/DiscountsWarrantyTab';
+import CallSettingsTab from './tabs/CallSettingsTab';
 
 // Auto Tint module tabs
 import AutoTintBookingTab from './tabs/AutoTintBookingTab';
@@ -29,7 +30,7 @@ import VehiclesTab from './tabs/VehiclesTab';
 
 type TabKey =
   | 'shop-info' | 'brands' | 'modules' | 'appearance' | 'team'
-  | 'schedule' | 'closed-dates' | 'notifications' | 'checkout' | 'action-buttons' | 'payment' | 'discounts'
+  | 'schedule' | 'closed-dates' | 'notifications' | 'checkout' | 'action-buttons' | 'payment' | 'discounts' | 'calls'
   | 'auto-tint-booking' | 'auto-tint-services' | 'auto-tint-films' | 'auto-tint-vehicles';
 
 interface NavSection {
@@ -83,6 +84,7 @@ export default function SettingsPage() {
         { key: 'action-buttons', label: 'Action Buttons' },
         { key: 'payment', label: 'Payment' },
         { key: 'discounts', label: 'Discounts & Warranty' },
+        { key: 'calls', label: 'Phone System' },
       ],
     },
     {
@@ -300,6 +302,9 @@ export default function SettingsPage() {
               )}
               {activeTab === 'discounts' && (
                 <DiscountsWarrantyTab data={settingsData} onSave={saveSettings} onAdd={addSettings} onDelete={deleteSettings} onRefresh={refreshSettings} />
+              )}
+              {activeTab === 'calls' && (
+                <CallSettingsTab />
               )}
 
               {/* Auto Tint */}

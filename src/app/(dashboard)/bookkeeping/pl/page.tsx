@@ -30,16 +30,25 @@ export default function ProfitLossPage() {
   const [viewMode, setViewMode] = useState<'month' | 'year'>('month');
   const [month, setMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
   const [year, setYear] = useState(String(now.getFullYear()));
+  const [brandFilter, setBrandFilter] = useState('');
+  const [brands, setBrands] = useState<Array<{ id: number; name: string; short_name: string | null }>>([]);
+
+  useEffect(() => {
+    fetch('/api/auto/settings').then(r => r.json()).then(data => {
+      setBrands(data.brands || []);
+    }).catch(() => {});
+  }, []);
 
   const fetchData = useCallback(() => {
     setLoading(true);
-    const params = viewMode === 'month' ? `month=${month}` : `year=${year}`;
+    const params = new URLSearchParams(viewMode === 'month' ? { month } : { year });
+    if (brandFilter) params.set('brand', brandFilter);
     fetch(`/api/bookkeeping/summary?${params}`)
       .then(r => r.json())
       .then(data => setSummary(data))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [viewMode, month, year]);
+  }, [viewMode, month, year, brandFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -102,6 +111,15 @@ export default function ProfitLossPage() {
         ) : (
           <SelectInput value={year} onChange={e => setYear(e.target.value)} style={{ maxWidth: isMobile ? '100%' : 120, minHeight: 40, flex: isMobile ? '1 1 100%' : undefined }}>
             {[2024, 2025, 2026, 2027].map(y => <option key={y} value={String(y)}>{y}</option>)}
+          </SelectInput>
+        )}
+        {brands.length > 1 && (
+          <SelectInput value={brandFilter} onChange={e => setBrandFilter(e.target.value)} style={{ maxWidth: isMobile ? '100%' : 160, minHeight: 40, flex: isMobile ? '1 1 100%' : undefined }}>
+            <option value="">Combined (All Brands)</option>
+            {brands.map(b => (
+              <option key={b.id} value={b.short_name || b.name}>{b.short_name || b.name}</option>
+            ))}
+            <option value="SHARED">SHARED Only</option>
           </SelectInput>
         )}
       </div>

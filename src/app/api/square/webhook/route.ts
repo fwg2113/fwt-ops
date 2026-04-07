@@ -8,6 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
 import { createQuoteForAppointment } from '@/app/lib/invoice-utils';
+import { notifyNewBooking } from '@/app/lib/notifications';
+import { syncBookingToCalendar } from '@/app/lib/google-calendar';
 
 export async function POST(request: NextRequest) {
   try {
@@ -108,6 +110,42 @@ export async function POST(request: NextRequest) {
           .update({ document_id: quoteResult.documentId })
           .eq('id', pendingBooking.id);
       }
+
+      // Send team + customer notifications
+      notifyNewBooking(pendingBooking.shop_id || 1, {
+        customer_name: pendingBooking.customer_name || '',
+        customer_phone: pendingBooking.customer_phone || null,
+        customer_email: pendingBooking.customer_email || null,
+        vehicle_year: pendingBooking.vehicle_year,
+        vehicle_make: pendingBooking.vehicle_make,
+        vehicle_model: pendingBooking.vehicle_model,
+        appointment_date: pendingBooking.appointment_date,
+        appointment_time: pendingBooking.appointment_time,
+        services_json: Array.isArray(pendingBooking.services_json) ? pendingBooking.services_json : [],
+        subtotal: pendingBooking.subtotal || 0,
+        deposit_paid: depositAmount,
+        balance_due: (pendingBooking.subtotal || 0) - (pendingBooking.discount_amount || 0) - depositAmount,
+        module: pendingBooking.module || 'auto_tint',
+      }).catch(err => console.error('Notification error:', err));
+
+      // Sync to Google Calendar
+      syncBookingToCalendar(pendingBooking.shop_id || 1, {
+        id: pendingBooking.id,
+        customer_name: pendingBooking.customer_name || '',
+        customer_phone: pendingBooking.customer_phone || null,
+        vehicle_year: pendingBooking.vehicle_year,
+        vehicle_make: pendingBooking.vehicle_make,
+        vehicle_model: pendingBooking.vehicle_model,
+        appointment_date: pendingBooking.appointment_date,
+        appointment_time: pendingBooking.appointment_time,
+        appointment_type: pendingBooking.appointment_type || 'dropoff',
+        services_json: Array.isArray(pendingBooking.services_json) ? pendingBooking.services_json : [],
+        subtotal: pendingBooking.subtotal || 0,
+        deposit_paid: depositAmount,
+        balance_due: (pendingBooking.subtotal || 0) - (pendingBooking.discount_amount || 0) - depositAmount,
+        duration_minutes: pendingBooking.duration_minutes || 60,
+        notes: pendingBooking.notes || null,
+      }).catch(err => console.error('Calendar sync error:', err));
 
       console.log(`Square payment confirmed: booking ${bookingId}`);
     }

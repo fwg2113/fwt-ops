@@ -143,10 +143,18 @@ function LogoUpload({ brandId, label, currentUrl, ratio, onUploaded }: {
 export default function BrandsTab({ data, onSave, onAdd, onDelete, onRefresh }: Props) {
   const isMobile = useIsMobile();
   const brands = ((data.brands || []) as Brand[]).sort((a, b) => a.sort_order - b.sort_order);
+  const shopConfig = (data.shopConfig || {}) as Record<string, unknown>;
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+
+  // Shared expense splits
+  const [sharedSplits, setSharedSplits] = useState<Record<string, number>>(
+    (shopConfig.shared_expense_splits || {}) as Record<string, number>
+  );
+  const [splitSaving, setSplitSaving] = useState(false);
+  const [splitSaved, setSplitSaved] = useState(false);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({ ...EMPTY_FORM });
@@ -575,6 +583,69 @@ export default function BrandsTab({ data, onSave, onAdd, onDelete, onRefresh }: 
           </>
         )}
       </DashboardCard>
+
+      {/* Shared Expense Split */}
+      {brands.length > 1 && (
+        <DashboardCard title="Shared Expense Split">
+          <p style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, margin: `0 0 ${SPACING.md}px 0` }}>
+            When an expense is marked as SHARED, how should it be allocated across brands for P&L purposes?
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.sm }}>
+            {brands.filter(b => b.active).map(brand => {
+              const key = brand.short_name || brand.name;
+              const pct = (sharedSplits[key] || 0) * 100;
+              return (
+                <div key={brand.id} style={{ display: 'flex', alignItems: 'center', gap: SPACING.md }}>
+                  <div style={{
+                    width: 10, height: 10, borderRadius: '50%',
+                    background: brand.primary_color || '#dc2626', flexShrink: 0,
+                  }} />
+                  <span style={{ fontSize: FONT.sizeSm, color: COLORS.textPrimary, minWidth: 60 }}>
+                    {key}
+                  </span>
+                  <input
+                    type="number"
+                    value={pct || ''}
+                    onChange={e => {
+                      const val = parseFloat(e.target.value) || 0;
+                      setSharedSplits(prev => ({ ...prev, [key]: val / 100 }));
+                    }}
+                    style={{
+                      width: 70, padding: '6px 10px', textAlign: 'center',
+                      background: COLORS.inputBg, color: COLORS.textPrimary,
+                      border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm,
+                      fontSize: FONT.sizeSm,
+                    }}
+                    placeholder="0"
+                  />
+                  <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>%</span>
+                </div>
+              );
+            })}
+          </div>
+          {(() => {
+            const totalPct = Object.values(sharedSplits).reduce((s, v) => s + (v || 0), 0) * 100;
+            const isValid = Math.abs(totalPct - 100) < 0.1;
+            return (
+              <div style={{ marginTop: SPACING.md, display: 'flex', alignItems: 'center', gap: SPACING.md }}>
+                <span style={{ fontSize: FONT.sizeXs, color: isValid ? COLORS.success : '#f59e0b', fontWeight: 600 }}>
+                  Total: {totalPct.toFixed(0)}%{!isValid && ' (should equal 100%)'}
+                </span>
+                <Button variant="primary" size="sm" disabled={splitSaving} onClick={async () => {
+                  setSplitSaving(true);
+                  await onSave('shop_config', null, { shared_expense_splits: sharedSplits });
+                  setSplitSaving(false);
+                  setSplitSaved(true);
+                  setTimeout(() => setSplitSaved(false), 2000);
+                  onRefresh();
+                }} style={splitSaved ? { background: '#22c55e', borderColor: '#22c55e' } : {}}>
+                  {splitSaving ? 'Saving...' : splitSaved ? 'Saved' : 'Save Split'}
+                </Button>
+              </div>
+            );
+          })()}
+        </DashboardCard>
+      )}
     </div>
   );
 }

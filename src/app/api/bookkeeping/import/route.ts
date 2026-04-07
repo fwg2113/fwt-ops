@@ -18,7 +18,7 @@ interface ImportRow {
 // Bulk import expense transactions from mapped CSV data
 export const POST = withShopAuth(async ({ shopId, req }) => {
   try {
-    const { rows } = await req.json() as { rows: ImportRow[] };
+    const { rows, posted_by: customPostedBy } = await req.json() as { rows: ImportRow[]; posted_by?: string };
 
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
       return NextResponse.json({ error: 'No rows to import' }, { status: 400 });
@@ -80,7 +80,7 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
             vendor_or_customer: row.vendor || null,
             payment_method: row.payment_method || null,
             memo: row.description || null,
-            posted_by: 'csv_import',
+            posted_by: customPostedBy || 'csv_import',
           });
 
         if (error) {

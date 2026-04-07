@@ -408,6 +408,11 @@ export default function TimelineView({
   const resizeStartRef = useRef({ y: 0, duration: 0 });
   const timelineRef = useRef<HTMLDivElement>(null);
 
+  // Frozen column assignments: snapshot taken when drag/resize starts so other cards don't shift
+  const frozenColumnsRef = useRef<Map<string, { column: number; totalColumns: number }> | null>(null);
+  // Always-current ref to live column assignments (set after computation below)
+  const liveColumnsRef = useRef<Map<string, { column: number; totalColumns: number }>>(new Map());
+
   // Linked column swap overrides: maps linked_group_id -> ordered array of appointment ids
   // This controls which linked card appears in which column
   const [linkedColumnOrder, setLinkedColumnOrder] = useState<Map<string, string[]>>(new Map());
@@ -422,6 +427,8 @@ export default function TimelineView({
     dragOffsetRef.current = mouseRelY - cardTopPx;
     dragStartXRef.current = e.clientX;
     lastSwapXRef.current = e.clientX;
+    // Freeze column assignments so other cards don't shift during drag
+    frozenColumnsRef.current = new Map(liveColumnsRef.current);
     setDragId(id);
   }, [workOrder]);
 
@@ -510,6 +517,7 @@ export default function TimelineView({
     e.preventDefault();
     e.stopPropagation();
     resizeStartRef.current = { y: e.clientY, duration: localDurations.get(id) || 60 };
+    frozenColumnsRef.current = new Map(liveColumnsRef.current);
     setResizeId(id);
   }, [localDurations]);
 
@@ -547,6 +555,8 @@ export default function TimelineView({
     const touch = e.touches[0];
     if (!touch) return;
     const startMin = workOrder.get(id) || 0;
+    // Freeze column assignments so other cards don't shift during touch drag
+    frozenColumnsRef.current = new Map(liveColumnsRef.current);
     touchDragRef.current = { id, startY: touch.clientY, startMin };
   }, [workOrder]);
 
@@ -564,6 +574,7 @@ export default function TimelineView({
 
   const handleTouchDragEnd = useCallback(() => {
     touchDragRef.current = null;
+    frozenColumnsRef.current = null;
   }, []);
 
   const handleTouchResizeStart = useCallback((e: React.TouchEvent, id: string) => {
@@ -571,6 +582,7 @@ export default function TimelineView({
     const touch = e.touches[0];
     if (!touch) return;
     const startDuration = localDurations.get(id) || 60;
+    frozenColumnsRef.current = new Map(liveColumnsRef.current);
     touchResizeRef.current = { id, startY: touch.clientY, startDuration };
   }, [localDurations]);
 
@@ -592,6 +604,7 @@ export default function TimelineView({
       if (dur) onDurationChange(touchResizeRef.current.id, dur);
     }
     touchResizeRef.current = null;
+    frozenColumnsRef.current = null;
   }, [localDurations, onDurationChange]);
 
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -630,11 +643,27 @@ export default function TimelineView({
   const activeAppointments = appointments.filter(a => a.status !== 'cancelled');
 
   // Compute overlap column assignments (Google Calendar-style side-by-side)
-  const columnAssignments = assignColumns(
+  // During drag/resize, use frozen assignments so other cards don't shift
+  const liveColumnAssignments = useMemo(() => assignColumns(
     activeAppointments,
     (apt) => workOrder.get(apt.id) ?? timeToMinutes(apt.appointment_time),
     (apt) => localDurations.get(apt.id) || apt.duration_minutes || 60,
-  );
+  ), [activeAppointments, workOrder, localDurations]);
+
+  // Keep the ref in sync so drag start handlers can snapshot it
+  liveColumnsRef.current = liveColumnAssignments;
+
+  const isDraggingOrResizing = !!(dragId || resizeId || touchDragRef.current || touchResizeRef.current);
+  const columnAssignments = (isDraggingOrResizing && frozenColumnsRef.current)
+    ? frozenColumnsRef.current
+    : liveColumnAssignments;
+
+  // Keep frozen ref in sync when not interacting
+  useEffect(() => {
+    if (!isDraggingOrResizing) {
+      frozenColumnsRef.current = null;
+    }
+  }, [isDraggingOrResizing]);
 
   // Mobile overlap resolution: push overlapping cards down so they don't cover each other
   const mobileTopOffsets = useMemo(() => {

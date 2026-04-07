@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader, DashboardCard, Button } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
+import { useAuth } from '@/app/components/AuthProvider';
 import type { Appointment } from './AppointmentCard';
 import { MODULE_LABELS } from './AppointmentCard';
 import EditAppointmentModal from './EditAppointmentModal';
@@ -44,11 +45,13 @@ function AppointmentsPageInner() {
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
+  const { user, updateViewPreferences } = useAuth();
   const [selectedDate, setSelectedDate] = useState(searchParams.get('date') || new Date().toISOString().split('T')[0]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [summary, setSummary] = useState<DaySummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [moduleFilter, setModuleFilter] = useState<string>('all');
+  const [activeModules, setActiveModules] = useState<string[]>([]); // empty = all
+  const [prefsInitialized, setPrefsInitialized] = useState(false);
   const [teamFilter, setTeamFilter] = useState<string>('all');
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string; phone: string | null; module_permissions: string[] }>>([]);
 
@@ -65,7 +68,7 @@ function AppointmentsPageInner() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createModalLinkedGroupId, setCreateModalLinkedGroupId] = useState<string | null>(null);
   const [createModalPrefill, setCreateModalPrefill] = useState<{ customer: { name: string; phone: string; email: string }; vehicle: { year: number | null; make: string | null; model: string | null }; date: string } | null>(null);
-  const [shopModules, setShopModules] = useState<Array<{ service_modules: { module_key: string; label: string; color: string } }>>([]);
+  const [shopModules, setShopModules] = useState<Array<{ enabled: boolean; service_modules: { module_key: string; label: string; color: string } }>>([]);
   const [moduleColorMap, setModuleColorMap] = useState<Record<string, string>>({});
   const [moduleLabelMap, setModuleLabelMap] = useState<Record<string, string>>({});
 
@@ -112,6 +115,18 @@ function AppointmentsPageInner() {
     }
     fetchConfig();
   }, []);
+
+  // Initialize module filter from saved preferences (once)
+  useEffect(() => {
+    if (prefsInitialized) return;
+    if (!user || shopModules.filter(sm => sm.enabled !== false).length === 0) return;
+    const saved = user.viewPreferences?.appointments;
+    if (saved && Array.isArray(saved) && saved.length > 0) {
+      setActiveModules(saved);
+    }
+    // else leave empty = show all
+    setPrefsInitialized(true);
+  }, [user, shopModules, prefsInitialized]);
 
   useEffect(() => {
     fetchAppointments();
@@ -252,7 +267,7 @@ function AppointmentsPageInner() {
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
   const activeAppointments = appointments
     .filter(a => a.status !== 'cancelled')
-    .filter(a => moduleFilter === 'all' || (a.module || 'auto_tint') === moduleFilter)
+    .filter(a => activeModules.length === 0 || activeModules.includes(a.module || 'auto_tint'))
     .filter(a => {
       if (teamFilter === 'all') return true;
       if (teamFilter === 'unassigned') return !a.assigned_team_member_id;
@@ -332,111 +347,138 @@ function AppointmentsPageInner() {
           )}
         </div>
 
-        {/* Row 2 (mobile): Filters side by side */}
-        {isMobile ? (
-          <div style={{ display: 'flex', gap: 8 }}>
-            {(() => {
-              const modulesInDay = [...new Set(appointments.map(a => a.module || 'auto_tint'))];
-              const showFilter = modulesInDay.length > 1;
-              if (!showFilter) return null;
+        {/* Row 2: Service module toggle buttons + team filter */}
+        {shopModules.filter(sm => sm.enabled !== false).length > 1 && (
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 6,
+            alignItems: 'center',
+          }}>
+            {/* All button */}
+            <button
+              onClick={() => setActiveModules([])}
+              style={{
+                padding: isMobile ? '8px 14px' : '6px 14px',
+                borderRadius: 20,
+                border: `1.5px solid ${activeModules.length === 0 ? COLORS.textPrimary : COLORS.borderInput}`,
+                background: activeModules.length === 0 ? COLORS.textPrimary : 'transparent',
+                color: activeModules.length === 0 ? COLORS.pageBg : COLORS.textSecondary,
+                fontSize: isMobile ? '0.85rem' : FONT.sizeSm,
+                fontWeight: FONT.weightSemibold,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              All
+            </button>
+
+            {/* Module toggle buttons */}
+            {shopModules.filter(sm => sm.enabled !== false).map(sm => {
+              const key = sm.service_modules.module_key;
+              const color = sm.service_modules.color || COLORS.textPrimary;
+              const isActive = activeModules.includes(key);
+              const label = isMobile
+                ? (MODULE_LABELS[key]?.replace('Window Tint', 'Tint').replace('Flat Glass', 'Flat').replace('Vehicle Wraps', 'Wraps').replace('Ceramic Coating', 'Ceramic') || key)
+                : (MODULE_LABELS[key] || sm.service_modules.label || key);
               return (
-                <select
-                  value={moduleFilter}
-                  onChange={e => setModuleFilter(e.target.value)}
+                <button
+                  key={key}
+                  onClick={() => {
+                    if (isActive) {
+                      const next = activeModules.filter(m => m !== key);
+                      setActiveModules(next);
+                    } else {
+                      setActiveModules([...activeModules, key]);
+                    }
+                  }}
                   style={{
-                    background: COLORS.inputBg, color: COLORS.textPrimary,
-                    border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
-                    padding: '12px 12px', fontSize: '0.95rem', cursor: 'pointer', outline: 'none',
-                    appearance: 'auto' as const, flex: 1,
+                    padding: isMobile ? '8px 14px' : '6px 14px',
+                    borderRadius: 20,
+                    border: `1.5px solid ${isActive ? color : COLORS.borderInput}`,
+                    background: isActive ? color : 'transparent',
+                    color: isActive ? '#fff' : COLORS.textSecondary,
+                    fontSize: isMobile ? '0.85rem' : FONT.sizeSm,
+                    fontWeight: FONT.weightSemibold,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
                   }}
                 >
-                  <option value="all">All Modules</option>
-                  {modulesInDay.map(mod => (
-                    <option key={mod} value={mod}>
-                      {MODULE_LABELS[mod] || mod}
-                    </option>
-                  ))}
-                </select>
+                  {label}
+                </button>
               );
-            })()}
+            })}
 
-            {teamMembers.length >= 2 && (
-              <select
-                value={teamFilter}
-                onChange={e => setTeamFilter(e.target.value)}
-                style={{
-                  background: COLORS.inputBg, color: COLORS.textPrimary,
-                  border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
-                  padding: '12px 12px', fontSize: '0.95rem', cursor: 'pointer', outline: 'none',
-                  appearance: 'auto' as const, flex: 1,
-                }}
-              >
-                <option value="all">All Team</option>
-                <option value="unassigned">Unassigned</option>
-                {teamMembers.map(tm => (
-                  <option key={tm.id} value={tm.id}>
-                    {tm.name}
-                  </option>
-                ))}
-              </select>
-            )}
+            {/* Save as Default button */}
+            <button
+              onClick={() => updateViewPreferences('appointments', activeModules)}
+              title="Save current filter as default for this page"
+              style={{
+                padding: isMobile ? '8px 10px' : '6px 10px',
+                borderRadius: 20,
+                border: `1px solid ${COLORS.borderInput}`,
+                background: 'transparent',
+                color: COLORS.textMuted,
+                fontSize: isMobile ? '0.8rem' : '0.75rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                marginLeft: 4,
+              }}
+              onMouseEnter={e => {
+                (e.target as HTMLElement).style.borderColor = COLORS.textTertiary;
+                (e.target as HTMLElement).style.color = COLORS.textSecondary;
+              }}
+              onMouseLeave={e => {
+                (e.target as HTMLElement).style.borderColor = COLORS.borderInput;
+                (e.target as HTMLElement).style.color = COLORS.textMuted;
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" style={{ verticalAlign: '-1px', marginRight: 4 }}>
+                <path d="M12.667 2H3.333C2.597 2 2 2.597 2 3.333v9.334C2 13.403 2.597 14 3.333 14h9.334c.736 0 1.333-.597 1.333-1.333V3.333C14 2.597 13.403 2 12.667 2z"/>
+                <path d="M11.333 14V8.667H4.667V14"/>
+                <path d="M4.667 2v3.333h5.333"/>
+              </svg>
+              Save Default
+            </button>
           </div>
-        ) : (
-          <>
-            {/* Desktop: filters inline */}
-            {(() => {
-              const modulesInDay = [...new Set(appointments.map(a => a.module || 'auto_tint'))];
-              const showFilter = modulesInDay.length > 1;
-              if (!showFilter) return null;
-              return (
-                <select
-                  value={moduleFilter}
-                  onChange={e => setModuleFilter(e.target.value)}
-                  style={{
-                    background: COLORS.inputBg, color: COLORS.textPrimary,
-                    border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
-                    padding: '8px 16px', fontSize: FONT.sizeBase, cursor: 'pointer', outline: 'none',
-                    appearance: 'auto' as const,
-                  }}
-                >
-                  <option value="all">All Modules</option>
-                  {modulesInDay.map(mod => (
-                    <option key={mod} value={mod}>
-                      {MODULE_LABELS[mod] || mod}
-                    </option>
-                  ))}
-                </select>
-              );
-            })()}
-
-            {teamMembers.length >= 2 && (
-              <select
-                value={teamFilter}
-                onChange={e => setTeamFilter(e.target.value)}
-                style={{
-                  background: COLORS.inputBg, color: COLORS.textPrimary,
-                  border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
-                  padding: '8px 16px', fontSize: FONT.sizeBase, cursor: 'pointer', outline: 'none',
-                  appearance: 'auto' as const,
-                }}
-              >
-                <option value="all">All Team</option>
-                <option value="unassigned">Unassigned</option>
-                {teamMembers.map(tm => (
-                  <option key={tm.id} value={tm.id}>
-                    {tm.name}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <div style={{ flex: 1 }} />
-
-            <div style={{ fontSize: FONT.sizeBase, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold }}>
-              {displayDate}
-            </div>
-          </>
         )}
+
+        {/* Team filter + date display */}
+        <div style={{
+          display: 'flex', gap: 8, alignItems: 'center',
+          flexWrap: isMobile ? undefined : 'nowrap',
+        }}>
+          {teamMembers.length >= 2 && (
+            <select
+              value={teamFilter}
+              onChange={e => setTeamFilter(e.target.value)}
+              style={{
+                background: COLORS.inputBg, color: COLORS.textPrimary,
+                border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.md,
+                padding: isMobile ? '12px 12px' : '8px 16px',
+                fontSize: isMobile ? '0.95rem' : FONT.sizeBase,
+                cursor: 'pointer', outline: 'none',
+                appearance: 'auto' as const,
+                flex: isMobile ? 1 : undefined,
+              }}
+            >
+              <option value="all">All Team</option>
+              <option value="unassigned">Unassigned</option>
+              {teamMembers.map(tm => (
+                <option key={tm.id} value={tm.id}>
+                  {tm.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {!isMobile && (
+            <>
+              <div style={{ flex: 1 }} />
+              <div style={{ fontSize: FONT.sizeBase, color: COLORS.textPrimary, fontWeight: FONT.weightSemibold }}>
+                {displayDate}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Display date on mobile (compact) */}

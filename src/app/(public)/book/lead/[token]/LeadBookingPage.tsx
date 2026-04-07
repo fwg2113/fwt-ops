@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import type { BulkConfig, AppointmentType } from '../../lib/types';
+import type { BulkConfig, AppointmentType, AutoFilm, AutoFilmShade } from '../../lib/types';
+import { FilmCard, ShadePicker } from '@/app/components/booking';
+import { getAllowedShades, needsSplitShades } from '@/app/components/booking/pricing';
 import AppointmentTypeModal from '../../components/AppointmentTypeModal';
+import TintLawsModal, { TintLawsButton } from '../../components/TintLawsModal';
 import '../../booking.css';
 
 // ---------------------------------------------------------------------------
@@ -37,6 +40,11 @@ interface LeadData {
   deposit_amount: number;
   status: string;
   options_mode: boolean;
+  pre_appointment_type: string | null;
+  pre_appointment_date: string | null;
+  pre_appointment_time: string | null;
+  followup_discount_type: string | null;
+  followup_discount_amount: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,42 +97,107 @@ export default function LeadBookingPage() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
 
+  // --- Window status ---
+  const [windowStatus, setWindowStatus] = useState('');
+  const [hasAftermarketTint, setHasAftermarketTint] = useState('');
+  const [showTintLaws, setShowTintLaws] = useState(false);
+
+  // --- Policy checkboxes ---
+  const [policyCheckbox, setPolicyCheckbox] = useState(false);
+  const [priceAckCheckbox, setPriceAckCheckbox] = useState(false);
+
+  // --- Windshield ---
+  const [windshieldReplaced, setWindshieldReplaced] = useState('');
+  const [windshield72hrAck, setWindshield72hrAck] = useState(false);
+
   // --- Booking ---
   const [booking, setBooking] = useState(false);
   const [bookingError, setBookingError] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
 
+  // --- Pre-set appointment: allow customer to override ---
+  const [overrideSchedule, setOverrideSchedule] = useState(false);
+
   // --- Options mode: customer picks one film per service group ---
   const [optionSelections, setOptionSelections] = useState<Record<string, number>>({});
   // { serviceKey: index into that group's options }
 
-  // Group services by service_key for options mode
+  // Shade overrides for options mode (optional -- customer can refine shade)
+  const [optionShades, setOptionShades] = useState<Record<string, { front: string | null; rear: string | null }>>({});
+
+  // Group services for options mode:
+  // - Each service_key gets its own group with its film options
+  // - Primary services are tagged as exclusive (mutually exclusive -- pick one)
+  // - Add-ons are independent
   const serviceGroups = useMemo(() => {
-    if (!lead || !lead.options_mode) return [];
-    const groups = new Map<string, { label: string; options: LeadService[] }>();
+    if (!lead || !lead.options_mode || !config) return [];
+
+    const svcLookup = new Map<string, boolean>();
+    for (const s of (config.services || [])) {
+      svcLookup.set(s.service_key, s.is_primary);
+    }
+
+    const groups = new Map<string, { label: string; options: LeadService[]; exclusive: boolean }>();
     for (const svc of lead.services) {
       if (!groups.has(svc.service_key)) {
-        groups.set(svc.service_key, { label: svc.label, options: [] });
+        groups.set(svc.service_key, {
+          label: svc.label,
+          options: [],
+          exclusive: svcLookup.get(svc.service_key) ?? false,
+        });
       }
       groups.get(svc.service_key)!.options.push(svc);
     }
+
     return Array.from(groups.entries()).map(([key, group]) => ({ serviceKey: key, ...group }));
-  }, [lead]);
+  }, [lead, config]);
 
   // Compute selected services (resolved from options) and total
   const resolvedServices = useMemo(() => {
     if (!lead) return [];
     if (!lead.options_mode) return lead.services;
-    // Only include groups where the customer made a selection
+    // Include groups where the customer made a selection (skip _film key)
     return serviceGroups
       .filter(group => optionSelections[group.serviceKey] !== undefined)
-      .map(group => group.options[optionSelections[group.serviceKey]])
-      .filter(Boolean);
+      .map(group => {
+        const svc = group.options[optionSelections[group.serviceKey]];
+        if (!svc) return null;
+        // Apply per-service shade override
+        const shadeOverride = optionShades[group.serviceKey];
+        if (shadeOverride?.front) {
+          return { ...svc, shade_front: shadeOverride.front, shade_rear: shadeOverride.rear || shadeOverride.front };
+        }
+        return svc;
+      })
+      .filter(Boolean) as typeof lead.services;
+  }, [lead, serviceGroups, optionSelections, optionShades]);
+
+  // Check if at least one primary service is selected (required for options mode)
+  const hasPrimarySelected = useMemo(() => {
+    if (!lead?.options_mode) return true;
+    const primaryGroups = serviceGroups.filter(g => g.exclusive);
+    if (primaryGroups.length === 0) return true;
+    return primaryGroups.some(g => optionSelections[g.serviceKey] !== undefined);
   }, [lead, serviceGroups, optionSelections]);
 
   const resolvedTotal = useMemo(() => {
     return resolvedServices.reduce((sum, svc) => sum + (svc?.price || 0), 0);
   }, [resolvedServices]);
+
+  // --- Has windshield service? ---
+  const hasWindshield = useMemo(() => {
+    if (!lead) return false;
+    const services = lead.options_mode ? resolvedServices : lead.services;
+    return services.some(s => s.service_key === 'FULL_WS');
+  }, [lead, resolvedServices]);
+
+  // --- 72-hour minimum date (when windshield was recently replaced) ---
+  const windshield72hrMinDate = useMemo(() => {
+    if (!hasWindshield || windshieldReplaced !== 'yes' || !windshield72hrAck) return null;
+    const d = new Date();
+    d.setDate(d.getDate() + 3); // 72 hours = 3 days
+    return d.toISOString().split('T')[0];
+  }, [hasWindshield, windshieldReplaced, windshield72hrAck]);
 
   // --- Load lead + config in parallel ---
   useEffect(() => {
@@ -146,6 +219,11 @@ export default function LeadBookingPage() {
         }
         if (leadData.lead.customer_phone) setPhone(leadData.lead.customer_phone);
         if (leadData.lead.customer_email) setEmail(leadData.lead.customer_email);
+
+        // Pre-fill appointment if pre-set by shop
+        if (leadData.lead.pre_appointment_type) setAppointmentType(leadData.lead.pre_appointment_type);
+        if (leadData.lead.pre_appointment_date) setSelectedDate(leadData.lead.pre_appointment_date);
+        if (leadData.lead.pre_appointment_time) setSelectedTime(leadData.lead.pre_appointment_time);
       })
       .catch(() => setLoadError('Failed to load. Please try again.'));
   }, [token]);
@@ -246,12 +324,23 @@ export default function LeadBookingPage() {
     if (!selectedDate) return false;
     if (!isHeadsUp && !selectedTime) return false;
     // Options mode: must have at least one option selected (not necessarily all groups)
-    if (lead.options_mode && serviceGroups.length > 0) {
-      const hasAnySelection = Object.keys(optionSelections).length > 0;
-      if (!hasAnySelection) return false;
+    if (lead.options_mode) {
+      if (!hasPrimarySelected) return false;
     }
+    // Window status required
+    if (!windowStatus) return false;
+    if (windowStatus === 'previously' && !hasAftermarketTint) return false;
+    // Policy checkbox required if deposit
+    if (lead.charge_deposit && lead.deposit_amount > 0 && !policyCheckbox) return false;
+    // Price ack checkbox
+    if (config.shopConfig.price_ack_enabled !== false && !priceAckCheckbox) return false;
+    // Windshield checks
+    if (hasWindshield && !windshieldReplaced) return false;
+    if (hasWindshield && windshieldReplaced === 'yes' && !windshield72hrAck) return false;
+    // If windshield was replaced recently, enforce 72-hour min date
+    if (windshield72hrMinDate && selectedDate < windshield72hrMinDate) return false;
     return true;
-  }, [lead, config, firstName, lastName, phone, email, selectedDate, selectedTime, isHeadsUp, serviceGroups, optionSelections]);
+  }, [lead, config, firstName, lastName, phone, email, selectedDate, selectedTime, isHeadsUp, serviceGroups, optionSelections, hasPrimarySelected, windowStatus, hasAftermarketTint, policyCheckbox, priceAckCheckbox, hasWindshield, windshieldReplaced, windshield72hrAck, windshield72hrMinDate]);
 
   // --- Handle booking ---
   const handleBook = useCallback(async () => {
@@ -284,18 +373,43 @@ export default function LeadBookingPage() {
         duration: 60,
         module: 'auto_tint',
       })),
-      subtotal: lead.options_mode ? resolvedTotal : lead.total_price,
-      discountCode: null,
-      discountType: null,
-      discountPercent: 0,
-      discountAmount: 0,
+      subtotal: (() => {
+        const base = lead.options_mode ? resolvedTotal : Number(lead.total_price);
+        if (lead.followup_discount_type && Number(lead.followup_discount_amount) > 0) {
+          const disc = lead.followup_discount_type === 'dollar'
+            ? Math.min(Number(lead.followup_discount_amount), base)
+            : Math.round(base * (Number(lead.followup_discount_amount) / 100));
+          return Math.max(0, base - disc);
+        }
+        return base;
+      })(),
+      discountCode: lead.followup_discount_type ? 'FOLLOWUP' : null,
+      discountType: lead.followup_discount_type || null,
+      discountPercent: lead.followup_discount_type === 'percent' ? Number(lead.followup_discount_amount) : 0,
+      discountAmount: (() => {
+        if (!lead.followup_discount_type || !Number(lead.followup_discount_amount)) return 0;
+        const base = lead.options_mode ? resolvedTotal : Number(lead.total_price);
+        return lead.followup_discount_type === 'dollar'
+          ? Math.min(Number(lead.followup_discount_amount), base)
+          : Math.round(base * (Number(lead.followup_discount_amount) / 100));
+      })(),
       depositPaid: lead.charge_deposit ? lead.deposit_amount : 0,
-      balanceDue: (lead.options_mode ? resolvedTotal : lead.total_price) - (lead.charge_deposit ? lead.deposit_amount : 0),
+      balanceDue: (() => {
+        const base = lead.options_mode ? resolvedTotal : Number(lead.total_price);
+        let final = base;
+        if (lead.followup_discount_type && Number(lead.followup_discount_amount) > 0) {
+          const disc = lead.followup_discount_type === 'dollar'
+            ? Math.min(Number(lead.followup_discount_amount), base)
+            : Math.round(base * (Number(lead.followup_discount_amount) / 100));
+          final = Math.max(0, base - disc);
+        }
+        return final - (lead.charge_deposit ? lead.deposit_amount : 0);
+      })(),
       appointmentDate: selectedDate,
       appointmentTime: isHeadsUp ? null : selectedTime,
       durationMinutes: (lead.options_mode ? resolvedServices : lead.services).length * 60,
-      windowStatus: 'never',
-      hasAftermarketTint: null,
+      windowStatus: windowStatus || 'never',
+      hasAftermarketTint: hasAftermarketTint || null,
       additionalInterests: '',
       notes: `Booked from lead link (${lead.token})`,
       calendarTitle: '',
@@ -460,66 +574,319 @@ export default function LeadBookingPage() {
         </div>
 
         {lead.options_mode ? (
-          /* Options mode: customer picks one film per service group */
-          <>
-            <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: 16 }}>
-              Choose your preferred option for each service below.
-            </div>
-            {serviceGroups.map((group, gi) => {
-              const selectedIdx = optionSelections[group.serviceKey] ?? -1;
+          /* Options mode: Step 1 pick film, Step 2 pick services with inline shades */
+          (() => {
+            const extTheme = config ? {
+              primary: String(config.shopConfig.theme_ext_primary || '#dc2626'),
+              secondary: String(config.shopConfig.theme_ext_secondary || '#1a1a1a'),
+              accent: String(config.shopConfig.theme_ext_accent || '#dc2626'),
+              background: String(config.shopConfig.theme_ext_background || '#ffffff'),
+            } : undefined;
+
+            const primaryGroups = serviceGroups.filter(g => g.exclusive);
+            const addonGroups = serviceGroups.filter(g => !g.exclusive);
+
+            // Get unique films across all options
+            const uniqueFilmIds = new Set<number>();
+            for (const svc of lead.services) {
+              if (svc.film_id) uniqueFilmIds.add(svc.film_id);
+            }
+            const uniqueFilms = Array.from(uniqueFilmIds)
+              .map(id => (config?.films as AutoFilm[])?.find(f => f.id === id))
+              .filter(Boolean) as AutoFilm[];
+
+            const selectedFilmId = optionSelections['_film'] !== undefined
+              ? uniqueFilms[optionSelections['_film']]?.id || null
+              : null;
+
+            function getPrice(serviceKey: string, filmId: number | null): number | null {
+              const match = lead!.services.find(s => s.service_key === serviceKey && s.film_id === filmId);
+              return match ? match.price : null;
+            }
+
+            // Get allowed shades for a service + film combo
+            function getShadesForService(serviceKey: string, filmId: number): AutoFilmShade[] {
+              if (!config) return [];
+              const allShades = (config.filmShades as AutoFilmShade[]).filter(s => s.offered);
+              const svcShades = (config.serviceShades || []) as { service_key: string; film_key: string; shade_value: string }[];
+              const films = config.films as AutoFilm[];
+              return getAllowedShades(serviceKey, filmId, allShades, svcShades, films);
+            }
+
+            function handleFilmSelect(filmIdx: number) {
+              const newFilmId = uniqueFilms[filmIdx]?.id || null;
+              setOptionSelections(prev => {
+                if (prev['_film'] === filmIdx) {
+                  // Deselect film -- clear everything
+                  return {} as Record<string, number>;
+                }
+                // Switch film but keep service selections -- remap to new film's option index
+                const next: Record<string, number> = { '_film': filmIdx };
+                for (const group of [...primaryGroups, ...addonGroups]) {
+                  if (prev[group.serviceKey] !== undefined) {
+                    // Find this film's option in this group
+                    const idx = group.options.findIndex(o => o.film_id === newFilmId);
+                    if (idx >= 0) next[group.serviceKey] = idx;
+                  }
+                }
+                return next;
+              });
+              // Clear shade selections since available shades change per film
+              setOptionShades({});
+            }
+
+            function handlePrimaryToggle(serviceKey: string) {
+              if (!selectedFilmId) return;
+              setOptionSelections(prev => {
+                const next = { ...prev };
+                const wasSelected = next[serviceKey] !== undefined;
+                // Clear all primary selections
+                for (const pg of primaryGroups) delete next[pg.serviceKey];
+                // Toggle: if it was selected, leave it deselected. Otherwise select it.
+                if (!wasSelected) {
+                  const group = primaryGroups.find(g => g.serviceKey === serviceKey);
+                  if (group) {
+                    const idx = group.options.findIndex(o => o.film_id === selectedFilmId);
+                    if (idx >= 0) next[serviceKey] = idx;
+                  }
+                }
+                // Clear primary shade selections
+                for (const pg of primaryGroups) delete next[`_shade_${pg.serviceKey}`];
+                return next;
+              });
+              // Clear shades for primaries
+              setOptionShades(prev => {
+                const next = { ...prev };
+                for (const pg of primaryGroups) delete next[pg.serviceKey];
+                return next;
+              });
+            }
+
+            function handleAddonToggle(serviceKey: string) {
+              if (!selectedFilmId) return;
+              setOptionSelections(prev => {
+                const next = { ...prev };
+                if (next[serviceKey] !== undefined) {
+                  delete next[serviceKey];
+                } else {
+                  const group = addonGroups.find(g => g.serviceKey === serviceKey);
+                  if (group) {
+                    const idx = group.options.findIndex(o => o.film_id === selectedFilmId);
+                    if (idx >= 0) next[serviceKey] = idx;
+                  }
+                }
+                return next;
+              });
+              setOptionShades(prev => {
+                const next = { ...prev };
+                delete next[serviceKey];
+                return next;
+              });
+            }
+
+            const selectedPrimaryKey = primaryGroups.find(g => optionSelections[g.serviceKey] !== undefined)?.serviceKey || null;
+
+            // Render a service row with inline shade picker
+            function renderServiceRow(
+              serviceKey: string,
+              label: string,
+              price: number,
+              isSelected: boolean,
+              onToggle: () => void,
+              isPrimary: boolean,
+            ) {
+              const shades = selectedFilmId ? getShadesForService(serviceKey, selectedFilmId) : [];
+              const shadeState = optionShades[serviceKey];
+
               return (
-                <div key={group.serviceKey} style={{ marginBottom: gi < serviceGroups.length - 1 ? 20 : 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 10, color: '#333' }}>
-                    {group.label}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {group.options.map((opt, oi) => {
-                      const isSelected = selectedIdx === oi;
+                <div>
+                  <button
+                    onClick={onToggle}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      width: '100%', padding: '16px 20px', borderRadius: 12,
+                      background: isSelected
+                        ? (isPrimary ? '#fef2f2' : '#f0fdf4')
+                        : '#f9fafb',
+                      border: `2px solid ${isSelected
+                        ? (isPrimary ? (extTheme?.primary || '#dc2626') : '#86efac')
+                        : '#e5e7eb'}`,
+                      cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      {isPrimary ? (
+                        <div style={{
+                          width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                          border: isSelected ? `6px solid ${extTheme?.primary || '#dc2626'}` : '2px solid #d1d5db',
+                          transition: 'border 0.15s',
+                        }} />
+                      ) : (
+                        <div style={{
+                          width: 22, height: 22, borderRadius: 4, flexShrink: 0,
+                          background: isSelected ? '#16a34a' : 'transparent',
+                          border: isSelected ? '2px solid #16a34a' : '2px solid #d1d5db',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          transition: 'all 0.15s',
+                        }}>
+                          {isSelected && (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                          )}
+                        </div>
+                      )}
+                      <span style={{ fontWeight: 700, fontSize: '1rem', color: '#1a1a1a' }}>
+                        {label}
+                      </span>
+                    </div>
+                    <span style={{
+                      fontWeight: 800, fontSize: '1.15rem',
+                      color: isSelected
+                        ? (isPrimary ? (extTheme?.primary || '#dc2626') : '#16a34a')
+                        : '#1a1a1a',
+                    }}>
+                      {isPrimary ? '' : '+'}{price === 0 ? 'FREE' : `$${price}`}
+                    </span>
+                  </button>
+
+                  {/* Inline shade picker when this service is selected */}
+                  {isSelected && shades.length > 0 && (() => {
+                    // Check if this service + vehicle requires split front/rear shades
+                    const classKeys = lead?.class_keys?.split('|') || [];
+                    const isSplit = config ? needsSplitShades({ class_keys: classKeys } as unknown as Parameters<typeof needsSplitShades>[0], config.classRules || [], serviceKey) : false;
+
+                    return (
+                      <div style={{ padding: '8px 20px 0', marginBottom: 4 }}>
+                        {isSplit ? (
+                          <>
+                            <ShadePicker
+                              label="2 Front Doors"
+                              shades={shades}
+                              selectedShade={shadeState?.front || null}
+                              onSelect={(shade) => setOptionShades(prev => ({
+                                ...prev,
+                                [serviceKey]: { front: shade, rear: prev[serviceKey]?.rear || null },
+                              }))}
+                            />
+                            <ShadePicker
+                              label="Rear"
+                              shades={shades}
+                              selectedShade={shadeState?.rear || null}
+                              onSelect={(shade) => setOptionShades(prev => ({
+                                ...prev,
+                                [serviceKey]: { front: prev[serviceKey]?.front || null, rear: shade },
+                              }))}
+                            />
+                          </>
+                        ) : (
+                          <ShadePicker
+                            label="Choose Your Shade (optional)"
+                            shades={shades}
+                            selectedShade={shadeState?.front || null}
+                            onSelect={(shade) => setOptionShades(prev => ({
+                              ...prev,
+                              [serviceKey]: { front: shade, rear: shade },
+                            }))}
+                          />
+                        )}
+                        <div style={{ fontSize: '0.7rem', color: '#999', marginTop: 4, fontStyle: 'italic' }}>
+                          Selecting a shade is not required -- we will go over all options when you arrive.
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            }
+
+            return (
+              <>
+                {/* Step 1: Choose Your Film */}
+                <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: 8, color: '#222' }}>
+                  Choose Your Film
+                </div>
+                <div className="fwt-films">
+                  {uniqueFilms.map((film, fi) => {
+                    const filmShades = config
+                      ? (config.filmShades as AutoFilmShade[]).filter(s => s.film_id === film.id && s.offered)
+                      : [];
+                    return (
+                      <FilmCard
+                        key={film.id}
+                        film={film}
+                        isSelected={selectedFilmId === film.id}
+                        onClick={() => handleFilmSelect(fi)}
+                        displaySpecs={config?.shopConfig.film_card_specs as string[] | undefined}
+                        filmShades={filmShades}
+                        layout={config?.shopConfig.film_card_layout as 'classic' | 'horizontal' | 'minimal' | undefined}
+                        theme={extTheme}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Step 2: Services + inline shade pickers */}
+                {selectedFilmId && primaryGroups.length > 0 && (
+                  <div style={{ marginTop: 20 }}>
+                    <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: 12, color: '#222' }}>
+                      Choose Your Service
+                    </div>
+
+                    {primaryGroups.map((group, gi) => {
+                      const price = getPrice(group.serviceKey, selectedFilmId);
+                      if (price === null) return null;
+                      const isSelected = selectedPrimaryKey === group.serviceKey;
+
                       return (
-                        <button
-                          key={oi}
-                          onClick={() => setOptionSelections(prev => {
-                            const next = { ...prev };
-                            if (next[group.serviceKey] === oi) { delete next[group.serviceKey]; }
-                            else { next[group.serviceKey] = oi; }
-                            return next;
-                          })}
-                          style={{
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            padding: '14px 16px', borderRadius: 10,
-                            background: isSelected ? '#fef2f2' : '#f9fafb',
-                            border: isSelected ? '2px solid #dc2626' : '2px solid #e5e7eb',
-                            cursor: 'pointer', textAlign: 'left',
-                            transition: 'all 0.15s',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <div style={{
-                              width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                              border: isSelected ? '6px solid #dc2626' : '2px solid #d1d5db',
-                            }} />
-                            <div>
-                              <div style={{ fontWeight: 600, color: '#1a1a1a', fontSize: '0.95rem' }}>
-                                {opt.film_name || 'Standard'}
+                        <div key={group.serviceKey}>
+                          {renderServiceRow(
+                            group.serviceKey, group.label, price, isSelected,
+                            () => handlePrimaryToggle(group.serviceKey), true
+                          )}
+
+                          {gi < primaryGroups.length - 1 && (() => {
+                            const nextPrice = getPrice(primaryGroups[gi + 1].serviceKey, selectedFilmId);
+                            if (nextPrice === null) return null;
+                            return (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '12px 0' }}>
+                                <div style={{ flex: 1, height: 1, background: '#d0d0d0' }} />
+                                <span style={{ fontSize: '1rem', fontWeight: 800, color: '#bbb', letterSpacing: '2px' }}>OR</span>
+                                <div style={{ flex: 1, height: 1, background: '#d0d0d0' }} />
                               </div>
-                              {opt.shade_front && (
-                                <div style={{ fontSize: '0.8rem', color: '#666', marginTop: 2 }}>
-                                  Shade: {opt.shade_front}{opt.shade_rear ? ` / ${opt.shade_rear}` : ''}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div style={{ fontWeight: 700, fontSize: '1.1rem', color: isSelected ? '#dc2626' : '#1a1a1a' }}>
-                            ${opt.price}
-                          </div>
-                        </button>
+                            );
+                          })()}
+                        </div>
                       );
                     })}
                   </div>
-                </div>
-              );
-            })}
-          </>
+                )}
+
+                {/* Add-ons */}
+                {selectedFilmId && addonGroups.length > 0 && (
+                  <div style={{ marginTop: 20 }}>
+                    <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: 12, color: '#222' }}>
+                      Add-Ons <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#999' }}>(optional)</span>
+                    </div>
+                    {addonGroups.map(group => {
+                      const price = getPrice(group.serviceKey, selectedFilmId);
+                      if (price === null) return null;
+                      const isSelected = optionSelections[group.serviceKey] !== undefined;
+
+                      return (
+                        <div key={group.serviceKey} style={{ marginBottom: 8 }}>
+                          {renderServiceRow(
+                            group.serviceKey, group.label, price, isSelected,
+                            () => handleAddonToggle(group.serviceKey), false
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            );
+          })()
         ) : (
           /* Normal mode: static service list */
           <>
@@ -547,34 +914,75 @@ export default function LeadBookingPage() {
           </>
         )}
 
-        {/* Total */}
-        <div style={{
-          display: 'flex', justifyContent: 'space-between',
-          marginTop: 16, paddingTop: 16,
-          borderTop: '2px solid #222',
-          fontWeight: 800, fontSize: '1.1rem',
-        }}>
-          <span>Total</span>
-          <span>${lead.options_mode ? resolvedTotal.toLocaleString() : Number(lead.total_price).toLocaleString()}</span>
-        </div>
+        {/* Total + Follow-up Discount */}
+        {(() => {
+          const baseTotal = lead.options_mode ? resolvedTotal : Number(lead.total_price);
+          const hasDiscount = lead.followup_discount_type && Number(lead.followup_discount_amount) > 0;
+          const discountAmt = hasDiscount
+            ? lead.followup_discount_type === 'dollar'
+              ? Math.min(Number(lead.followup_discount_amount), baseTotal)
+              : Math.round(baseTotal * (Number(lead.followup_discount_amount) / 100))
+            : 0;
+          const finalTotal = Math.max(0, baseTotal - discountAmt);
 
-        {/* Deposit info */}
-        {lead.charge_deposit && lead.deposit_amount > 0 && (
-          <div style={{
-            marginTop: 12, padding: '10px 14px',
-            background: '#f8f9fa', borderRadius: 8,
-            fontSize: '0.9rem', color: '#444',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Deposit due today</span>
-              <span style={{ fontWeight: 700 }}>${lead.deposit_amount}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-              <span>Balance due at appointment</span>
-              <span style={{ fontWeight: 600 }}>${((lead.options_mode ? resolvedTotal : Number(lead.total_price)) - Number(lead.deposit_amount)).toLocaleString()}</span>
-            </div>
-          </div>
-        )}
+          return (
+            <>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                marginTop: 16, paddingTop: 16,
+                borderTop: '2px solid #222',
+                fontWeight: 800, fontSize: '1.1rem',
+              }}>
+                <span>{hasDiscount ? 'Subtotal' : 'Total'}</span>
+                <span style={{ textDecoration: hasDiscount ? 'line-through' : 'none', opacity: hasDiscount ? 0.5 : 1 }}>
+                  ${baseTotal.toLocaleString()}
+                </span>
+              </div>
+
+              {hasDiscount && (
+                <>
+                  <div style={{
+                    marginTop: 8, padding: '10px 14px',
+                    background: '#f0fdf4', borderRadius: 8, border: '1px solid #86efac',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.9rem', color: '#166534', fontWeight: 700 }}>
+                        Special Offer: {lead.followup_discount_type === 'dollar' ? `$${lead.followup_discount_amount} OFF` : `${lead.followup_discount_amount}% OFF`}
+                      </span>
+                      <span style={{ fontSize: '0.9rem', color: '#166534', fontWeight: 700 }}>-${discountAmt.toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    marginTop: 8,
+                    fontWeight: 800, fontSize: '1.2rem', color: '#166534',
+                  }}>
+                    <span>Your Price</span>
+                    <span>${finalTotal.toLocaleString()}</span>
+                  </div>
+                </>
+              )}
+
+              {/* Deposit info */}
+              {lead.charge_deposit && lead.deposit_amount > 0 && (
+                <div style={{
+                  marginTop: 12, padding: '10px 14px',
+                  background: '#f8f9fa', borderRadius: 8,
+                  fontSize: '0.9rem', color: '#444',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Deposit due today</span>
+                    <span style={{ fontWeight: 700 }}>${lead.deposit_amount}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                    <span>Balance due at appointment</span>
+                    <span style={{ fontWeight: 600 }}>${(finalTotal - Number(lead.deposit_amount)).toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
         {!lead.charge_deposit && (
           <div style={{
             marginTop: 12, padding: '10px 14px',
@@ -598,6 +1006,63 @@ export default function LeadBookingPage() {
       {/* Schedule */}
       {/* ================================================================ */}
       <div className="fwt-card" style={{ marginBottom: 20 }}>
+        {lead?.pre_appointment_date && !overrideSchedule ? (
+          <>
+            <div style={{ fontWeight: 800, paddingBottom: 16, fontSize: '1.1rem' }}>
+              Your Appointment
+            </div>
+            <div style={{
+              padding: 16, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8,
+            }}>
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: '#166534', marginBottom: 8 }}>
+                {(() => {
+                  const typeLabel = TYPE_PILLS.find(t => t.key === appointmentType)?.label || appointmentType;
+                  const dateObj = new Date(lead.pre_appointment_date + 'T12:00:00');
+                  const dateStr = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+                  return `${typeLabel} -- ${dateStr}`;
+                })()}
+              </div>
+              {selectedTime && selectedTime !== 'Heads-Up' && (
+                <div style={{ fontSize: '0.95rem', color: '#166534' }}>
+                  {(() => {
+                    const [h, m] = selectedTime.split(':').map(Number);
+                    const ampm = h >= 12 ? 'PM' : 'AM';
+                    const hour12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+                    return `${hour12}:${String(m).padStart(2, '0')} ${ampm}`;
+                  })()}
+                </div>
+              )}
+              {!selectedTime && isHeadsUp && (
+                <div style={{ fontSize: '0.9rem', color: '#166534', lineHeight: 1.5 }}>
+                  {appointmentType === 'headsup_30'
+                    ? <>You will be contacted via text with at least <strong>30 minutes</strong> notice when we are ready for your vehicle.</>
+                    : <>You will be contacted via text with at least <strong>60 minutes</strong> notice when we are ready for your vehicle.</>
+                  }
+                </div>
+              )}
+              <div style={{ fontSize: '0.85rem', color: '#166534', marginTop: 8, opacity: 0.8 }}>
+                This appointment has been scheduled for you. Complete the form below to confirm.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setOverrideSchedule(true);
+                setSelectedDate('');
+                setSelectedTime('');
+                setAppointmentType('dropoff');
+              }}
+              style={{
+                marginTop: 12, background: 'none', border: 'none', cursor: 'pointer',
+                color: '#6b7280', fontSize: '0.9rem', textDecoration: 'underline',
+                padding: 0,
+              }}
+            >
+              Need a different date or time? Choose your own.
+            </button>
+          </>
+        ) : (
+          <>
         <div style={{ fontWeight: 800, paddingBottom: 16, fontSize: '1.1rem' }}>
           Choose Your Appointment
         </div>
@@ -647,7 +1112,7 @@ export default function LeadBookingPage() {
             type="date"
             value={selectedDate}
             onChange={e => handleDateChange(e.target.value)}
-            min={dateBounds.min}
+            min={windshield72hrMinDate && windshield72hrMinDate > dateBounds.min ? windshield72hrMinDate : dateBounds.min}
             max={dateBounds.max}
             style={{
               width: '100%', maxWidth: 300, cursor: 'pointer',
@@ -699,7 +1164,147 @@ export default function LeadBookingPage() {
             onDecline={handleModalDecline}
           />
         )}
+          </>
+        )}
       </div>
+
+      {/* ================================================================ */}
+      {/* Policy Checkboxes + Windshield + Window Status */}
+      {/* ================================================================ */}
+      <div className="fwt-card" style={{ marginBottom: 20 }}>
+        {/* Deposit Policy Checkbox */}
+        {lead.charge_deposit && lead.deposit_amount > 0 && (
+          <div style={{ margin: '0 0 20px' }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: '0.95rem', lineHeight: 1.5 }}>
+              <input
+                type="checkbox"
+                checked={policyCheckbox}
+                onChange={e => setPolicyCheckbox(e.target.checked)}
+                style={{ marginTop: 3, flexShrink: 0 }}
+              />
+              <span>
+                {config.shopConfig.deposit_refundable ? (
+                  <>I understand the ${config.shopConfig.deposit_amount} deposit is <strong>refundable</strong> if I cancel at least <strong>{config.shopConfig.deposit_refund_hours || 24} hours</strong> before my scheduled appointment time. Cancellations within {config.shopConfig.deposit_refund_hours || 24} hours are non-refundable.</>
+                ) : (
+                  <>I understand the ${config.shopConfig.deposit_amount} deposit is <strong>non-refundable</strong>.</>
+                )}
+              </span>
+            </label>
+          </div>
+        )}
+
+        {/* Windshield Replacement Check */}
+        {hasWindshield && (
+          <div style={{ margin: '0 0 20px', padding: 16, background: '#fff3cd', border: '2px solid #ffc107', borderRadius: 8 }}>
+            <div style={{ fontWeight: 800, marginBottom: 12, color: '#856404' }}>
+              Windshield Replacement Check
+            </div>
+            <div style={{ marginBottom: 12, color: '#856404' }}>
+              Has your windshield been replaced in the last 72 hours (3 days)?
+            </div>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="radio" name="windshield-replaced-lead" value="no"
+                  checked={windshieldReplaced === 'no'} onChange={() => setWindshieldReplaced('no')} />
+                <span style={{ fontWeight: 600 }}>No</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="radio" name="windshield-replaced-lead" value="yes"
+                  checked={windshieldReplaced === 'yes'} onChange={() => setWindshieldReplaced('yes')} />
+                <span style={{ fontWeight: 600 }}>Yes</span>
+              </label>
+            </div>
+
+            {windshieldReplaced === 'yes' && (
+              <div style={{ marginTop: 12, padding: 12, background: '#ffffff', borderRadius: 6 }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={windshield72hrAck}
+                    onChange={e => {
+                      setWindshield72hrAck(e.target.checked);
+                      if (e.target.checked) {
+                        // Force schedule override -- pre-set date may be too soon
+                        const minDate = new Date();
+                        minDate.setDate(minDate.getDate() + 3);
+                        const minDateStr = minDate.toISOString().split('T')[0];
+                        if (selectedDate && selectedDate < minDateStr) {
+                          setOverrideSchedule(true);
+                          setSelectedDate('');
+                          setSelectedTime('');
+                        }
+                      }
+                    }}
+                    style={{ marginTop: 3, flexShrink: 0 }} />
+                  <span style={{ color: '#856404', fontWeight: 600 }}>
+                    I acknowledge that my appointment must be scheduled at least 72 hours (3 days) after my windshield was replaced to ensure proper adhesion.
+                  </span>
+                </label>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Price Change Acknowledgement */}
+        {config.shopConfig.price_ack_enabled !== false && (
+          <div style={{ margin: '0 0 20px' }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', fontSize: '0.95rem', lineHeight: 1.5 }}>
+              <input type="checkbox" checked={priceAckCheckbox}
+                onChange={e => setPriceAckCheckbox(e.target.checked)}
+                style={{ marginTop: 3, flexShrink: 0 }} />
+              <span>
+                {config.shopConfig.price_ack_text || 'I understand that the final price is subject to change if additional labor is required beyond the standard installation process (e.g., removal of existing tint, adhesive residue removal, etc.).'}
+              </span>
+            </label>
+          </div>
+        )}
+
+        {/* Tint Laws */}
+        <div style={{ margin: '0 0 20px' }}>
+          <TintLawsButton onClick={() => setShowTintLaws(true)} />
+        </div>
+
+        {/* Window Status Question */}
+        <div style={{ margin: '0 0 0' }}>
+          <label style={{ fontWeight: 800, display: 'block', marginBottom: 8 }}>
+            What is the current status of the windows? <span style={{ color: '#dc2626' }}>*</span>
+          </label>
+          <select
+            className="fwt-select"
+            value={windowStatus}
+            onChange={e => { setWindowStatus(e.target.value); if (e.target.value !== 'previously') setHasAftermarketTint(''); }}
+            style={{ width: '100%', maxWidth: 400, padding: '14px 16px', border: '1px solid #d0d0d0', borderRadius: 8, fontSize: '1rem' }}
+          >
+            <option value="">Select status...</option>
+            <option value="never">Never tinted</option>
+            <option value="previously">Previously tinted</option>
+            <option value="unsure">I am not sure!</option>
+          </select>
+        </div>
+
+        {/* Conditional Follow-up */}
+        {windowStatus === 'previously' && (
+          <div style={{ margin: '20px 0 0 20px' }}>
+            <label style={{ fontWeight: 800, display: 'block', marginBottom: 8 }}>
+              Is there currently any aftermarket window tint on any of the windows? <span style={{ color: '#dc2626' }}>*</span>
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[
+                { value: 'yes', label: 'Yes' },
+                { value: 'no', label: 'No' },
+                { value: 'not_sure', label: 'Not Sure' },
+              ].map(opt => (
+                <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '1rem' }}>
+                  <input type="radio" name="has-tint-lead" value={opt.value}
+                    checked={hasAftermarketTint === opt.value}
+                    onChange={() => setHasAftermarketTint(opt.value)} />
+                  <span>{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showTintLaws && <TintLawsModal onClose={() => setShowTintLaws(false)} />}
 
       {/* ================================================================ */}
       {/* Contact Info */}

@@ -7,6 +7,8 @@ import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile'
 import AuthProvider from '@/app/components/AuthProvider'
 import StationModeProvider from '@/app/components/StationModeProvider'
 import PinEscalationOverlay from '@/app/components/PinEscalationOverlay'
+import IncomingCallToast from '@/app/components/IncomingCallToast'
+import PhoneWidget from '@/app/components/PhoneWidget'
 
 export default function DashboardLayout({
   children,
@@ -19,6 +21,8 @@ export default function DashboardLayout({
         <DashboardThemeProvider>
           <DashboardLayoutInner>{children}</DashboardLayoutInner>
           <PinEscalationOverlay />
+          <IncomingCallToast />
+          <PhoneWidget />
         </DashboardThemeProvider>
       </StationModeProvider>
     </AuthProvider>

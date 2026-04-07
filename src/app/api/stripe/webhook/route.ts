@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/app/lib/stripe';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
 import { createQuoteForAppointment } from '@/app/lib/invoice-utils';
+import { notifyNewBooking } from '@/app/lib/notifications';
 import Stripe from 'stripe';
 
 // Stripe sends the raw body, not JSON — we need to read it as-is for signature verification
@@ -188,4 +189,21 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 
   console.log(`Booking confirmed: ${bookingId} (session: ${sessionId})`);
+
+  // Send team + customer notifications (fire and forget -- don't block webhook response)
+  notifyNewBooking(1, {
+    customer_name: pendingBooking.customer_name || '',
+    customer_phone: pendingBooking.customer_phone,
+    customer_email: pendingBooking.customer_email || meta.email || null,
+    vehicle_year: pendingBooking.vehicle_year,
+    vehicle_make: pendingBooking.vehicle_make,
+    vehicle_model: pendingBooking.vehicle_model,
+    appointment_date: pendingBooking.appointment_date,
+    appointment_time: pendingBooking.appointment_time,
+    services_json: Array.isArray(pendingBooking.services_json) ? pendingBooking.services_json : [],
+    subtotal: pendingBooking.subtotal || 0,
+    deposit_paid: depositAmount,
+    balance_due: pendingBooking.subtotal - pendingBooking.discount_amount - depositAmount,
+    module: pendingBooking.module || 'auto_tint',
+  }).catch(err => console.error('Notification error:', err));
 }

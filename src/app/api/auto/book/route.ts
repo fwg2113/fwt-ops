@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
 import { createQuoteForAppointment } from '@/app/lib/invoice-utils';
+import { notifyNewBooking } from '@/app/lib/notifications';
+import { syncBookingToCalendar } from '@/app/lib/google-calendar';
 
 // POST /api/auto/book
 // Creates a new booking — customer upsert + booking insert
@@ -152,6 +154,44 @@ export async function POST(request: NextRequest) {
           redeemed_booking_id: bookingId,
         })
         .ilike('gc_code', discountCode);
+    }
+
+    // Send team + customer notifications (fire and forget)
+    notifyNewBooking(1, {
+      customer_name: `${firstName} ${lastName}`.trim(),
+      customer_phone: phone?.replace(/\D/g, '') || null,
+      customer_email: email || null,
+      vehicle_year: vehicleYear ? parseInt(vehicleYear) : null,
+      vehicle_make: vehicleMake,
+      vehicle_model: vehicleModel,
+      appointment_date: appointmentDate,
+      appointment_time: appointmentTime,
+      services_json: servicesJson || [],
+      subtotal: subtotal || 0,
+      deposit_paid: depositPaid || 0,
+      balance_due: balanceDue || 0,
+      module: 'auto_tint',
+    }).catch(err => console.error('Notification error:', err));
+
+    // Sync to Google Calendar (fire and forget)
+    if (booking) {
+      syncBookingToCalendar(1, {
+        id: booking.id,
+        customer_name: `${firstName} ${lastName}`.trim(),
+        customer_phone: phone?.replace(/\D/g, '') || null,
+        vehicle_year: vehicleYear ? parseInt(vehicleYear) : null,
+        vehicle_make: vehicleMake,
+        vehicle_model: vehicleModel,
+        appointment_date: appointmentDate,
+        appointment_time: appointmentTime,
+        appointment_type: appointmentType || 'dropoff',
+        services_json: servicesJson || [],
+        subtotal: subtotal || 0,
+        deposit_paid: depositPaid || 0,
+        balance_due: balanceDue || 0,
+        duration_minutes: durationMinutes || 60,
+        notes: notes || null,
+      }).catch(err => console.error('Calendar sync error:', err));
     }
 
     return NextResponse.json({

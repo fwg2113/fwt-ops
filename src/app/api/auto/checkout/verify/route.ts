@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
 import { createQuoteForAppointment } from '@/app/lib/invoice-utils';
+import { notifyNewBooking } from '@/app/lib/notifications';
+import { syncBookingToCalendar } from '@/app/lib/google-calendar';
 
 // GET /api/auto/checkout/verify?session_id=cs_xxx
 // Confirms a booking after Stripe payment. If the webhook hasn't run yet,
@@ -23,9 +25,34 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ confirmed: false });
   }
 
+  // Fetch shop config for confirmation page
+  const { data: shopConfig } = await supabaseAdmin
+    .from('shop_config')
+    .select('shop_name, shop_phone, shop_address')
+    .eq('id', 1)
+    .single();
+
+  const bookingDetails = {
+    customerName: booking.customer_name,
+    vehicleYear: booking.vehicle_year,
+    vehicleMake: booking.vehicle_make,
+    vehicleModel: booking.vehicle_model,
+    appointmentDate: booking.appointment_date,
+    appointmentTime: booking.appointment_time,
+    appointmentType: booking.appointment_type,
+    services: booking.services_json,
+    subtotal: booking.subtotal,
+    discountAmount: booking.discount_amount,
+    depositPaid: booking.deposit_paid,
+    balanceDue: booking.balance_due ?? ((booking.subtotal || 0) - (booking.discount_amount || 0) - (booking.deposit_paid || 0)),
+    shopName: shopConfig?.shop_name || '',
+    shopPhone: shopConfig?.shop_phone || '',
+    shopAddress: shopConfig?.shop_address || '',
+  };
+
   // Already confirmed (webhook got there first)
   if (booking.status === 'booked') {
-    return NextResponse.json({ confirmed: true, bookingId: booking.booking_id });
+    return NextResponse.json({ confirmed: true, bookingId: booking.booking_id, details: bookingDetails });
   }
 
   // Payment succeeded but webhook hasn't confirmed yet -- do it now
@@ -108,7 +135,47 @@ export async function GET(request: NextRequest) {
         .eq('id', booking.id);
     }
 
-    return NextResponse.json({ confirmed: true, bookingId });
+    // Update details with confirmed amounts
+    bookingDetails.depositPaid = depositAmount;
+    bookingDetails.balanceDue = (booking.subtotal || 0) - (booking.discount_amount || 0) - depositAmount;
+
+    // Send team + customer notifications
+    notifyNewBooking(booking.shop_id || 1, {
+      customer_name: booking.customer_name || '',
+      customer_phone: booking.customer_phone || null,
+      customer_email: booking.customer_email || null,
+      vehicle_year: booking.vehicle_year,
+      vehicle_make: booking.vehicle_make,
+      vehicle_model: booking.vehicle_model,
+      appointment_date: booking.appointment_date,
+      appointment_time: booking.appointment_time,
+      services_json: Array.isArray(booking.services_json) ? booking.services_json : [],
+      subtotal: booking.subtotal || 0,
+      deposit_paid: depositAmount,
+      balance_due: (booking.subtotal || 0) - (booking.discount_amount || 0) - depositAmount,
+      module: booking.module || 'auto_tint',
+    }).catch(err => console.error('Notification error:', err));
+
+    // Sync to Google Calendar
+    syncBookingToCalendar(booking.shop_id || 1, {
+      id: booking.id,
+      customer_name: booking.customer_name || '',
+      customer_phone: booking.customer_phone || null,
+      vehicle_year: booking.vehicle_year,
+      vehicle_make: booking.vehicle_make,
+      vehicle_model: booking.vehicle_model,
+      appointment_date: booking.appointment_date,
+      appointment_time: booking.appointment_time,
+      appointment_type: booking.appointment_type || 'dropoff',
+      services_json: Array.isArray(booking.services_json) ? booking.services_json : [],
+      subtotal: booking.subtotal || 0,
+      deposit_paid: depositAmount,
+      balance_due: (booking.subtotal || 0) - (booking.discount_amount || 0) - depositAmount,
+      duration_minutes: booking.duration_minutes || 60,
+      notes: booking.notes || null,
+    }).catch(err => console.error('Calendar sync error:', err));
+
+    return NextResponse.json({ confirmed: true, bookingId, details: bookingDetails });
   }
 
   return NextResponse.json({ confirmed: false });

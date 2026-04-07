@@ -13,6 +13,7 @@ interface AuthUser {
   teamMemberId: string | null;
   loginMode: 'user' | 'station';
   rolePermissions: Record<string, boolean>;
+  viewPreferences: Record<string, string[]>;
 }
 
 interface AuthContextType {
@@ -20,6 +21,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  updateViewPreferences: (page: string, modules: string[]) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -27,6 +29,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   loading: true,
   signOut: async () => {},
+  updateViewPreferences: () => {},
 });
 
 export function useAuth() {
@@ -84,6 +87,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           teamMemberId: data.teamMemberId,
           loginMode: data.loginMode || 'user',
           rolePermissions: data.rolePermissions || {},
+          viewPreferences: data.viewPreferences || {},
         });
       } else {
         // User exists in auth but not linked to a shop -- shouldn't happen in normal flow
@@ -95,6 +99,30 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     setLoading(false);
   }
 
+  function updateViewPreferences(page: string, modules: string[]) {
+    // Optimistically update local state
+    setUser(prev => prev ? {
+      ...prev,
+      viewPreferences: { ...prev.viewPreferences, [page]: modules },
+    } : prev);
+
+    // Persist to server
+    (async () => {
+      try {
+        const s = (await createSupabaseBrowser().auth.getSession()).data.session;
+        if (!s?.access_token) return;
+        await fetch('/api/auth/preferences', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${s.access_token}`,
+          },
+          body: JSON.stringify({ page, modules }),
+        });
+      } catch { /* silent -- local state already updated */ }
+    })();
+  }
+
   async function signOut() {
     const supabase = createSupabaseBrowser();
     await supabase.auth.signOut();
@@ -104,7 +132,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signOut, updateViewPreferences }}>
       {children}
     </AuthContext.Provider>
   );

@@ -286,10 +286,43 @@ export function SendToCustomerModal({
   const [chargeDeposit, setChargeDeposit] = useState(shopRequiresDeposit);
   const [depositAmount, setDepositAmount] = useState(shopDepositAmount);
 
+  // Pre-set appointment (optional)
+  const [preSetAppointment, setPreSetAppointment] = useState(false);
+  const [appointmentType, setAppointmentType] = useState('dropoff');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedTime, setSelectedTime] = useState('');
+
+  const appointmentTypes = useMemo(() => {
+    const types: { value: string; label: string }[] = [];
+    if (config.shopConfig.enable_dropoff) types.push({ value: 'dropoff', label: 'Drop-off' });
+    if (config.shopConfig.enable_waiting) types.push({ value: 'waiting', label: 'Waiting' });
+    if (config.shopConfig.enable_headsup_30) types.push({ value: 'headsup_30', label: 'Heads-Up (30 min)' });
+    if (config.shopConfig.enable_headsup_60) types.push({ value: 'headsup_60', label: 'Heads-Up (60 min)' });
+    return types;
+  }, [config]);
+
+  const isHeadsUp = appointmentType === 'headsup_30' || appointmentType === 'headsup_60';
+  const today = new Date().toISOString().split('T')[0];
+
+  const timeSlots = useMemo(() => {
+    const slots: { value: string; label: string }[] = [];
+    for (let h = 7; h <= 18; h++) {
+      for (let m = 0; m < 60; m += 30) {
+        const hour24 = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const hour12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+        slots.push({ value: hour24, label: `${hour12}:${String(m).padStart(2, '0')} ${ampm}` });
+      }
+    }
+    return slots;
+  }, []);
+
   async function handleGenerate() {
     // Validate send method requirements
     if (sendMethod === 'sms' && !customerPhone) { alert('Phone number required to send via SMS'); return; }
     if (sendMethod === 'email' && !customerEmail) { alert('Email required to send via email'); return; }
+    if (preSetAppointment && !selectedDate) { alert('Please select a date for the appointment'); return; }
+    if (preSetAppointment && !isHeadsUp && !selectedTime) { alert('Please select a time for the appointment'); return; }
 
     setSubmitting(true);
     try {
@@ -305,6 +338,9 @@ export function SendToCustomerModal({
           })),
           total_price: total, charge_deposit: chargeDeposit,
           deposit_amount: chargeDeposit ? depositAmount : 0, send_method: sendMethod,
+          pre_appointment_type: preSetAppointment ? appointmentType : null,
+          pre_appointment_date: preSetAppointment ? selectedDate : null,
+          pre_appointment_time: preSetAppointment && !isHeadsUp ? selectedTime : null,
         }),
       });
       if (res.ok) {
@@ -373,6 +409,44 @@ export function SendToCustomerModal({
                 <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>$</span>
                 <TextInput type="number" value={String(depositAmount)} onChange={e => setDepositAmount(Number(e.target.value) || 0)}
                   style={{ maxWidth: 100, minHeight: 32, fontSize: FONT.sizeSm }} />
+              </div>
+            )}
+          </div>
+
+          {/* Pre-set appointment (optional) */}
+          <div style={{ padding: SPACING.md, background: COLORS.activeBg, borderRadius: RADIUS.sm, marginBottom: SPACING.lg, border: `1px solid ${COLORS.borderAccent}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: preSetAppointment ? SPACING.sm : 0 }}>
+              <div>
+                <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>Pre-Set Appointment</div>
+                <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                  {preSetAppointment ? 'Customer confirms and pays' : 'Customer chooses their own time'}
+                </div>
+              </div>
+              <button onClick={() => setPreSetAppointment(!preSetAppointment)} style={{
+                width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                background: preSetAppointment ? COLORS.red : COLORS.border, position: 'relative', transition: 'background 0.2s',
+              }}>
+                <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: preSetAppointment ? 23 : 3, transition: 'left 0.2s' }} />
+              </button>
+            </div>
+            {preSetAppointment && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: SPACING.sm, marginTop: SPACING.sm }}>
+                <FormField label="Type">
+                  <SelectInput value={appointmentType} onChange={e => setAppointmentType(e.target.value)}>
+                    {appointmentTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </SelectInput>
+                </FormField>
+                <FormField label="Date">
+                  <TextInput type="date" min={today} value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
+                </FormField>
+                {!isHeadsUp && (
+                  <FormField label="Time">
+                    <SelectInput value={selectedTime} onChange={e => setSelectedTime(e.target.value)}>
+                      <option value="">Select...</option>
+                      {timeSlots.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </SelectInput>
+                  </FormField>
+                )}
               </div>
             )}
           </div>

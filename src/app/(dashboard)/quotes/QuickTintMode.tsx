@@ -11,6 +11,9 @@ import { SendToCustomerModal, type SelectedRow } from './QuickTintModals';
 
 interface Props {
   onExit: () => void;
+  initialCustomerName?: string;
+  initialCustomerPhone?: string;
+  initialCustomerEmail?: string;
 }
 
 // Table styles
@@ -24,7 +27,7 @@ const tdStyle: React.CSSProperties = {
   borderBottom: `1px solid ${COLORS.border}`, whiteSpace: 'nowrap',
 };
 
-export default function QuickTintMode({ onExit }: Props) {
+export default function QuickTintMode({ onExit, initialCustomerName, initialCustomerPhone, initialCustomerEmail }: Props) {
   const router = useRouter();
   const isMobile = useIsMobile();
   const [config, setConfig] = useState<BulkConfig | null>(null);
@@ -40,9 +43,9 @@ export default function QuickTintMode({ onExit }: Props) {
   const [optionsMode, setOptionsMode] = useState(false);
 
   // Customer
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerName, setCustomerName] = useState(initialCustomerName || '');
+  const [customerPhone, setCustomerPhone] = useState(initialCustomerPhone || '');
+  const [customerEmail, setCustomerEmail] = useState(initialCustomerEmail || '');
   const [customerSearch, setCustomerSearch] = useState('');
   const [customers, setCustomers] = useState<Array<{ id: string; first_name: string; last_name: string; phone: string; email: string | null }>>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -347,9 +350,9 @@ export default function QuickTintMode({ onExit }: Props) {
           deposit_amount: overrideDeposit ? (depositOverride || 0) : (config?.shopConfig.deposit_amount || 50),
           send_method: tailoredSendMethod,
           // Pass the pre-selected schedule so customer sees it
-          suggested_date: selectedDate || null,
-          suggested_time: selectedTime || null,
-          suggested_type: appointmentType || null,
+          pre_appointment_type: selectedDate ? (appointmentType || 'dropoff') : null,
+          pre_appointment_date: selectedDate || null,
+          pre_appointment_time: selectedTime || null,
         }),
       });
       if (res.ok) {

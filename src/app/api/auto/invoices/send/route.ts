@@ -10,10 +10,15 @@ import { sendSms, sendEmailRaw } from '@/app/lib/messaging';
 export const POST = withShopAuth(async ({ shopId, req }) => {
   try {
     const supabase = getAdminClient();
-    const { invoiceId, method } = await req.json();
+    const body = await req.json();
+    const invoiceId = body.invoiceId;
+    // Support both single method and array of methods
+    const methods: string[] = body.methods
+      ? (Array.isArray(body.methods) ? body.methods : [body.methods])
+      : body.method ? [body.method] : [];
 
-    if (!invoiceId || !method || !['sms', 'email'].includes(method)) {
-      return NextResponse.json({ error: 'invoiceId and method (sms|email) required' }, { status: 400 });
+    if (!invoiceId || methods.length === 0 || !methods.every(m => ['sms', 'email'].includes(m))) {
+      return NextResponse.json({ error: 'invoiceId and method(s) (sms|email) required' }, { status: 400 });
     }
 
     // Query from new documents table
@@ -42,43 +47,55 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
     const vehicleStr = [invoice.vehicle_year, invoice.vehicle_make, invoice.vehicle_model].filter(Boolean).join(' ');
     const invoiceNumber = invoice.doc_number || invoice.invoice_number || '';
 
-    let sent = false;
+    const results: Record<string, boolean> = {};
 
-    if (method === 'sms') {
-      sent = await sendSms(
-        invoice.customer_phone,
-        `${shopName}: Your invoice for ${vehicleStr} is ready. View and pay here: ${invoiceUrl}`
-      );
-    } else if (method === 'email') {
-      if (!invoice.customer_email) {
-        return NextResponse.json({ error: 'No email address on file' }, { status: 400 });
+    for (const method of methods) {
+      if (method === 'sms') {
+        if (invoice.customer_phone) {
+          results.sms = await sendSms(
+            invoice.customer_phone,
+            `${shopName}: Your invoice for ${vehicleStr} is ready. View and pay here: ${invoiceUrl}`
+          );
+        } else {
+          results.sms = false;
+        }
+      } else if (method === 'email') {
+        if (invoice.customer_email) {
+          const formattedBalance = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(invoice.balance_due);
+          const html = buildInvoiceEmailHtml(shopName, shopPhone, shopEmail, invoice.customer_name, vehicleStr, invoiceNumber, formattedBalance, invoiceUrl);
+          results.email = await sendEmailRaw(
+            invoice.customer_email,
+            `Invoice ${invoiceNumber} — ${vehicleStr}`,
+            html,
+            shopName
+          );
+        } else {
+          results.email = false;
+        }
       }
-      const formattedBalance = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(invoice.balance_due);
-      const html = buildInvoiceEmailHtml(shopName, shopPhone, shopEmail, invoice.customer_name, vehicleStr, invoiceNumber, formattedBalance, invoiceUrl);
-      sent = await sendEmailRaw(
-        invoice.customer_email,
-        `Invoice ${invoiceNumber} — ${vehicleStr}`,
-        html,
-        shopName
-      );
     }
 
-    if (!sent) {
+    const anySent = Object.values(results).some(v => v);
+    if (!anySent) {
       return NextResponse.json({
-        error: method === 'sms' ? 'SMS not configured or no phone number' : 'Email not configured or no email address',
+        error: 'No delivery methods succeeded. Check phone number and email address.',
+        results,
       }, { status: 400 });
     }
+
+    // Record which methods were used
+    const sentVia = Object.entries(results).filter(([, v]) => v).map(([k]) => k).join(', ');
 
     await supabase
       .from('documents')
       .update({
         status: ['draft', 'viewed'].includes(invoice.status) ? 'sent' : invoice.status,
-        sent_via: method,
+        sent_via: sentVia,
         sent_at: new Date().toISOString(),
       })
       .eq('id', invoiceId);
 
-    return NextResponse.json({ success: true, method });
+    return NextResponse.json({ success: true, methods: results });
   } catch (error) {
     console.error('Invoice send error:', error);
     return NextResponse.json({ error: 'Failed to send invoice' }, { status: 500 });

@@ -9,6 +9,19 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
 
     const supabase = getAdminClient();
 
+    if (type === 'recent_for_dupes') {
+      // Return last 1000 transactions (date + amount) for client-side duplicate detection
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('txn_date, amount')
+        .eq('shop_id', shopId)
+        .order('txn_date', { ascending: false })
+        .limit(1000);
+
+      if (error) return NextResponse.json({ error: 'Failed to load transactions' }, { status: 500 });
+      return NextResponse.json({ transactions: data || [] });
+    }
+
     if (type === 'categories') {
       const { data, error } = await supabase
         .from('expense_categories')
@@ -41,8 +54,10 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
       const endDate = new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0).toISOString().split('T')[0];
       query = query.gte('txn_date', startDate).lte('txn_date', endDate);
     }
+    const brand = searchParams.get('brand');
     if (direction) query = query.eq('direction', direction);
     if (category) query = query.eq('category', category);
+    if (brand) query = query.eq('brand', brand);
 
     query = query.range(offset, offset + limit - 1);
 
@@ -108,6 +123,34 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
     return NextResponse.json({ transaction: data });
   } catch (error) {
     console.error('Bookkeeping POST error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+});
+
+// PATCH /api/bookkeeping — update a transaction
+export const PATCH = withShopAuth(async ({ shopId, req }) => {
+  try {
+    const body = await req.json();
+    const { id, ...updates } = body;
+
+    if (!id) return NextResponse.json({ error: 'Transaction ID required' }, { status: 400 });
+
+    const supabase = getAdminClient();
+
+    const { error } = await supabase
+      .from('transactions')
+      .update(updates)
+      .eq('id', parseInt(id))
+      .eq('shop_id', shopId);
+
+    if (error) {
+      console.error('Transaction update error:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Bookkeeping PATCH error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

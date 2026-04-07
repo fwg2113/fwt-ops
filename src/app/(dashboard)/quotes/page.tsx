@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme'
 import { useIsMobile } from '@/app/hooks/useIsMobile'
 import QuickTintMode from './QuickTintMode'
@@ -54,12 +54,13 @@ type ServiceModule = {
 }
 
 export default function QuoteBuilderPage() {
-  return <DocumentListView docType="quote" />
+  return <Suspense><DocumentListView docType="quote" /></Suspense>
 }
 
 export function DocumentListView({ docType: docTypeProp = 'quote' }: { docType?: 'quote' | 'invoice' }) {
   const docType: 'quote' | 'invoice' = docTypeProp;
   const router = useRouter()
+  const searchParams = useSearchParams()
   const isMobile = useIsMobile()
   const [documents, setDocuments] = useState<Document[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -88,6 +89,24 @@ export function DocumentListView({ docType: docTypeProp = 'quote' }: { docType?:
   const customerSearchInputRef = useRef<HTMLInputElement>(null)
 
   const pageTitle = docType === 'quote' ? 'Quote Builder' : 'Invoices'
+
+  // Auto-open new quote modal with customer data from URL params
+  useEffect(() => {
+    const isNew = searchParams.get('new');
+    const prefillName = searchParams.get('customer_name');
+    const prefillPhone = searchParams.get('customer_phone');
+    const prefillEmail = searchParams.get('customer_email');
+    const flqa = searchParams.get('flqa');
+
+    if (flqa === '1') {
+      setQuickTintMode(true);
+    } else if (isNew === '1' && (prefillName || prefillPhone || prefillEmail)) {
+      setCustomerName(prefillName || '');
+      setCustomerPhone(prefillPhone || '');
+      setCustomerEmail(prefillEmail || '');
+      setShowModal(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     loadData()
@@ -266,7 +285,12 @@ export function DocumentListView({ docType: docTypeProp = 'quote' }: { docType?:
   if (quickTintMode) {
     return (
       <div style={{ padding: SPACING.xl, fontFamily: 'system-ui, sans-serif' }}>
-        <QuickTintMode onExit={() => { setQuickTintMode(false); loadData(); }} />
+        <QuickTintMode
+          onExit={() => { setQuickTintMode(false); loadData(); }}
+          initialCustomerName={searchParams.get('customer_name') || undefined}
+          initialCustomerPhone={searchParams.get('customer_phone') || undefined}
+          initialCustomerEmail={searchParams.get('customer_email') || undefined}
+        />
       </div>
     )
   }

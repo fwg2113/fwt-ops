@@ -10,11 +10,14 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/appointments': 'appointments',
   '/consultations': 'consultations',
   '/customers': 'customers',
+  '/customers/lookup': 'customers',
   '/quotes': 'quotes',
   '/invoicing': 'invoices',
   '/bookkeeping': 'bookkeeping',
+  '/bookkeeping/bank': 'bookkeeping',
   '/bookkeeping/ledger': 'bookkeeping',
   '/bookkeeping/pl': 'bookkeeping',
+  '/payroll': 'bookkeeping',
   '/settings': 'settings',
   '/time-clock': 'dashboard', // everyone can access time clock
 }
@@ -40,6 +43,7 @@ const ALL_SECTIONS: NavSection[] = [
       { href: '/appointments', label: 'Appointments', labelAccent: '', icon: 'calendar' },
       { href: '/consultations', label: 'Schedule', labelAccent: 'Consultation', icon: 'plus-circle' },
       { href: '/customers', label: 'Customer', labelAccent: 'Database', icon: 'users' },
+      { href: '/customers/lookup', label: 'Quick', labelAccent: 'Lookup', icon: 'search' },
       { href: '/quotes', label: 'Quote', labelAccent: 'Builder', icon: 'quote' },
       { href: '/invoicing', label: 'Invoices', labelAccent: '', icon: 'receipt' },
     ]
@@ -91,8 +95,10 @@ const ALL_SECTIONS: NavSection[] = [
     key: 'module_bookkeeping',
     items: [
       { href: '/bookkeeping', label: 'Expense', labelAccent: 'Tracker', icon: 'receipt' },
+      { href: '/bookkeeping/bank', label: 'Bank', labelAccent: 'Import', icon: 'download' },
       { href: '/bookkeeping/ledger', label: 'Transaction', labelAccent: 'Ledger', icon: 'layers' },
       { href: '/bookkeeping/pl', label: 'Profit &', labelAccent: 'Loss', icon: 'chart' },
+      { href: '/payroll', label: 'Team', labelAccent: 'Payroll', icon: 'users' },
     ]
   },
   {
@@ -113,6 +119,19 @@ const ALL_SECTIONS: NavSection[] = [
 ]
 
 const icons: Record<string, React.ReactElement> = {
+  search: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 20, height: 20 }}>
+      <circle cx="11" cy="11" r="8"></circle>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
+  ),
+  download: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 20, height: 20 }}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+      <polyline points="7 10 12 15 17 10"></polyline>
+      <line x1="12" y1="15" x2="12" y2="3"></line>
+    </svg>
+  ),
   users: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 20, height: 20 }}>
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -269,6 +288,23 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
   const [modules, setModules] = useState<Record<string, boolean>>({})
   const [shopName, setShopName] = useState('')
   const { isStationMode, hasPermission, requestEscalation } = useStationMode()
+  const [pendingLeadCount, setPendingLeadCount] = useState(0)
+
+  // Fetch pending lead count for sidebar badge
+  useEffect(() => {
+    fetch('/api/auto/leads?count_only=1')
+      .then(r => r.json())
+      .then(data => setPendingLeadCount(data.pendingCount || 0))
+      .catch(() => {})
+    // Refresh every 60 seconds
+    const interval = setInterval(() => {
+      fetch('/api/auto/leads?count_only=1')
+        .then(r => r.json())
+        .then(data => setPendingLeadCount(data.pendingCount || 0))
+        .catch(() => {})
+    }, 60000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Fetch module toggles + shop name from config
   // Service modules (auto_tint, flat_glass, etc.) read from shop_modules table
@@ -460,6 +496,17 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}
                   <span style={{ fontSize: '14px', fontWeight: 500, color: isActive ? 'var(--dash-text-primary, #f1f5f9)' : isLocked ? '#4b5563' : 'var(--dash-text-secondary, #e5e7eb)', flex: 1 }}>
                     {item.label}{item.labelAccent && <span style={{ color: isLocked ? '#4b5563' : RED }}> {item.labelAccent}</span>}
                   </span>
+                  {item.href === '/automotive/pipeline' && pendingLeadCount > 0 && (
+                    <span style={{
+                      minWidth: 20, height: 20, borderRadius: 10,
+                      background: '#dc2626', color: '#fff',
+                      fontSize: '0.65rem', fontWeight: 700,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      padding: '0 5px', flexShrink: 0,
+                    }}>
+                      {pendingLeadCount}
+                    </span>
+                  )}
                   {isLocked && (
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                       <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />

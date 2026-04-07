@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import type { PriceSummary } from '../lib/pricing';
 import type { GCValidation, BulkConfig } from '../lib/types';
+import TintLawsModal, { TintLawsButton } from './TintLawsModal';
 
 interface Props {
   config: BulkConfig;
@@ -34,6 +36,7 @@ export default function SummarySection({
   policyCheckbox, priceAckCheckbox,
   onPolicyChange, onPriceAckChange,
 }: Props) {
+  const [showTintLaws, setShowTintLaws] = useState(false);
   const { lineItems, subtotal, defaultDiscountTotal, promoDiscount, gcCredit, depositAmount, balanceDue, totalDuration } = priceSummary;
   const totalDiscount = defaultDiscountTotal + promoDiscount;
 
@@ -182,6 +185,11 @@ export default function SummarySection({
         </div>
       )}
 
+      {/* MD Tint Laws */}
+      <div style={{ margin: '20px 0' }}>
+        <TintLawsButton onClick={() => setShowTintLaws(true)} />
+      </div>
+
       {/* Window Status Question */}
       <div style={{ margin: '20px 0' }}>
         <label style={{ fontWeight: 800, display: 'block', marginBottom: 8 }}>
@@ -222,6 +230,8 @@ export default function SummarySection({
           </div>
         </div>
       )}
+
+      {showTintLaws && <TintLawsModal onClose={() => setShowTintLaws(false)} />}
     </div>
   );
 }

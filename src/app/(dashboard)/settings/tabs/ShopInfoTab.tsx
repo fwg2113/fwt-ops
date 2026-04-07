@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardCard, Button, FormField, TextInput, SelectInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import { useIsMobile } from '@/app/hooks/useIsMobile';
@@ -78,7 +78,8 @@ export default function ShopInfoTab({ data, onSave, onRefresh }: Props) {
         </div>
       </DashboardCard>
 
-      {/* Login Mode is configured per team member in Settings > Team */}
+      {/* Google Calendar Integration */}
+      <GoogleCalendarCard config={config} onRefresh={onRefresh} />
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Button variant="primary" onClick={handleSave} disabled={saving}
@@ -87,6 +88,80 @@ export default function ShopInfoTab({ data, onSave, onRefresh }: Props) {
         </Button>
       </div>
     </div>
+  );
+}
+
+function GoogleCalendarCard({ config, onRefresh }: { config: Record<string, unknown>; onRefresh: () => void }) {
+  const isConnected = Boolean(config.google_calendar_connected);
+  const connectedEmail = String(config.google_calendar_email || '');
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  // Check URL params for OAuth callback result
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gcal = params.get('gcal');
+    if (gcal === 'connected' || gcal === 'error') {
+      // Clean up URL params
+      const url = new URL(window.location.href);
+      url.searchParams.delete('gcal');
+      url.searchParams.delete('reason');
+      window.history.replaceState({}, '', url.toString());
+      if (gcal === 'connected') onRefresh();
+    }
+  }, [onRefresh]);
+
+  async function handleConnect() {
+    setConnecting(true);
+    try {
+      const res = await fetch('/api/google');
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch { setConnecting(false); }
+  }
+
+  async function handleDisconnect() {
+    if (!confirm('Disconnect Google Calendar? New bookings will no longer sync.')) return;
+    setDisconnecting(true);
+    await fetch('/api/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'disconnect' }),
+    });
+    setDisconnecting(false);
+    onRefresh();
+  }
+
+  return (
+    <DashboardCard title="Google Calendar">
+      <p style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, margin: `0 0 ${SPACING.md}px 0` }}>
+        Automatically add new appointments to your Google Calendar when customers book online.
+      </p>
+      {isConnected ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: SPACING.md }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+            <div style={{
+              width: 10, height: 10, borderRadius: '50%', background: '#22c55e', flexShrink: 0,
+            }} />
+            <span style={{ fontSize: FONT.sizeSm, color: COLORS.textPrimary, fontWeight: 600 }}>
+              Connected
+            </span>
+            {connectedEmail && (
+              <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>({connectedEmail})</span>
+            )}
+          </div>
+          <Button variant="secondary" onClick={handleDisconnect} disabled={disconnecting}>
+            {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+          </Button>
+        </div>
+      ) : (
+        <Button variant="primary" onClick={handleConnect} disabled={connecting}>
+          {connecting ? 'Connecting...' : 'Connect Google Calendar'}
+        </Button>
+      )}
+    </DashboardCard>
   );
 }
 
