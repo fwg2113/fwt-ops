@@ -231,12 +231,8 @@ export default function IncomingCallToast() {
 
           // Play sound
           const s = settingsRef.current;
-          console.log('[CALL ALERT] New call detected:', call.id, 'sound_enabled:', s.sound_enabled, 'hasInteracted:', hasInteractedRef.current, 'inActiveHours:', isWithinActiveHours(s.start_hour, s.end_hour), 'call_sound_key:', s.call_sound_key, 'customSounds:', customSoundsRef.current.length);
           if (s.sound_enabled && hasInteractedRef.current && isWithinActiveHours(s.start_hour, s.end_hour)) {
-            console.log('[CALL ALERT] Playing sound:', s.call_sound_key);
             playSoundByKey(s.call_sound_key || 'doorbell', customSoundsRef.current);
-          } else {
-            console.log('[CALL ALERT] Sound NOT played. Reasons:', !s.sound_enabled ? 'disabled' : '', !hasInteractedRef.current ? 'no-interaction' : '', !isWithinActiveHours(s.start_hour, s.end_hour) ? 'outside-hours' : '');
           }
         }
       )
