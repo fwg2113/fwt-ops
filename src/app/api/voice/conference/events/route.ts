@@ -64,18 +64,21 @@ export async function POST(request: NextRequest) {
           const transferFrom = call.answered_by || 'Team';
           const targetRealName = call.transfer_target_name || targetSettings?.name || '';
           // Look up target's real phone number from team_members table
+          // Match by first name since call_settings has "Sharyn V" but team_members has "Sharyn"
           if (targetRealName) {
+            const firstName = targetRealName.split(' ')[0];
             const { data: teamMember } = await supabaseAdmin
               .from('team_members')
               .select('phone')
               .eq('shop_id', 1)
-              .ilike('name', `%${targetRealName}%`)
+              .ilike('name', `${firstName}%`)
               .eq('active', true)
               .maybeSingle();
             if (teamMember?.phone) {
-              const cleanPhone = teamMember.phone.replace(/[^\d+]/g, '');
-              const formatted = cleanPhone.startsWith('+') ? cleanPhone : cleanPhone.length === 10 ? `+1${cleanPhone}` : `+${cleanPhone}`;
-              sendSms(formatted, `Transfer from ${transferFrom}. Customer: ${call.caller_phone || 'Unknown'}`).catch(() => {});
+              const cleanPhone = teamMember.phone.replace(/[^\d+\s()-]/g, '').replace(/[\s()-]/g, '');
+              const digits = cleanPhone.replace(/\D/g, '');
+              const formatted = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith('1') ? `+${digits}` : `+1${digits}`;
+              sendSms(formatted, `Transfer from ${transferFrom}. Customer: ${call.caller_phone || 'Unknown'}`).catch(err => console.error('Transfer SMS error:', err));
             }
           }
 
