@@ -8,7 +8,7 @@ export async function GET() {
     .from('calls')
     .select('*')
     .eq('shop_id', 1)
-    .in('status', ['completed', 'missed', 'in-progress', 'voicemail'])
+    .in('status', ['ringing', 'completed', 'missed', 'in-progress', 'voicemail'])
     .order('created_at', { ascending: false })
     .limit(10);
 
