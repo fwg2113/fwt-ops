@@ -4,80 +4,87 @@ import { supabaseAdmin } from '@/app/lib/supabase-server';
 // POST /api/voice/complete
 // Twilio webhook: Dial action -- called when Dial ends (no answer, hangup, or transfer)
 export async function POST(request: NextRequest) {
-  const form = await request.formData();
-  const dialCallStatus = form.get('DialCallStatus') as string;
-  const dialCallDuration = form.get('DialCallDuration') as string;
-  const callSid = form.get('CallSid') as string;
+  try {
+    const url = new URL(request.url);
+    const callSid = url.searchParams.get('callSid');
 
-  const url = new URL(request.url);
-  const paramCallSid = url.searchParams.get('callSid') || callSid;
-  const category = url.searchParams.get('category') || '';
+    const form = await request.formData();
+    const dialCallStatus = form.get('DialCallStatus') as string;
+    const dialCallDuration = form.get('DialCallDuration') as string;
 
-  // Check if this is part of a warm transfer
-  const { data: call } = await supabaseAdmin
-    .from('calls')
-    .select('id, transfer_status, conference_name')
-    .eq('call_sid', paramCallSid)
-    .single();
+    // Check if this call is in transfer mode
+    const { data: callRecord } = await supabaseAdmin
+      .from('calls')
+      .select('transfer_status')
+      .eq('call_sid', callSid)
+      .maybeSingle();
 
-  // If transfer is initiating, put caller into the conference
-  if (call?.transfer_status === 'initiating' && call.conference_name) {
+    if (callRecord?.transfer_status === 'initiating') {
+      // Transfer in progress: put the caller into the Conference directly
+      // DO NOT use <Redirect> -- must return <Dial><Conference> inline
+      const conferenceName = `call-${callSid}`;
+      const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
+      const eventsUrl = `${origin}/api/voice/conference/events?conf=${encodeURIComponent(conferenceName)}`;
+
+      await supabaseAdmin
+        .from('calls')
+        .update({ conference_name: conferenceName })
+        .eq('call_sid', callSid);
+
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial>
+    <Conference
+      startConferenceOnEnter="true"
+      endConferenceOnExit="true"
+      beep="false"
+      statusCallback="${eventsUrl}"
+      statusCallbackEvent="join leave end">
+      ${conferenceName}
+    </Conference>
+  </Dial>
+</Response>`;
+
+      return new NextResponse(twiml, { headers: { 'Content-Type': 'text/xml' } });
+    }
+
+    const duration = parseInt(dialCallDuration || '0');
+
+    // Only treat as answered if someone actually picked up
+    if (dialCallStatus === 'answered' || (dialCallStatus === 'completed' && duration > 0)) {
+      await supabaseAdmin
+        .from('calls')
+        .update({ status: 'completed', duration })
+        .eq('call_sid', callSid);
+
+      return new NextResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+        { headers: { 'Content-Type': 'text/xml' } }
+      );
+    }
+
+    // No answer -- go to voicemail
+    await supabaseAdmin
+      .from('calls')
+      .update({ status: 'missed' })
+      .eq('call_sid', callSid);
+
+    const from = form.get('From') as string || '';
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
-    const confJoinUrl = `${origin}/api/voice/conference/join?conf=${encodeURIComponent(call.conference_name)}&role=caller&callSid=${paramCallSid}`;
+    const vmUrl = `${origin}/api/voice/voicemail?callSid=${callSid}&amp;from=${encodeURIComponent(from)}`;
 
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Redirect method="POST">${confJoinUrl}</Redirect>
+  <Say voice="Polly.Joanna">No one is available. Please leave a message after the beep.</Say>
+  <Record maxLength="120" action="${vmUrl}" />
 </Response>`;
-    return new NextResponse(twiml, { headers: { 'Content-Type': 'text/xml' } });
-  }
 
-  // Normal flow: check if call was answered
-  if (dialCallStatus === 'answered' || dialCallStatus === 'completed') {
-    const dur = parseInt(dialCallDuration || '0');
-    if (dur > 0 && call) {
-      await supabaseAdmin.from('calls').update({
-        status: 'completed',
-        duration: dur,
-      }).eq('id', call.id);
-    }
+    return new NextResponse(twiml, { headers: { 'Content-Type': 'text/xml' } });
+  } catch (error) {
+    console.error('Complete webhook error:', error);
     return new NextResponse(
-      '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>',
+      '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
       { headers: { 'Content-Type': 'text/xml' } }
     );
   }
-
-  // No answer -- send to voicemail
-  const from = form.get('From') as string || '';
-
-  // Look up customer name
-  const cleanPhone = from.replace(/\D/g, '').slice(-10);
-  let customerName = '';
-  if (cleanPhone) {
-    const { data: customer } = await supabaseAdmin
-      .from('customers')
-      .select('first_name, last_name')
-      .or(`phone.ilike.%${cleanPhone}%`)
-      .eq('shop_id', 1)
-      .single();
-    if (customer) customerName = `${customer.first_name || ''} ${customer.last_name || ''}`.trim();
-  }
-
-  if (call) {
-    await supabaseAdmin.from('calls').update({
-      status: 'missed',
-      customer_name: customerName || null,
-    }).eq('id', call.id);
-  }
-
-  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
-  const vmUrl = `${origin}/api/voice/voicemail?callSid=${paramCallSid}&from=${encodeURIComponent(from)}&customerName=${encodeURIComponent(customerName)}`;
-
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="Polly.Joanna">We're sorry we missed your call. Please leave a message after the beep and we will get back to you as soon as possible.</Say>
-  <Record maxLength="120" transcribe="true" action="${vmUrl}" method="POST" />
-</Response>`;
-
-  return new NextResponse(twiml, { headers: { 'Content-Type': 'text/xml' } });
 }

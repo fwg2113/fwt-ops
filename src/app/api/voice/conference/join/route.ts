@@ -14,7 +14,12 @@ export async function POST(request: NextRequest) {
   // Caller has endConferenceOnExit=true (conference ends when they hang up)
   const endOnExit = role === 'caller' ? 'true' : 'false';
 
-  const whisperTwiml = whisper ? `<Say voice="Polly.Joanna">${whisper}</Say>` : '';
+  // XML-escape whisper text to prevent malformed TwiML
+  const safeWhisper = whisper
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const whisperTwiml = safeWhisper ? `<Say voice="Polly.Joanna">${safeWhisper}</Say>` : '';
 
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -23,10 +28,10 @@ export async function POST(request: NextRequest) {
     <Conference
       startConferenceOnEnter="true"
       endConferenceOnExit="${endOnExit}"
+      beep="false"
       statusCallback="${eventsUrl}"
       statusCallbackEvent="join leave end"
-      statusCallbackMethod="POST"
-    >
+      statusCallbackMethod="POST">
       ${conf}
     </Conference>
   </Dial>
