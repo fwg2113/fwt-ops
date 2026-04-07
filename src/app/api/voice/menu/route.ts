@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
   const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com';
   const statusUrl = `${origin}/api/voice/status`;
-  const completeUrl = `${origin}/api/voice/complete?callSid=${callSid}&category=${category.key}`;
+  const completeUrl = `${origin}/api/voice/complete?callSid=${callSid}&amp;category=${category.key}`;
 
   // Check for category-specific greeting
   const { data: catGreeting } = await supabaseAdmin
