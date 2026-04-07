@@ -5,142 +5,158 @@ import { sendSms } from '@/app/lib/messaging';
 
 // POST /api/voice/conference/events
 // Twilio webhook: conference participant join/leave/end events
+// Drives the warm transfer flow.
 export async function POST(request: NextRequest) {
-  const form = await request.formData();
-  const event = form.get('StatusCallbackEvent') as string;
-  const conferenceSid = form.get('ConferenceSid') as string;
-  const callSid = form.get('CallSid') as string;
+  try {
+    const url = new URL(request.url);
+    // Get the parent call SID from query params (set when conference was created)
+    const confName = url.searchParams.get('conf') || '';
 
-  const url = new URL(request.url);
-  const confName = url.searchParams.get('conf') || '';
+    const form = await request.formData();
+    const event = form.get('StatusCallbackEvent') as string;
+    const conferenceSid = form.get('ConferenceSid') as string;
+    const participantCallSid = form.get('CallSid') as string; // The specific participant's call SID
 
-  // Find the call record by conference name
-  const { data: call } = await supabaseAdmin
-    .from('calls')
-    .select('*')
-    .eq('conference_name', confName)
-    .single();
+    // Look up the call record by conference name
+    const { data: call } = await supabaseAdmin
+      .from('calls')
+      .select('*')
+      .eq('conference_name', confName)
+      .single();
 
-  if (!call) return NextResponse.json({ ok: true });
+    if (!call) return NextResponse.json({ ok: true });
 
-  // Update conference SID
-  if (!call.conference_sid && conferenceSid) {
-    await supabaseAdmin.from('calls').update({ conference_sid: conferenceSid }).eq('id', call.id);
-  }
+    const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
+    const twilioNumber = process.env.TWILIO_PHONE_NUMBER || '';
 
-  const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
-  const twilioNumber = process.env.TWILIO_PHONE_NUMBER || '';
+    // Store the conference SID on first event
+    if ((event === 'participant-join' || event === 'conference-start') && !call.conference_sid) {
+      await supabaseAdmin.from('calls').update({ conference_sid: conferenceSid }).eq('id', call.id);
+    }
 
-  if (event === 'participant-join') {
-    // When caller joins conference and transfer is initiating:
-    // 1. Hold the caller
-    // 2. Call the transfer target
-    if (call.transfer_status === 'initiating' && callSid === call.call_sid) {
-      // This is the caller joining -- hold them
-      try {
-        await holdParticipant(conferenceSid, callSid, true);
-      } catch (e) { console.error('Hold caller error:', e); }
+    if (event === 'participant-join') {
+      // Re-fetch to get latest transfer_status
+      const { data: freshCall } = await supabaseAdmin
+        .from('calls')
+        .select('*')
+        .eq('id', call.id)
+        .single();
+      if (!freshCall) return NextResponse.json({ ok: true });
 
-      // Call the transfer target
-      if (call.transfer_target_phone) {
+      // When transfer_status is 'initiating' and the participant is NOT the agent
+      // → this is the caller joining. Hold them and call the transfer target.
+      if (freshCall.transfer_status === 'initiating' && participantCallSid !== freshCall.agent_call_sid) {
+        // Hold the caller
         try {
-          const confJoinUrl = `${origin}/api/voice/conference/join?conf=${encodeURIComponent(confName)}&role=target&whisper=${encodeURIComponent('Warm transfer. Please hold.')}`;
-          const targetStatusUrl = `${origin}/api/voice/transfer/target-status?callSid=${call.call_sid}`;
+          await holdParticipant(conferenceSid, freshCall.call_sid, true);
+        } catch (e) { console.error('Hold caller error:', e); }
 
-          // Look up SIP URI for the transfer target
-          const { data: targetSettings } = await supabaseAdmin
-            .from('call_settings')
-            .select('sip_uri, phone, name')
-            .or(`phone.eq.${call.transfer_target_phone},sip_uri.eq.${call.transfer_target_phone}`)
-            .eq('enabled', true)
-            .maybeSingle();
+        // Call the transfer target
+        if (freshCall.transfer_target_phone) {
+          try {
+            const confJoinUrl = `${origin}/api/voice/conference/join?conf=${encodeURIComponent(confName)}&role=target&whisper=${encodeURIComponent('Warm transfer. Please hold.')}`;
+            const targetStatusUrl = `${origin}/api/voice/transfer/target-status?callSid=${freshCall.call_sid}`;
 
-          // Use SIP URI if available, otherwise use phone number
-          const targetTo = targetSettings?.sip_uri || call.transfer_target_phone;
-          // For SIP calls, show customer's caller ID; for phone calls, show business number
-          const targetFrom = targetSettings?.sip_uri ? (call.caller_phone || twilioNumber) : twilioNumber;
-
-          // Send SMS to transfer target's real phone so they know it's a transfer BEFORE answering
-          const transferFrom = call.answered_by || 'Team';
-          const targetRealName = call.transfer_target_name || targetSettings?.name || '';
-          // Look up target's real phone number from team_members table
-          // Match by first name since call_settings has "Sharyn V" but team_members has "Sharyn"
-          if (targetRealName) {
-            const firstName = targetRealName.split(' ')[0];
-            const { data: teamMember } = await supabaseAdmin
-              .from('team_members')
-              .select('phone')
-              .eq('shop_id', 1)
-              .ilike('name', `${firstName}%`)
-              .eq('active', true)
+            // Look up SIP URI for the transfer target
+            const { data: targetSettings } = await supabaseAdmin
+              .from('call_settings')
+              .select('sip_uri, name')
+              .or(`phone.eq.${freshCall.transfer_target_phone},sip_uri.eq.${freshCall.transfer_target_phone}`)
+              .eq('enabled', true)
               .maybeSingle();
-            if (teamMember?.phone) {
-              const cleanPhone = teamMember.phone.replace(/[^\d+\s()-]/g, '').replace(/[\s()-]/g, '');
-              const digits = cleanPhone.replace(/\D/g, '');
-              const formatted = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith('1') ? `+${digits}` : `+1${digits}`;
-              sendSms(formatted, `Transfer from ${transferFrom}. Customer: ${call.caller_phone || 'Unknown'}`).catch(err => console.error('Transfer SMS error:', err));
+
+            const targetTo = targetSettings?.sip_uri || freshCall.transfer_target_phone;
+            const targetFrom = targetSettings?.sip_uri ? (freshCall.caller_phone || twilioNumber) : twilioNumber;
+
+            // Send SMS to transfer target's real phone BEFORE their SoftPhone rings
+            const transferFrom = freshCall.answered_by || 'Team';
+            const targetRealName = freshCall.transfer_target_name || targetSettings?.name || '';
+            if (targetRealName) {
+              const firstName = targetRealName.split(' ')[0];
+              const { data: teamMember } = await supabaseAdmin
+                .from('team_members')
+                .select('phone')
+                .eq('shop_id', 1)
+                .ilike('name', `${firstName}%`)
+                .eq('active', true)
+                .maybeSingle();
+              if (teamMember?.phone) {
+                const digits = teamMember.phone.replace(/\D/g, '');
+                const formatted = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith('1') ? `+${digits}` : `+1${digits}`;
+                sendSms(formatted, `Transfer from ${transferFrom}. Customer: ${freshCall.caller_phone || 'Unknown'}`).catch(err => console.error('Transfer SMS error:', err));
+              }
             }
+
+            const result = await createCall({
+              to: targetTo,
+              from: targetFrom,
+              url: confJoinUrl,
+              statusCallback: targetStatusUrl,
+              statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+            });
+
+            await supabaseAdmin.from('calls').update({
+              transfer_status: 'connecting',
+              transfer_target_call_sid: result.sid,
+            }).eq('id', call.id);
+          } catch (e) {
+            console.error('Call transfer target error:', e);
+            try { await holdParticipant(conferenceSid, freshCall.call_sid, false); } catch {}
+            await supabaseAdmin.from('calls').update({
+              transfer_status: null,
+              transfer_target_phone: null,
+              transfer_target_name: null,
+            }).eq('id', call.id);
           }
+        }
+      }
 
-          const result = await createCall({
-            to: targetTo,
-            from: targetFrom,
-            url: confJoinUrl,
-            statusCallback: targetStatusUrl,
-            statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-          });
+      // Third participant joined (the transfer target) → briefing phase
+      if (freshCall.transfer_status === 'connecting' && participantCallSid !== freshCall.agent_call_sid && participantCallSid !== freshCall.call_sid) {
+        await supabaseAdmin.from('calls').update({ transfer_status: 'briefing' }).eq('id', call.id);
+      }
+    }
 
-          await supabaseAdmin.from('calls').update({
-            transfer_status: 'connecting',
-            transfer_target_call_sid: result.sid,
-          }).eq('id', call.id);
-        } catch (e) {
-          console.error('Call transfer target error:', e);
-          // Failed to call target -- unhold caller
-          try { await holdParticipant(conferenceSid, callSid, false); } catch {}
+    if (event === 'participant-leave') {
+      // Re-fetch for latest state
+      const { data: freshCall } = await supabaseAdmin
+        .from('calls')
+        .select('transfer_status, agent_call_sid, call_sid, transfer_target_call_sid')
+        .eq('id', call.id)
+        .single();
+
+      if (freshCall && participantCallSid === freshCall.agent_call_sid) {
+        // Agent left the conference
+        const status = freshCall.transfer_status;
+        if (status === 'initiating' || status === 'connecting') {
+          // Transfer wasn't completed -- clean up: hang up target, unhold caller
+          if (freshCall.transfer_target_call_sid) {
+            try { await hangupCall(freshCall.transfer_target_call_sid); } catch {}
+          }
+          try {
+            await holdParticipant(conferenceSid, freshCall.call_sid, false);
+          } catch {}
           await supabaseAdmin.from('calls').update({
             transfer_status: null,
             transfer_target_phone: null,
             transfer_target_name: null,
+            transfer_target_call_sid: null,
           }).eq('id', call.id);
         }
       }
     }
 
-    // Third participant joined (the transfer target)
-    if (call.transfer_status === 'connecting' && callSid !== call.call_sid && callSid !== call.agent_call_sid) {
-      await supabaseAdmin.from('calls').update({
-        transfer_status: 'briefing',
-      }).eq('id', call.id);
-    }
-  }
-
-  if (event === 'participant-leave') {
-    // If agent leaves during transfer, clean up
-    if (callSid === call.agent_call_sid && call.transfer_status && call.transfer_status !== 'completed') {
-      // Agent left before transfer completed -- cancel transfer
-      if (call.transfer_target_call_sid) {
-        try { await hangupCall(call.transfer_target_call_sid); } catch {}
-      }
-      // Unhold caller
-      if (call.call_sid && conferenceSid) {
-        try { await holdParticipant(conferenceSid, call.call_sid, false); } catch {}
-      }
+    if (event === 'conference-end') {
       await supabaseAdmin.from('calls').update({
         transfer_status: null,
-        transfer_target_phone: null,
-        transfer_target_name: null,
-        transfer_target_call_sid: null,
+        conference_sid: null,
+        conference_name: null,
       }).eq('id', call.id);
     }
-  }
 
-  if (event === 'conference-end') {
-    await supabaseAdmin.from('calls').update({
-      transfer_status: null,
-      conference_sid: null,
-    }).eq('id', call.id);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('Conference events error:', error);
+    return NextResponse.json({ ok: true });
   }
-
-  return NextResponse.json({ ok: true });
 }
