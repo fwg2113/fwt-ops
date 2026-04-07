@@ -116,6 +116,47 @@ export default function IncomingCallToast() {
     loadSettings();
   }, [loadSettings]);
 
+  // Poll for new calls as fallback (in case Realtime subscription doesn't connect)
+  const lastSeenCallRef = useRef<string | null>(null);
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/voice/recent');
+        const { calls } = await res.json();
+        if (calls && calls.length > 0) {
+          const latest = calls[0];
+          // Only trigger for inbound ringing calls we haven't seen
+          if (latest.direction === 'inbound' && latest.status === 'ringing' && latest.id !== lastSeenCallRef.current) {
+            lastSeenCallRef.current = latest.id;
+
+            // Check if toast already exists for this call
+            setToasts(prev => {
+              if (prev.has(latest.id)) return prev;
+              const next = new Map(prev);
+              next.set(latest.id, {
+                call: latest,
+                status: 'ringing',
+                dismissAt: null,
+                createdAt: Date.now(),
+              });
+
+              // Play sound
+              const s = settingsRef.current;
+              if (s.sound_enabled && hasInteractedRef.current && isWithinActiveHours(s.start_hour, s.end_hour)) {
+                playSoundByKey(s.call_sound_key || 'doorbell', customSoundsRef.current);
+              }
+
+              return next;
+            });
+          }
+        }
+      } catch { /* silent */ }
+    };
+
+    const interval = setInterval(poll, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Track user interaction for Web Audio API
   useEffect(() => {
     const handler = () => setHasInteracted(true);
