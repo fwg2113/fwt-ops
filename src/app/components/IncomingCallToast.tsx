@@ -159,13 +159,33 @@ export default function IncomingCallToast() {
   }, []);
 
   // Track user interaction for Web Audio API
+  // Use capturing phase and listen continuously (not once) to catch interactions reliably
   useEffect(() => {
-    const handler = () => setHasInteracted(true);
-    window.addEventListener('click', handler, { once: true });
-    window.addEventListener('keydown', handler, { once: true });
+    const handler = () => {
+      if (!hasInteractedRef.current) {
+        setHasInteracted(true);
+        hasInteractedRef.current = true;
+      }
+    };
+    // Listen on document with capture to catch ALL interactions
+    document.addEventListener('click', handler, true);
+    document.addEventListener('keydown', handler, true);
+    document.addEventListener('touchstart', handler, true);
+    // Also check immediately -- if page was already interacted with
+    if (document.hasFocus()) {
+      // Can't know for sure, but set a timeout to auto-enable after 5 seconds
+      // Most users will have clicked something by then
+      setTimeout(() => {
+        if (!hasInteractedRef.current) {
+          setHasInteracted(true);
+          hasInteractedRef.current = true;
+        }
+      }, 5000);
+    }
     return () => {
-      window.removeEventListener('click', handler);
-      window.removeEventListener('keydown', handler);
+      document.removeEventListener('click', handler, true);
+      document.removeEventListener('keydown', handler, true);
+      document.removeEventListener('touchstart', handler, true);
     };
   }, []);
 
