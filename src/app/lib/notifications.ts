@@ -62,11 +62,20 @@ function substituteVars(template: string, vars: Record<string, string>): string 
   return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? '');
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function wrapEmailHtml(shopName: string, body: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
 <body style="margin:0;padding:20px;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-<div style="background:#1a1a1a;padding:20px;text-align:center;color:#fff;font-size:18px;font-weight:600;">${shopName}</div>
+<div style="background:#1a1a1a;padding:20px;text-align:center;color:#fff;font-size:18px;font-weight:600;">${escapeHtml(shopName)}</div>
 <div style="padding:24px;color:#333;font-size:14px;line-height:1.6;">${body}</div>
 </div></body></html>`;
 }
@@ -144,18 +153,19 @@ export async function notifyNewBooking(shopId: number, booking: BookingData) {
 
   // Customer confirmation email
   if (config.notify_customer_booking_confirmed && booking.customer_email) {
+    const e = escapeHtml;
     const html = wrapEmailHtml(config.shop_name, `
       <h2>Appointment Confirmed</h2>
-      <p>Hi ${booking.customer_name.split(' ')[0]},</p>
-      <p>Your appointment at <strong>${config.shop_name}</strong> has been confirmed.</p>
-      <p><strong>Date:</strong> ${dateDisplay} at ${timeDisplay}</p>
-      <p><strong>Vehicle:</strong> ${[booking.vehicle_year, booking.vehicle_make, booking.vehicle_model].filter(Boolean).join(' ')}</p>
+      <p>Hi ${e(booking.customer_name.split(' ')[0])},</p>
+      <p>Your appointment at <strong>${e(config.shop_name)}</strong> has been confirmed.</p>
+      <p><strong>Date:</strong> ${e(dateDisplay)} at ${e(timeDisplay)}</p>
+      <p><strong>Vehicle:</strong> ${e([booking.vehicle_year, booking.vehicle_make, booking.vehicle_model].filter(Boolean).join(' '))}</p>
       <p><strong>Deposit Paid:</strong> $${booking.deposit_paid}</p>
       <p><strong>Balance Due:</strong> $${booking.balance_due}</p>
       <p>We look forward to seeing you!</p>
-      <p>${config.shop_name}<br>${config.shop_phone}<br>${config.shop_address}</p>
+      <p>${e(config.shop_name)}<br>${e(config.shop_phone)}<br>${e(config.shop_address)}</p>
     `);
-    await sendEmailRaw(booking.customer_email, `Appointment Confirmed - ${config.shop_name}`, html, config.shop_name);
+    await sendEmailRaw(booking.customer_email, `Appointment Confirmed - ${escapeHtml(config.shop_name)}`, html, config.shop_name);
   }
 }
 
