@@ -130,16 +130,36 @@ export function playBuiltinSound(key: string) {
   }
 }
 
-let currentAudio: HTMLAudioElement | null = null;
+// Play custom sound using AudioContext (bypasses autoplay restrictions once context is resumed)
+export async function playCustomSound(url: string) {
+  try {
+    const ctx = getAudioContext();
 
-export function playCustomSound(url: string) {
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio = null;
+    // Fetch the audio data
+    let arrayBuffer: ArrayBuffer;
+    if (url.startsWith('data:')) {
+      // Base64 data URL -- decode it
+      const base64 = url.split(',')[1];
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      arrayBuffer = bytes.buffer;
+    } else {
+      const response = await fetch(url);
+      arrayBuffer = await response.arrayBuffer();
+    }
+
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    source.buffer = audioBuffer;
+    gain.gain.value = 0.5;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(0);
+  } catch (err) {
+    console.error('Failed to play custom sound:', err);
   }
-  currentAudio = new Audio(url);
-  currentAudio.volume = 0.5;
-  currentAudio.play().catch(err => console.error('Failed to play custom sound:', err));
 }
 
 export function playSound(key: SoundKey, customSoundUrl?: string) {

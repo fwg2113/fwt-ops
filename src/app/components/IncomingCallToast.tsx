@@ -171,17 +171,15 @@ export default function IncomingCallToast() {
     document.addEventListener('click', handler, true);
     document.addEventListener('keydown', handler, true);
     document.addEventListener('touchstart', handler, true);
-    // Also check immediately -- if page was already interacted with
-    if (document.hasFocus()) {
-      // Can't know for sure, but set a timeout to auto-enable after 5 seconds
-      // Most users will have clicked something by then
-      setTimeout(() => {
-        if (!hasInteractedRef.current) {
-          setHasInteracted(true);
-          hasInteractedRef.current = true;
-        }
-      }, 5000);
-    }
+    // Resume AudioContext on first interaction to enable sound playback
+    const resumeAudio = () => {
+      try {
+        const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+        if (ctx.state === 'suspended') ctx.resume();
+        ctx.close();
+      } catch { /* ignore */ }
+    };
+    document.addEventListener('click', resumeAudio, { once: true });
     return () => {
       document.removeEventListener('click', handler, true);
       document.removeEventListener('keydown', handler, true);
