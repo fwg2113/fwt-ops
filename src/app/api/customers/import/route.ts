@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { withShopAuth, getAdminClient } from '@/app/lib/auth-middleware';
 
 interface ImportRow {
@@ -366,6 +366,22 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
           const vehicleDescBuilt = [vehicleYear, vehicleMake !== 'Unknown' ? vehicleMake : null, vehicleModel !== 'Unknown' ? vehicleModel : null]
             .filter(Boolean).join(' ') || row.vehicle || null;
 
+          // Duplicate detection: same customer + date + total
+          const jobDate = row.job_date || new Date().toISOString().split('T')[0];
+          const { data: existingJob } = await supabase
+            .from('customer_jobs')
+            .select('id')
+            .eq('customer_id', customerId)
+            .eq('job_date', jobDate)
+            .eq('total', jobTotal)
+            .limit(1)
+            .maybeSingle();
+
+          if (existingJob) {
+            results.duplicatesSkipped++;
+            // Still update lifetime stats but skip creating the job
+          } else {
+
           const { error: jobErr } = await supabase
             .from('customer_jobs')
             .insert({
@@ -411,9 +427,8 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
             results.errors.push(`Row ${i + 1}: Job insert failed - ${jobErr.message}`);
           } else {
             results.jobsCreated++;
-
-            // Lifetime stats updated below
           }
+          } // end else (not duplicate)
         }
 
         // Update customer lifetime spend + visit count (manual since RPC may not exist)
@@ -457,5 +472,85 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
   } catch (error) {
     console.error('Import error:', error);
     return NextResponse.json({ error: 'Import failed' }, { status: 500 });
+  }
+});
+
+// DELETE /api/customers/import?batchId=xxx
+// Rollback an import batch -- deletes all jobs created by that batch
+export const DELETE = withShopAuth(async ({ shopId, req }) => {
+  try {
+    const url = new URL(req.url);
+    const batchId = url.searchParams.get('batchId');
+
+    if (!batchId) {
+      return NextResponse.json({ error: 'batchId required' }, { status: 400 });
+    }
+
+    const supabase = getAdminClient();
+
+    // Get all jobs in this batch to find affected customers
+    const { data: batchJobs } = await supabase
+      .from('customer_jobs')
+      .select('id, customer_id')
+      .eq('shop_id', shopId)
+      .eq('import_batch_id', batchId);
+
+    if (!batchJobs || batchJobs.length === 0) {
+      return NextResponse.json({ error: 'No jobs found for this batch' }, { status: 404 });
+    }
+
+    const affectedCustomerIds = [...new Set(batchJobs.map(j => j.customer_id))];
+
+    // Delete the jobs
+    const { error: deleteErr } = await supabase
+      .from('customer_jobs')
+      .delete()
+      .eq('shop_id', shopId)
+      .eq('import_batch_id', batchId);
+
+    if (deleteErr) {
+      return NextResponse.json({ error: deleteErr.message }, { status: 500 });
+    }
+
+    // Recalculate lifetime stats for affected customers
+    for (const custId of affectedCustomerIds) {
+      const { data: jobStats } = await supabase
+        .from('customer_jobs')
+        .select('total, job_date')
+        .eq('customer_id', custId);
+
+      const { data: bookingStats } = await supabase
+        .from('auto_bookings')
+        .select('subtotal, appointment_date')
+        .eq('customer_id', custId);
+
+      const allTotals = [
+        ...(jobStats || []).map(j => Number(j.total) || 0),
+        ...(bookingStats || []).map(b => Number(b.subtotal) || 0),
+      ];
+      const allDates = [
+        ...(jobStats || []).map(j => j.job_date),
+        ...(bookingStats || []).map(b => b.appointment_date),
+      ].filter(Boolean).sort();
+
+      await supabase
+        .from('customers')
+        .update({
+          lifetime_spend: allTotals.reduce((s, t) => s + t, 0),
+          visit_count: allTotals.length,
+          first_visit_date: allDates[0] || null,
+          last_visit_date: allDates[allDates.length - 1] || null,
+        })
+        .eq('id', custId);
+    }
+
+    return NextResponse.json({
+      success: true,
+      jobsDeleted: batchJobs.length,
+      customersUpdated: affectedCustomerIds.length,
+    });
+  } catch (error) {
+    console.error('Rollback error:', error);
+    return NextResponse.json({ error: 'Rollback failed' }, { status: 500 });
   }
 });

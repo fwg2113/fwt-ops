@@ -22,7 +22,8 @@
     "resend": "^6.9.4",
     "square": "^44.0.1",
     "stripe": "^21.0.1",
-    "twilio": "^5.13.1"
+    "twilio": "^5.13.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

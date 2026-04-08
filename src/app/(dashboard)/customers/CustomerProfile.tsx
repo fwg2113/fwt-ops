@@ -347,8 +347,8 @@ export default function CustomerProfile({ customerId, onBack }: Props) {
                 {/* Live bookings from the system */}
                 {bookings.map(b => {
                   const services = Array.isArray(b.services_json)
-                    ? (b.services_json as Array<{ label?: string; filmName?: string; shade?: string }>)
-                      .map(s => [s.label, s.filmName, s.shade].filter(Boolean).join(' '))
+                    ? (b.services_json as Array<{ label?: string; filmName?: string; shade?: string; description?: string; film?: string }>)
+                      .map(s => [s.label || s.description, s.filmName || s.film, s.shade].filter(Boolean).join(' '))
                       .join(' | ')
                     : '';
                   return (

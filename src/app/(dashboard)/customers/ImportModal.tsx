@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Modal, Button, SelectInput } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
+import * as XLSX from 'xlsx';
 
 interface Props {
   onClose: () => void;
@@ -121,54 +122,86 @@ export default function ImportModal({ onClose, onComplete }: Props) {
     customersUpdated: number;
     vehiclesCreated: number;
     jobsCreated: number;
+    duplicatesSkipped: number;
     errors: string[];
   } | null>(null);
+  const [importProgress, setImportProgress] = useState(0);
+  const [fileName, setFileName] = useState('');
 
-  // Parse CSV
+  // Parse CSV or Excel
   const handleFile = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      if (!text) return;
+    setFileName(file.name);
+    const isExcel = file.name.match(/\.xlsx?$/i);
 
-      const lines = text.split(/\r?\n/).filter(l => l.trim());
-      if (lines.length < 2) return;
+    if (isExcel) {
+      // Excel file
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = e.target?.result;
+        if (!data) return;
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        // Use first sheet
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const json: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        if (json.length < 2) return;
 
-      // Parse CSV (simple -- handles quotes)
-      // Detect delimiter: tab or comma
-      const firstLine = lines[0];
-      const delimiter = firstLine.includes('\t') ? '\t' : ',';
+        const hdrs = json[0].map(h => String(h || '').trim());
+        const dataRows = json.slice(1)
+          .map(row => row.map((cell: unknown) => {
+            if (cell && typeof cell === 'object' && 'getTime' in (cell as object)) return (cell as Date).toISOString().split('T')[0];
+            return String(cell ?? '').trim();
+          }))
+          .filter(r => r.some(c => c));
 
-      const parseLine = (line: string): string[] => {
-        const result: string[] = [];
-        let current = '';
-        let inQuotes = false;
-        for (let i = 0; i < line.length; i++) {
-          const c = line[i];
-          if (c === '"') { inQuotes = !inQuotes; continue; }
-          if (c === delimiter && !inQuotes) { result.push(current.trim()); current = ''; continue; }
-          current += c;
-        }
-        result.push(current.trim());
-        return result;
+        setHeaders(hdrs);
+        setRows(dataRows);
+
+        const autoMap: Record<number, string> = {};
+        hdrs.forEach((h, i) => { const guess = guessField(h); if (guess) autoMap[i] = guess; });
+        setMapping(autoMap);
+        setStep('map');
       };
+      reader.readAsArrayBuffer(file);
+    } else {
+      // CSV file
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        if (!text) return;
 
-      const hdrs = parseLine(lines[0]);
-      const dataRows = lines.slice(1).map(parseLine).filter(r => r.some(c => c));
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) return;
 
-      setHeaders(hdrs);
-      setRows(dataRows);
+        const delimiter = lines[0].includes('\t') ? '\t' : ',';
 
-      // Auto-guess mappings
-      const autoMap: Record<number, string> = {};
-      hdrs.forEach((h, i) => {
-        const guess = guessField(h);
-        if (guess) autoMap[i] = guess;
-      });
-      setMapping(autoMap);
-      setStep('map');
-    };
-    reader.readAsText(file);
+        const parseLine = (line: string): string[] => {
+          const result: string[] = [];
+          let current = '';
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const c = line[i];
+            if (c === '"') { inQuotes = !inQuotes; continue; }
+            if (c === delimiter && !inQuotes) { result.push(current.trim()); current = ''; continue; }
+            current += c;
+          }
+          result.push(current.trim());
+          return result;
+        };
+
+        const hdrs = parseLine(lines[0]);
+        const dataRows = lines.slice(1).map(parseLine).filter(r => r.some(c => c));
+
+        setHeaders(hdrs);
+        setRows(dataRows);
+
+        const autoMap: Record<number, string> = {};
+        hdrs.forEach((h, i) => { const guess = guessField(h); if (guess) autoMap[i] = guess; });
+        setMapping(autoMap);
+        setStep('map');
+      };
+      reader.readAsText(file);
+    }
   }, []);
 
   // Build mapped rows for preview/import
@@ -190,22 +223,42 @@ export default function ImportModal({ onClose, onComplete }: Props) {
     return mappedKeys.has('name') || mappedKeys.has('first_name') || mappedKeys.has('phone');
   }, [mapping]);
 
-  // Import
+  // Import in batches with progress
   async function handleImport() {
     setStep('importing');
+    setImportProgress(0);
     const batchId = `import-${Date.now()}`;
+    const batchSize = 50;
+    const totals = {
+      customersCreated: 0, customersUpdated: 0,
+      vehiclesCreated: 0, jobsCreated: 0, duplicatesSkipped: 0,
+      errors: [] as string[],
+    };
 
     try {
-      const res = await fetch('/api/customers/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: mappedRows, batchId }),
-      });
-      const data = await res.json();
-      setImportResults(data.results || null);
+      for (let i = 0; i < mappedRows.length; i += batchSize) {
+        const batch = mappedRows.slice(i, i + batchSize);
+        const res = await fetch('/api/customers/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: batch, batchId }),
+        });
+        const data = await res.json();
+        if (data.results) {
+          totals.customersCreated += data.results.customersCreated || 0;
+          totals.customersUpdated += data.results.customersUpdated || 0;
+          totals.vehiclesCreated += data.results.vehiclesCreated || 0;
+          totals.jobsCreated += data.results.jobsCreated || 0;
+          totals.duplicatesSkipped += data.results.duplicatesSkipped || 0;
+          if (data.results.errors?.length) totals.errors.push(...data.results.errors);
+        }
+        setImportProgress(Math.min(100, Math.round(((i + batch.length) / mappedRows.length) * 100)));
+      }
+      setImportResults(totals);
       setStep('done');
     } catch {
-      setImportResults({ customersCreated: 0, customersUpdated: 0, vehiclesCreated: 0, jobsCreated: 0, errors: ['Import failed'] });
+      totals.errors.push('Import failed unexpectedly');
+      setImportResults(totals);
       setStep('done');
     }
   }
@@ -255,7 +308,7 @@ export default function ImportModal({ onClose, onComplete }: Props) {
             e.preventDefault();
             e.currentTarget.style.borderColor = COLORS.borderInput;
             const file = e.dataTransfer.files[0];
-            if (file && (file.name.endsWith('.csv') || file.name.endsWith('.txt'))) handleFile(file);
+            if (file && (file.name.endsWith('.csv') || file.name.endsWith('.txt') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) handleFile(file);
           }}
           style={{
             border: `2px dashed ${COLORS.borderInput}`,
@@ -268,7 +321,7 @@ export default function ImportModal({ onClose, onComplete }: Props) {
           onClick={() => {
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = '.csv,.txt';
+            input.accept = '.csv,.txt,.xlsx,.xls';
             input.onchange = (e) => {
               const file = (e.target as HTMLInputElement).files?.[0];
               if (file) handleFile(file);
@@ -282,10 +335,10 @@ export default function ImportModal({ onClose, onComplete }: Props) {
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
           <div style={{ fontSize: FONT.sizeLg, color: COLORS.textSecondary, marginBottom: SPACING.sm }}>
-            Drop a CSV file here or click to browse
+            Drop a file here or click to browse
           </div>
           <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>
-            Supports .csv files. First row should be column headers.
+            Supports .csv and .xlsx files. First row should be column headers.
           </div>
         </div>
       )}
@@ -387,8 +440,18 @@ export default function ImportModal({ onClose, onComplete }: Props) {
           <div style={{ fontSize: FONT.sizeLg, color: COLORS.textPrimary, marginBottom: SPACING.md }}>
             Importing {rows.length} rows...
           </div>
+          <div style={{
+            width: '100%', height: 8, background: COLORS.inputBg,
+            borderRadius: 4, overflow: 'hidden', marginBottom: SPACING.md,
+          }}>
+            <div style={{
+              width: `${importProgress}%`, height: '100%',
+              background: COLORS.red, borderRadius: 4,
+              transition: 'width 0.3s ease',
+            }} />
+          </div>
           <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>
-            This may take a moment for large files.
+            {importProgress}% complete
           </div>
         </div>
       )}
@@ -403,11 +466,14 @@ export default function ImportModal({ onClose, onComplete }: Props) {
           <div style={{ fontSize: FONT.sizeLg, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, marginBottom: SPACING.md }}>
             Import Complete
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: SPACING.xl, marginBottom: SPACING.lg }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: SPACING.xl, marginBottom: SPACING.lg, flexWrap: 'wrap' }}>
             <ResultStat label="Customers Created" value={importResults.customersCreated} color={COLORS.success} />
             <ResultStat label="Customers Updated" value={importResults.customersUpdated} color={COLORS.info} />
             <ResultStat label="Vehicles Added" value={importResults.vehiclesCreated} color={COLORS.textPrimary} />
             <ResultStat label="Jobs Recorded" value={importResults.jobsCreated} color={COLORS.textPrimary} />
+            {(importResults.duplicatesSkipped || 0) > 0 && (
+              <ResultStat label="Duplicates Skipped" value={importResults.duplicatesSkipped} color={COLORS.warning} />
+            )}
           </div>
           {importResults.errors.length > 0 && (
             <div style={{
