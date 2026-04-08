@@ -217,11 +217,58 @@ export default function CustomerLookupPage() {
               </div>
             )}
 
-            {/* Past Appointments (from bookings) */}
-            {customer.bookings.length > 0 && (
+            {/* Completed Jobs (paid/invoiced) */}
+            {customer.bookings.filter(b => b.status === 'invoiced' || b.status === 'completed').length > 0 && (
               <div style={{ marginBottom: SPACING.md }}>
-                <div style={{ fontSize: FONT.sizeXs, fontWeight: 700, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: SPACING.xs }}>Appointments</div>
-                {customer.bookings.map(b => {
+                <div style={{ fontSize: FONT.sizeXs, fontWeight: 700, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: SPACING.xs }}>Completed Jobs</div>
+                {customer.bookings.filter(b => b.status === 'invoiced' || b.status === 'completed').map(b => {
+                  const vehicle = [b.vehicle_year, b.vehicle_make, b.vehicle_model].filter(Boolean).join(' ');
+                  const apptTypeLabel = APPT_TYPE_LABELS[b.appointment_type || ''] || b.appointment_type || '';
+                  return (
+                    <div key={b.id} style={{
+                      padding: `${SPACING.md}px`, marginBottom: 6,
+                      background: COLORS.inputBg, borderRadius: RADIUS.md,
+                      border: `1px solid rgba(34,197,94,0.2)`,
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.sm, flexWrap: 'wrap', marginBottom: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: FONT.sizeSm, fontWeight: 700, color: COLORS.textPrimary }}>{vehicle}</span>
+                          <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{formatDate(b.appointment_date)}</span>
+                          <span style={{
+                            fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 8,
+                            background: '#dcfce7', color: '#15803d',
+                          }}>Paid</span>
+                        </div>
+                        <span style={{ fontSize: '1rem', fontWeight: 700, color: COLORS.textPrimary }}>${Number(b.subtotal).toLocaleString()}</span>
+                      </div>
+                      {Array.isArray(b.services_json) && b.services_json.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {b.services_json.map((svc: Record<string, unknown>, i: number) => {
+                            const shadeDisplay = svc.shadeFront && svc.shadeRear
+                              ? `Front: ${svc.shadeFront} / Rear: ${svc.shadeRear}`
+                              : (svc.shadeFront || svc.shadeRear || svc.shade || '') as string;
+                            return (
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: FONT.sizeXs, padding: '2px 0' }}>
+                                <span style={{ fontWeight: 600, color: COLORS.textPrimary }}>{String(svc.label || svc.serviceKey || 'Service')}</span>
+                                {svc.filmName ? <span style={{ color: '#2563eb', fontWeight: 500 }}>{String(svc.filmName)}</span> : null}
+                                {shadeDisplay ? <span style={{ color: COLORS.textMuted }}>({shadeDisplay})</span> : null}
+                                {svc.price != null ? <span style={{ color: COLORS.textMuted, marginLeft: 'auto' }}>${Number(svc.price)}</span> : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Open Quotes / Pending Appointments */}
+            {customer.bookings.filter(b => b.status !== 'invoiced' && b.status !== 'completed' && b.status !== 'cancelled').length > 0 && (
+              <div style={{ marginBottom: SPACING.md }}>
+                <div style={{ fontSize: FONT.sizeXs, fontWeight: 700, color: COLORS.warning, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: SPACING.xs }}>Open / Pending</div>
+                {customer.bookings.filter(b => b.status !== 'invoiced' && b.status !== 'completed' && b.status !== 'cancelled').map(b => {
                   const vehicle = [b.vehicle_year, b.vehicle_make, b.vehicle_model].filter(Boolean).join(' ');
                   const apptTypeLabel = APPT_TYPE_LABELS[b.appointment_type || ''] || b.appointment_type || '';
                   return (

@@ -21,6 +21,7 @@ interface DaySummary {
   dropoffs: number;
   waiting: number;
   headsups: number;
+  paid: number;
   cancelled: number;
   totalRevenue: number;
   totalBalance: number;
@@ -412,31 +413,26 @@ function AppointmentsPageInner() {
               onClick={() => updateViewPreferences('appointments', activeModules)}
               title="Save current filter as default for this page"
               style={{
-                padding: isMobile ? '8px 10px' : '6px 10px',
+                padding: isMobile ? '8px 14px' : '6px 14px',
                 borderRadius: 20,
-                border: `1px solid ${COLORS.borderInput}`,
-                background: 'transparent',
-                color: COLORS.textMuted,
-                fontSize: isMobile ? '0.8rem' : '0.75rem',
+                border: `1.5px solid ${COLORS.red}`,
+                background: COLORS.red,
+                color: '#fff',
+                fontSize: isMobile ? '0.85rem' : FONT.sizeSm,
+                fontWeight: FONT.weightSemibold,
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
-                marginLeft: 4,
-              }}
-              onMouseEnter={e => {
-                (e.target as HTMLElement).style.borderColor = COLORS.textTertiary;
-                (e.target as HTMLElement).style.color = COLORS.textSecondary;
-              }}
-              onMouseLeave={e => {
-                (e.target as HTMLElement).style.borderColor = COLORS.borderInput;
-                (e.target as HTMLElement).style.color = COLORS.textMuted;
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
               }}
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" style={{ verticalAlign: '-1px', marginRight: 4 }}>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
                 <path d="M12.667 2H3.333C2.597 2 2 2.597 2 3.333v9.334C2 13.403 2.597 14 3.333 14h9.334c.736 0 1.333-.597 1.333-1.333V3.333C14 2.597 13.403 2 12.667 2z"/>
                 <path d="M11.333 14V8.667H4.667V14"/>
                 <path d="M4.667 2v3.333h5.333"/>
               </svg>
-              Save Default
+              Save Default View
             </button>
           </div>
         )}
@@ -504,6 +500,7 @@ function AppointmentsPageInner() {
           <SummaryPill label="Drop-Off" value={summary.dropoffs} color="#3b82f6" isMobile={isMobile} />
           <SummaryPill label="Waiting" value={summary.waiting} color="#ef4444" isMobile={isMobile} />
           <SummaryPill label="Heads-Up" value={summary.headsups} color="#f59e0b" isMobile={isMobile} />
+          <SummaryPill label="Paid" value={summary.paid} color="#22c55e" isMobile={isMobile} />
           {summary.cancelled > 0 && (
             <SummaryPill label="Cancelled" value={summary.cancelled} color={COLORS.textMuted} isMobile={isMobile} />
           )}

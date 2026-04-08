@@ -19,6 +19,7 @@ interface LeadService {
   film_id: number | null;
   film_name: string | null;
   price: number;
+  original_price?: number;
   shade_front: string | null;
   shade_rear: string | null;
 }
@@ -45,6 +46,7 @@ interface LeadData {
   pre_appointment_time: string | null;
   followup_discount_type: string | null;
   followup_discount_amount: number | null;
+  document_id: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +361,7 @@ export default function LeadBookingPage() {
       classKeys: lead.class_keys || '',
       serviceType: 'tint',
       appointmentType,
+      existingDocumentId: lead.document_id || null, // Link to existing FLQA quote instead of creating a duplicate
       servicesJson: (lead.options_mode ? resolvedServices : lead.services).map(s => ({
         serviceKey: s.service_key,
         label: s.label,
@@ -369,6 +372,7 @@ export default function LeadBookingPage() {
         shadeRear: s.shade_rear,
         shade: s.shade_front,
         price: s.price,
+        originalPrice: s.original_price || s.price,
         discountAmount: 0,
         duration: 60,
         module: 'auto_tint',

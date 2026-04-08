@@ -251,7 +251,26 @@ export default function ServiceLineEditor({ initialLines, vehicleYear, vehicleMa
                 <option value={svc.serviceKey}>{svc.label}</option>
                 {renderServiceOptions(svc.serviceKey)}
               </SelectInput>
-              <span style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.success, whiteSpace: 'nowrap' }}>${Number(svc.price || 0).toFixed(0)}</span>
+              <input
+                type="number"
+                value={svc.price}
+                onChange={e => {
+                  const val = parseFloat(e.target.value);
+                  if (!isNaN(val)) {
+                    const updated = [...services];
+                    if (!(updated[i] as Record<string, unknown>).originalPrice) (updated[i] as Record<string, unknown>).originalPrice = updated[i].price;
+                    updated[i].price = val;
+                    setServices(updated);
+                  }
+                }}
+                style={{
+                  width: 70, padding: '2px 6px', textAlign: 'right',
+                  background: COLORS.inputBg, borderRadius: RADIUS.sm,
+                  border: `1px solid ${(svc as Record<string, unknown>).originalPrice && svc.price !== (svc as Record<string, unknown>).originalPrice ? COLORS.red : COLORS.borderInput}`,
+                  color: (svc as Record<string, unknown>).originalPrice && svc.price !== (svc as Record<string, unknown>).originalPrice ? COLORS.red : COLORS.success,
+                  fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, outline: 'none',
+                }}
+              />
               <button onClick={() => removeService(i)} style={{ background: COLORS.dangerBg, color: COLORS.danger, border: 'none', borderRadius: RADIUS.sm, padding: '3px 8px', fontSize: FONT.sizeXs, fontWeight: FONT.weightBold, cursor: 'pointer' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
@@ -358,6 +377,38 @@ export default function ServiceLineEditor({ initialLines, vehicleYear, vehicleMa
           })()}
         </div>
       )}
+
+      {/* Custom Line Item */}
+      <div style={{ padding: SPACING.sm, marginBottom: SPACING.md, border: `1px dashed ${COLORS.borderInput}`, borderRadius: RADIUS.md }}>
+        <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textMuted, marginBottom: SPACING.xs }}>Custom Line Item</div>
+        <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'center' }}>
+          <input type="text" placeholder="Description" id="sle-custom-desc" style={{
+            flex: 1, padding: '5px 8px', background: COLORS.inputBg, border: `1px solid ${COLORS.borderInput}`,
+            borderRadius: RADIUS.sm, color: COLORS.textPrimary, fontSize: FONT.sizeXs, outline: 'none',
+          }} />
+          <input type="number" placeholder="$0" id="sle-custom-price" style={{
+            width: 65, padding: '5px 8px', background: COLORS.inputBg, border: `1px solid ${COLORS.borderInput}`,
+            borderRadius: RADIUS.sm, color: COLORS.textPrimary, fontSize: FONT.sizeXs, outline: 'none', textAlign: 'right',
+          }} />
+          <button onClick={() => {
+            const descEl = document.getElementById('sle-custom-desc') as HTMLInputElement;
+            const priceEl = document.getElementById('sle-custom-price') as HTMLInputElement;
+            const desc = descEl?.value?.trim();
+            const price = parseFloat(priceEl?.value || '0');
+            if (!desc) return;
+            setServices(prev => [...prev, {
+              serviceKey: `CUSTOM_${Date.now()}`, label: desc, filmId: null,
+              filmName: null, filmAbbrev: null, shadeFront: null, shadeRear: null, shade: null,
+              price, discountAmount: 0, duration: 0, module,
+            }]);
+            if (descEl) descEl.value = '';
+            if (priceEl) priceEl.value = '';
+          }} style={{
+            padding: '5px 12px', background: COLORS.red, border: 'none', borderRadius: RADIUS.sm,
+            color: '#fff', fontSize: FONT.sizeXs, fontWeight: FONT.weightBold, cursor: 'pointer', whiteSpace: 'nowrap',
+          }}>+ Add</button>
+        </div>
+      </div>
 
       {/* Summary + save */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: SPACING.md, borderTop: `1px solid ${COLORS.border}` }}>

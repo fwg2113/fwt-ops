@@ -98,7 +98,10 @@ export default function ConfigurableActions({ appointment, buttonsConfig, action
               borderRadius: mobile ? 0 : 4,
               cursor: linkedNotReady ? 'not-allowed' : 'pointer',
               background: isClicked ? `${color}50` : mobile ? 'transparent' : 'rgba(0,0,0,0.35)',
-              border: mobile ? 'none' : `1px solid ${isClicked ? color : 'rgba(255,255,255,0.2)'}`,
+              borderTop: mobile ? 'none' : `1px solid ${isClicked ? color : 'rgba(255,255,255,0.2)'}`,
+              borderBottom: mobile ? 'none' : `1px solid ${isClicked ? color : 'rgba(255,255,255,0.2)'}`,
+              borderLeft: mobile ? 'none' : `1px solid ${isClicked ? color : 'rgba(255,255,255,0.2)'}`,
+              borderRight: mobile ? '1px solid rgba(255,255,255,0.1)' : `1px solid ${isClicked ? color : 'rgba(255,255,255,0.2)'}`,
               color: isClicked ? color : 'rgba(255,255,255,0.85)',
               fontSize: mobile ? '0.72rem' : compact ? '0.55rem' : FONT.sizeXs,
               fontWeight: mobile ? 700 : 600,
@@ -108,7 +111,6 @@ export default function ConfigurableActions({ appointment, buttonsConfig, action
               opacity: linkedNotReady ? 0.5 : 1,
               flex: mobile ? 1 : undefined,
               textAlign: mobile ? 'center' : undefined,
-              borderRight: mobile ? '1px solid rgba(255,255,255,0.1)' : undefined,
             }}
           >
             {linkedNotReady ? btn.label : label}

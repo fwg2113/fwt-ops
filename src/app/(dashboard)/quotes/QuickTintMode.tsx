@@ -41,6 +41,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
   const [bookPath, setBookPath] = useState<'schedule' | 'tailored'>('schedule');
   const [showPreview, setShowPreview] = useState(false);
   const [optionsMode, setOptionsMode] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   // Customer
   const [customerName, setCustomerName] = useState(initialCustomerName || '');
@@ -211,7 +212,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
 
       if (optionsMode) {
         // Options mode: multiple films per row, multiple primaries allowed
-        return [...prev, { serviceKey, label, filmId, filmName, price, shadeFront: null, shadeRear: null }];
+        return [...prev, { serviceKey, label, filmId, filmName, price, originalPrice: price, priceNote: null, shadeFront: null, shadeRear: null }];
       }
 
       // Normal mode: one film per service row
@@ -226,13 +227,25 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
         }
       }
 
-      return [...updated, { serviceKey, label, filmId, filmName, price, shadeFront: null, shadeRear: null }];
+      return [...updated, { serviceKey, label, filmId, filmName, price, originalPrice: price, priceNote: null, shadeFront: null, shadeRear: null }];
     });
   }, [config, optionsMode]);
 
   const updateRowShade = useCallback((serviceKey: string, filmId: number, field: 'shadeFront' | 'shadeRear', value: string | null) => {
     setSelectedRows(prev => prev.map(r =>
       r.serviceKey === serviceKey && r.filmId === filmId ? { ...r, [field]: value } : r
+    ));
+  }, []);
+
+  const updateRowPrice = useCallback((serviceKey: string, filmId: number, newPrice: number) => {
+    setSelectedRows(prev => prev.map(r =>
+      r.serviceKey === serviceKey && r.filmId === filmId ? { ...r, price: newPrice } : r
+    ));
+  }, []);
+
+  const updateRowPriceNote = useCallback((serviceKey: string, filmId: number, note: string | null) => {
+    setSelectedRows(prev => prev.map(r =>
+      r.serviceKey === serviceKey && r.filmId === filmId ? { ...r, priceNote: note } : r
     ));
   }, []);
 
@@ -309,6 +322,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
             serviceKey: s.serviceKey, label: s.label, filmId: s.filmId || null,
             filmName: s.filmName, filmAbbrev: null, shadeFront: s.shadeFront,
             shadeRear: s.shadeRear, shade: s.shadeFront, price: s.price,
+            originalPrice: s.originalPrice, priceNote: s.priceNote || null,
             discountAmount: 0, duration: 60, module: 'auto_tint',
           })),
           subtotal: totalSelected, discountCode: null, discountType: null,
@@ -343,7 +357,8 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
           vehicle_id: vehicle.id, class_keys: vehicle.class_keys.join('|'),
           services: selectedRows.map(s => ({
             service_key: s.serviceKey, label: s.label, film_id: s.filmId || null,
-            film_name: s.filmName, price: s.price, shade_front: s.shadeFront, shade_rear: s.shadeRear,
+            film_name: s.filmName, price: s.price, original_price: s.originalPrice, price_note: s.priceNote || null,
+            shade_front: s.shadeFront, shade_rear: s.shadeRear,
           })),
           total_price: totalSelected,
           charge_deposit: overrideDeposit ? (depositOverride !== null && depositOverride > 0) : (config?.shopConfig.require_deposit ?? true),
@@ -403,6 +418,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
           serviceKey: row.serviceKey, filmId: row.filmId > 0 ? row.filmId : null,
           filmName: row.filmName !== 'N/A' ? row.filmName : null,
           shadeFront: row.shadeFront, shadeRear: row.shadeRear, shade: row.shadeFront || null,
+          originalPrice: row.originalPrice, priceNote: row.priceNote || null,
           vehicleYear: parseInt(selectedYear), vehicleMake: selectedMake,
           vehicleModel: selectedModel, classKeys: vehicle.class_keys.join('|'),
         },
@@ -438,7 +454,8 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
       const services = selectedRows.map(row => ({
         service_key: row.serviceKey, label: row.label,
         film_id: row.filmId > 0 ? row.filmId : null, film_name: row.filmName !== 'N/A' ? row.filmName : null,
-        price: row.price, shade_front: row.shadeFront, shade_rear: row.shadeRear,
+        price: row.price, original_price: row.originalPrice,
+        shade_front: row.shadeFront, shade_rear: row.shadeRear,
       }));
 
       const sentVia: string[] = [];
@@ -501,7 +518,8 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
       const services = selectedRows.map(row => ({
         service_key: row.serviceKey, label: row.label,
         film_id: row.filmId > 0 ? row.filmId : null, film_name: row.filmName !== 'N/A' ? row.filmName : null,
-        price: row.price, shade_front: row.shadeFront, shade_rear: row.shadeRear,
+        price: row.price, original_price: row.originalPrice,
+        shade_front: row.shadeFront, shade_rear: row.shadeRear,
       }));
       const res = await fetch('/api/auto/leads', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -681,7 +699,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
                             const newRows: SelectedRow[] = [];
                             for (const film of films) {
                               const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
-                              if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, shadeFront: null, shadeRear: null });
+                              if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, originalPrice: price, priceNote: null, shadeFront: null, shadeRear: null });
                             }
                             setSelectedRows(prev => [...prev.filter(r => r.serviceKey !== svc.service_key), ...newRows]);
                           }
@@ -782,7 +800,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
                                 const newRows: SelectedRow[] = [];
                                 for (const film of films) {
                                   const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
-                                  if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, shadeFront: null, shadeRear: null });
+                                  if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, originalPrice: price, priceNote: null, shadeFront: null, shadeRear: null });
                                 }
                                 setSelectedRows(prev => [...prev.filter(r => r.serviceKey !== svc.service_key), ...newRows]);
                               }
@@ -850,7 +868,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
                             const newRows: SelectedRow[] = [];
                             for (const film of films) {
                               const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
-                              if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, shadeFront: null, shadeRear: null });
+                              if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, originalPrice: price, priceNote: null, shadeFront: null, shadeRear: null });
                             }
                             setSelectedRows(prev => [...prev.filter(r => r.serviceKey !== svc.service_key), ...newRows]);
                           }
@@ -934,7 +952,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
                                   const newRows: SelectedRow[] = [];
                                   for (const film of films) {
                                     const price = priceMatrix[svc.service_key]?.[film.id] ?? 0;
-                                    if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, shadeFront: null, shadeRear: null });
+                                    if (price > 0) newRows.push({ serviceKey: svc.service_key, label: svc.label, filmId: film.id, filmName: film.name, price, originalPrice: price, priceNote: null, shadeFront: null, shadeRear: null });
                                   }
                                   setSelectedRows(prev => [...prev.filter(r => r.serviceKey !== svc.service_key), ...newRows]);
                                 }
@@ -1001,7 +1019,14 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
                         {row.shadeFront ? ` ${row.shadeFront}${row.shadeRear ? `/${row.shadeRear}` : ''}` : ''}
                       </span>
                     </div>
-                    <span style={{ fontWeight: FONT.weightBold, color: COLORS.success, fontSize: isMobile ? '0.9rem' : FONT.sizeBase, flexShrink: 0 }}>${row.price}</span>
+                    <PriceEditor
+                      price={row.price}
+                      originalPrice={row.originalPrice}
+                      priceNote={row.priceNote}
+                      onChange={(p) => updateRowPrice(row.serviceKey, row.filmId, p)}
+                      onNoteChange={(n) => updateRowPriceNote(row.serviceKey, row.filmId, n)}
+                      isMobile={isMobile}
+                    />
                     <button onClick={() => toggleRow(row.serviceKey, row.label, row.filmId, row.filmName, row.price)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLORS.textMuted, padding: 4, flexShrink: 0 }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
@@ -1053,13 +1078,33 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
               </div>
             </div>
 
-            {selectedDate && (
+            {selectedDate && (<>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
+                <span style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textSecondary }}>
+                  Schedule for {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                </span>
+                <button
+                  onClick={() => setShowScheduleModal(true)}
+                  title="Expand schedule"
+                  style={{
+                    padding: '4px 10px', borderRadius: RADIUS.sm,
+                    border: `1px solid ${COLORS.borderInput}`, background: 'transparent',
+                    color: COLORS.textMuted, fontSize: FONT.sizeXs, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+                    <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+                  </svg>
+                  Expand
+                </button>
+              </div>
               <MiniTimeline
                 appointments={dayAppointments} loading={loadingDay}
-                dateLabel={`Schedule for ${new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`}
                 summary={daySummary} height={360}
               />
-            )}
+            </>)}
           </DashboardCard>
         </div>
       )}
@@ -1444,6 +1489,36 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
       )}
 
       {/* When Ready modal (tailored booking link, no date/time) */}
+      {/* Schedule Expand Modal */}
+      {showScheduleModal && selectedDate && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setShowScheduleModal(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: COLORS.cardBg, borderRadius: RADIUS.xxl, width: '90%', maxWidth: 600,
+            maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+            border: `1px solid ${COLORS.border}`,
+          }}>
+            <div style={{
+              padding: `${SPACING.lg}px ${SPACING.xl}px`, borderBottom: `1px solid ${COLORS.border}`,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span style={{ fontWeight: FONT.weightBold, color: COLORS.textPrimary, fontSize: FONT.sizeLg }}>
+                {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              </span>
+              <button onClick={() => setShowScheduleModal(false)} style={{
+                background: 'none', border: 'none', color: COLORS.textMuted, cursor: 'pointer', fontSize: '20px',
+              }}>x</button>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', padding: SPACING.md }}>
+              <MiniTimeline
+                appointments={dayAppointments} loading={loadingDay}
+                summary={daySummary} height={600}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSendModal && config && vehicle && (
         <SendToCustomerModal
           config={config} vehicle={vehicle}
@@ -1550,6 +1625,93 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
 }
 
 // Small shade button group
+// Inline price editor -- click to edit, Enter/blur to save, optional note
+function PriceEditor({ price, originalPrice, priceNote, onChange, onNoteChange, isMobile }: {
+  price: number; originalPrice: number; priceNote: string | null;
+  onChange: (p: number) => void; onNoteChange: (n: string | null) => void; isMobile: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(price));
+  const [noteDraft, setNoteDraft] = useState(priceNote || '');
+  const isOverridden = price !== originalPrice;
+
+  if (editing) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+        <input
+          type="number"
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            if (e.key === 'Escape') { setDraft(String(price)); setEditing(false); }
+          }}
+          onBlur={() => {
+            const val = parseFloat(draft);
+            if (!isNaN(val) && val >= 0) onChange(val);
+            else setDraft(String(price));
+          }}
+          style={{
+            width: 80, padding: '2px 6px', textAlign: 'right',
+            background: COLORS.inputBg, border: `1px solid ${COLORS.red}`,
+            borderRadius: RADIUS.sm, color: COLORS.textPrimary,
+            fontSize: isMobile ? '0.9rem' : FONT.sizeBase, fontWeight: 700, outline: 'none',
+          }}
+        />
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <input
+            type="text"
+            value={noteDraft}
+            onChange={e => setNoteDraft(e.target.value)}
+            onBlur={() => onNoteChange(noteDraft.trim() || null)}
+            onKeyDown={e => { if (e.key === 'Enter') { onNoteChange(noteDraft.trim() || null); setEditing(false); } }}
+            placeholder="Reason (optional)"
+            style={{
+              width: 130, padding: '2px 6px',
+              background: COLORS.inputBg, border: `1px solid ${COLORS.border}`,
+              borderRadius: RADIUS.sm, color: COLORS.textMuted,
+              fontSize: FONT.sizeXs, outline: 'none',
+            }}
+          />
+          <button onClick={() => setEditing(false)} style={{
+            background: 'none', border: 'none', color: COLORS.textMuted, cursor: 'pointer', fontSize: FONT.sizeXs,
+          }}>Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
+      <span
+        onClick={() => { setDraft(String(price)); setNoteDraft(priceNote || ''); setEditing(true); }}
+        title="Click to override price"
+        style={{
+          fontWeight: FONT.weightBold,
+          color: isOverridden ? COLORS.red : COLORS.success,
+          fontSize: isMobile ? '0.9rem' : FONT.sizeBase,
+          cursor: 'pointer',
+          borderBottom: `1px dashed ${isOverridden ? COLORS.red : COLORS.textMuted}`,
+          paddingBottom: 1,
+        }}
+      >
+        ${price}
+        {isOverridden && (
+          <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginLeft: 4, textDecoration: 'line-through' }}>
+            ${originalPrice}
+          </span>
+        )}
+      </span>
+      {isOverridden && priceNote && (
+        <span style={{ fontSize: '0.6rem', color: COLORS.warning, marginTop: 1 }}>
+          {priceNote}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ShadeGroup({ label, shades, selected, onSelect }: {
   label: string;
   shades: { id: number; shade_value: string }[];

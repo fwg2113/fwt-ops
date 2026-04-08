@@ -100,104 +100,196 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
       }
     }
 
-    // Create lead record
-    const { data: lead, error } = await supabase
-      .from('auto_leads')
-      .insert({
-        shop_id: shopId,
-        token,
-        customer_name: customer_name || null,
-        customer_phone: customer_phone || null,
-        customer_email: customer_email || null,
-        vehicle_year,
-        vehicle_make,
-        vehicle_model,
-        vehicle_id: vehicle_id || null,
-        class_keys: class_keys || null,
-        services,
-        total_price,
-        charge_deposit: charge_deposit ?? true,
-        deposit_amount: deposit_amount ?? 0,
-        send_method: send_method || 'copy',
-        options_mode: options_mode || false,
-        pre_appointment_type: pre_appointment_type || null,
-        pre_appointment_date: pre_appointment_date || null,
-        pre_appointment_time: pre_appointment_time || null,
-        status: 'sent',
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Lead create error:', error);
-      return NextResponse.json({ error: 'Failed to create lead' }, { status: 500 });
-    }
-
-    // Create a quote document so it shows in Quote Builder
-    // Skip for options_mode leads -- the document will be created at booking time
-    // with only the customer's selected options (not all options)
+    // Check for existing open lead for this customer + vehicle -- update instead of creating duplicate
+    let lead: Record<string, unknown> | null = null;
+    let existingToken: string | null = null;
     let documentId: string | null = null;
-    if (!options_mode) try {
-      const { data: docNumber } = await supabase
-        .rpc('generate_document_number', { p_shop_id: shopId, p_doc_type: 'quote' });
 
-      const { data: doc } = await supabase
-        .from('documents')
-        .insert({
-          shop_id: shopId,
-          doc_type: 'quote',
-          doc_number: docNumber || `Q-${Date.now()}`,
-          customer_id: customerId,
-          customer_name: customer_name || '',
-          customer_email: customer_email || null,
-          customer_phone: customer_phone || null,
-          vehicle_year: vehicle_year || null,
-          vehicle_make: vehicle_make || null,
-          vehicle_model: vehicle_model || null,
-          class_keys: class_keys || null,
-          subtotal: total_price || 0,
-          balance_due: total_price || 0,
-          status: 'sent',
-          checkout_type: 'remote',
-          notes: `FLQA tailored link -- /book/lead/${token}`,
-        })
-        .select('id')
-        .single();
+    const cleanPhone = customer_phone?.replace(/\D/g, '') || null;
+    if (cleanPhone && vehicle_year && vehicle_make && vehicle_model) {
+      const { data: existingLead } = await supabase
+        .from('auto_leads')
+        .select('*')
+        .eq('shop_id', shopId)
+        .eq('customer_phone', customer_phone)
+        .eq('vehicle_year', vehicle_year)
+        .eq('vehicle_make', vehicle_make)
+        .eq('vehicle_model', vehicle_model)
+        .in('status', ['sent', 'opened'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (doc) {
-        documentId = doc.id;
+      if (existingLead) {
+        existingToken = existingLead.token as string;
+        // Update existing lead with new services, price, deposit settings
+        const { data: updated, error: updateErr } = await supabase
+          .from('auto_leads')
+          .update({
+            services,
+            total_price,
+            charge_deposit: charge_deposit ?? true,
+            deposit_amount: deposit_amount ?? 0,
+            options_mode: options_mode || false,
+            pre_appointment_type: pre_appointment_type || null,
+            pre_appointment_date: pre_appointment_date || null,
+            pre_appointment_time: pre_appointment_time || null,
+            status: 'sent',
+          })
+          .eq('id', existingLead.id)
+          .select()
+          .single();
 
-        // Create line items from services
-        const serviceArr = Array.isArray(services) ? services : [];
-        if (serviceArr.length > 0) {
-          const lineItems = serviceArr.map((svc: Record<string, unknown>, idx: number) => ({
-            document_id: doc.id,
-            module: 'auto_tint',
-            description: (svc.label as string) || '',
-            quantity: 1,
-            unit_price: (svc.price as number) || 0,
-            line_total: (svc.price as number) || 0,
-            sort_order: idx,
-            custom_fields: {
-              serviceKey: svc.service_key || null,
-              filmId: svc.film_id || null,
-              filmName: svc.film_name || null,
-              shadeFront: svc.shade_front || null,
-              shadeRear: svc.shade_rear || null,
-              shade: svc.shade_front || null,
-            },
-          }));
-          await supabase.from('document_line_items').insert(lineItems);
+        if (updateErr) {
+          console.error('Lead update error:', updateErr);
+        } else {
+          lead = updated;
+        }
+
+        // Update existing quote document if it exists
+        documentId = (existingLead.document_id as string) || null;
+        if (documentId) {
+          await supabase
+            .from('documents')
+            .update({
+              subtotal: total_price || 0,
+              balance_due: total_price || 0,
+              status: 'sent',
+            })
+            .eq('id', documentId);
+
+          // Replace line items
+          await supabase.from('document_line_items').delete().eq('document_id', documentId);
+          const serviceArr = Array.isArray(services) ? services : [];
+          if (serviceArr.length > 0) {
+            const lineItems = serviceArr.map((svc: Record<string, unknown>, idx: number) => ({
+              document_id: documentId,
+              module: 'auto_tint',
+              description: (svc.label as string) || '',
+              quantity: 1,
+              unit_price: (svc.price as number) || 0,
+              line_total: (svc.price as number) || 0,
+              sort_order: idx,
+              custom_fields: {
+                serviceKey: svc.service_key || null,
+                filmId: svc.film_id || null,
+                filmName: svc.film_name || null,
+                originalPrice: svc.original_price || null,
+                shadeFront: svc.shade_front || null,
+                shadeRear: svc.shade_rear || null,
+                shade: svc.shade_front || null,
+              },
+            }));
+            await supabase.from('document_line_items').insert(lineItems);
+          }
         }
       }
-    } catch (docErr) {
-      console.error('Lead quote document creation error:', docErr);
-      // Non-fatal -- lead still works without the document
     }
 
-    // Build the booking URL
+    // If no existing lead found, create a new one
+    if (!lead) {
+      const { data: newLead, error } = await supabase
+        .from('auto_leads')
+        .insert({
+          shop_id: shopId,
+          token,
+          customer_name: customer_name || null,
+          customer_phone: customer_phone || null,
+          customer_email: customer_email || null,
+          vehicle_year,
+          vehicle_make,
+          vehicle_model,
+          vehicle_id: vehicle_id || null,
+          class_keys: class_keys || null,
+          services,
+          total_price,
+          charge_deposit: charge_deposit ?? true,
+          deposit_amount: deposit_amount ?? 0,
+          send_method: send_method || 'copy',
+          options_mode: options_mode || false,
+          pre_appointment_type: pre_appointment_type || null,
+          pre_appointment_date: pre_appointment_date || null,
+          pre_appointment_time: pre_appointment_time || null,
+          status: 'sent',
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Lead create error:', error);
+        return NextResponse.json({ error: 'Failed to create lead' }, { status: 500 });
+      }
+      lead = newLead;
+
+      // Create a quote document so it shows in Quote Builder
+      // Skip for options_mode leads -- the document will be created at booking time
+      if (!options_mode) try {
+        const { data: docNumber } = await supabase
+          .rpc('generate_document_number', { p_shop_id: shopId, p_doc_type: 'quote' });
+
+        const { data: doc } = await supabase
+          .from('documents')
+          .insert({
+            shop_id: shopId,
+            doc_type: 'quote',
+            doc_number: docNumber || `Q-${Date.now()}`,
+            customer_id: customerId,
+            customer_name: customer_name || '',
+            customer_email: customer_email || null,
+            customer_phone: customer_phone || null,
+            vehicle_year: vehicle_year || null,
+            vehicle_make: vehicle_make || null,
+            vehicle_model: vehicle_model || null,
+            class_keys: class_keys || null,
+            subtotal: total_price || 0,
+            balance_due: total_price || 0,
+            status: 'sent',
+            checkout_type: 'remote',
+            notes: `FLQA tailored link -- /book/lead/${token}`,
+          })
+          .select('id')
+          .single();
+
+        if (doc) {
+          documentId = doc.id;
+
+          const serviceArr = Array.isArray(services) ? services : [];
+          if (serviceArr.length > 0) {
+            const lineItems = serviceArr.map((svc: Record<string, unknown>, idx: number) => ({
+              document_id: doc.id,
+              module: 'auto_tint',
+              description: (svc.label as string) || '',
+              quantity: 1,
+              unit_price: (svc.price as number) || 0,
+              line_total: (svc.price as number) || 0,
+              sort_order: idx,
+              custom_fields: {
+                serviceKey: svc.service_key || null,
+                filmId: svc.film_id || null,
+                filmName: svc.film_name || null,
+                originalPrice: svc.original_price || null,
+                shadeFront: svc.shade_front || null,
+                shadeRear: svc.shade_rear || null,
+                shade: svc.shade_front || null,
+              },
+            }));
+            await supabase.from('document_line_items').insert(lineItems);
+          }
+        }
+      } catch (docErr) {
+        console.error('Lead quote document creation error:', docErr);
+      }
+    }
+
+    // Link document to lead if not already linked
+    if (documentId && lead && !(lead as Record<string, unknown>).document_id) {
+      await supabase.from('auto_leads').update({ document_id: documentId }).eq('id', (lead as Record<string, unknown>).id);
+    }
+
+    // Build the booking URL (use existing token if updating)
+    const activeToken = existingToken || token;
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || req.headers.get('origin') || '';
-    const bookingUrl = `${baseUrl}/book/lead/${token}`;
+    const bookingUrl = `${baseUrl}/book/lead/${activeToken}`;
 
     // Send the link if method is sms or email
     const vehicleStr = [vehicle_year, vehicle_make, vehicle_model].filter(Boolean).join(' ');
@@ -250,10 +342,11 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
     return NextResponse.json({
       lead,
       booking_url: bookingUrl,
-      token,
+      token: activeToken,
       documentId,
       sent,
       send_method: send_method || 'copy',
+      updated: !!existingToken,
     });
   } catch (error) {
     console.error('Lead create error:', error);

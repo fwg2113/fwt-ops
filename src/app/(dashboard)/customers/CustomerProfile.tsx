@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { PageHeader, DashboardCard, Button, FormField, TextInput, StatusBadge } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 
@@ -88,6 +89,7 @@ interface Props {
 }
 
 export default function CustomerProfile({ customerId, onBack }: Props) {
+  const router = useRouter();
   const [customer, setCustomer] = useState<CustomerData | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -213,13 +215,28 @@ export default function CustomerProfile({ customerId, onBack }: Props) {
         title={`${customer.first_name} ${customer.last_name}`}
         subtitle="Customer Profile"
         actions={
-          <div style={{ display: 'flex', gap: SPACING.sm }}>
-            <Button variant="danger" onClick={async () => {
-              if (!confirm(`Delete ${customer.first_name} ${customer.last_name}? This removes all their vehicles and job history.`)) return;
-              await fetch(`/api/customers?id=${customerId}`, { method: 'DELETE' });
-              onBack();
+          <div style={{ display: 'flex', gap: SPACING.sm, flexWrap: 'wrap' }}>
+            <Button variant="primary" onClick={() => {
+              const params = new URLSearchParams({
+                flqa: '1',
+                customer_name: `${customer.first_name || ''} ${customer.last_name || ''}`.trim(),
+                customer_phone: customer.phone || '',
+                customer_email: customer.email || '',
+              });
+              router.push(`/quotes?${params}`);
             }}>
-              Delete
+              FLQA
+            </Button>
+            <Button onClick={() => {
+              const params = new URLSearchParams({
+                new: '1',
+                customer_name: `${customer.first_name || ''} ${customer.last_name || ''}`.trim(),
+                customer_phone: customer.phone || '',
+                customer_email: customer.email || '',
+              });
+              router.push(`/quotes?${params}`);
+            }} style={{ background: '#2563eb', borderColor: '#2563eb', color: '#fff' }}>
+              New Quote
             </Button>
             <Button variant="secondary" onClick={onBack}>
               Back to Customers

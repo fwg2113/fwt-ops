@@ -57,6 +57,7 @@ interface ShopConfig {
   shop_name: string;
   shop_phone: string;
   shop_address: string;
+  cash_discount_percent?: number;
   checkout_flow_config: {
     signature_enabled?: boolean;
     signature_required?: boolean;
@@ -153,6 +154,7 @@ export default function CounterCheckoutPage() {
           shop_name: configData.shopConfig.shop_name || '',
           shop_phone: configData.shopConfig.shop_phone || '',
           shop_address: configData.shopConfig.shop_address || '',
+          cash_discount_percent: configData.shopConfig.cash_discount_percent || 0,
           checkout_flow_config: configData.shopConfig.checkout_flow_config || {},
           module_invoice_content: configData.shopConfig.module_invoice_content || {},
         });
@@ -225,7 +227,7 @@ export default function CounterCheckoutPage() {
   const balanceDue = adjustedBalance;
   const ccFee = Math.round((balanceDue * ((inv.cc_fee_percent || 0) / 100) + (inv.cc_fee_flat || 0)) * 100) / 100;
   const cardTotal = balanceDue + ccFee;
-  const cashDiscount = inv.cash_discount_percent || 0;
+  const cashDiscount = inv.cash_discount_percent || shopConfig?.cash_discount_percent || 0;
   const cashTotal = cashDiscount > 0 ? Math.round(balanceDue * (1 - cashDiscount / 100) * 100) / 100 : balanceDue;
   const shopName = shopConfig?.shop_name || '';
 

@@ -238,10 +238,11 @@ export default function CollectPaymentModal({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            amount: detail.parsedAmount,
+            amount: detail.adjustedAmount,  // Actual amount collected (after discount or + CC fee)
             payment_method: detail.method,
             processor: detail.processor,
             processing_fee: detail.feeOrDiscount > 0 ? detail.feeOrDiscount : 0,
+            discount_amount: detail.feeOrDiscount < 0 ? Math.abs(detail.feeOrDiscount) : 0,
             notes: detail.feeLabel || null,
           }),
         });

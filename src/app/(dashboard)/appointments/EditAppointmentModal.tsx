@@ -23,6 +23,8 @@ interface TintServiceLine {
   shadeRear: string | null;
   shade: string | null;
   price: number;
+  originalPrice?: number;
+  priceNote?: string | null;
   discountAmount: number;
   duration: number;
 }
@@ -539,6 +541,8 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
                 shadeRear: svc.shadeRear,
                 discountAmount: svc.discountAmount,
                 duration: svc.duration,
+                originalPrice: svc.originalPrice || null,
+                priceNote: svc.priceNote || null,
               },
             }))),
           });
@@ -762,10 +766,49 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
                       </>
                     )}
                   </SelectInput>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.md, flexShrink: 0 }}>
-                    <span style={{ fontSize: FONT.sizeBase, fontWeight: FONT.weightBold, color: COLORS.success }}>
-                      ${Number(svc.price || 0).toFixed(2)}
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm, flexShrink: 0 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                      <input
+                        type="number"
+                        value={svc.price}
+                        onChange={e => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) {
+                            const updated = [...tintServices];
+                            if (!updated[i].originalPrice) updated[i].originalPrice = updated[i].price;
+                            updated[i].price = val;
+                            setTintServices(updated);
+                          }
+                        }}
+                        style={{
+                          width: 80, padding: '2px 6px', textAlign: 'right',
+                          background: COLORS.inputBg, borderRadius: RADIUS.sm,
+                          border: `1px solid ${svc.originalPrice && svc.price !== svc.originalPrice ? COLORS.red : COLORS.borderInput}`,
+                          color: svc.originalPrice && svc.price !== svc.originalPrice ? COLORS.red : COLORS.success,
+                          fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, outline: 'none',
+                        }}
+                      />
+                      {svc.originalPrice && svc.price !== svc.originalPrice && (
+                        <span style={{ fontSize: '0.55rem', color: COLORS.textMuted, textDecoration: 'line-through' }}>${svc.originalPrice}</span>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={svc.priceNote || ''}
+                      onChange={e => {
+                        const updated = [...tintServices];
+                        updated[i].priceNote = e.target.value || null;
+                        setTintServices(updated);
+                      }}
+                      placeholder="Note"
+                      style={{
+                        width: 90, padding: '2px 6px',
+                        background: COLORS.inputBg, border: `1px solid ${COLORS.border}`,
+                        borderRadius: RADIUS.sm, color: COLORS.textMuted,
+                        fontSize: FONT.sizeXs, outline: 'none',
+                        display: svc.originalPrice && svc.price !== svc.originalPrice ? 'block' : 'none',
+                      }}
+                    />
                     <button onClick={() => removeTintService(i)} style={{
                       background: COLORS.dangerBg, color: COLORS.danger,
                       border: 'none', borderRadius: RADIUS.sm, padding: '4px 10px',
@@ -889,6 +932,66 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
               </div>
             </div>
           )}
+
+          {/* Add Custom Line Item */}
+          <div style={{
+            padding: SPACING.md, marginBottom: SPACING.md,
+            border: `1px dashed ${COLORS.borderInput}`, borderRadius: 10,
+          }}>
+            <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textMuted, marginBottom: SPACING.sm }}>
+              Custom Line Item
+            </div>
+            <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <input
+                  type="text"
+                  placeholder="Description (e.g., Removal Glue, Extra Labor)"
+                  id="custom-line-desc"
+                  style={{
+                    width: '100%', padding: '6px 10px', background: COLORS.inputBg,
+                    border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm,
+                    color: COLORS.textPrimary, fontSize: FONT.sizeSm, outline: 'none',
+                  }}
+                />
+              </div>
+              <div style={{ width: 80 }}>
+                <input
+                  type="number"
+                  placeholder="$0"
+                  id="custom-line-price"
+                  style={{
+                    width: '100%', padding: '6px 10px', background: COLORS.inputBg,
+                    border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm,
+                    color: COLORS.textPrimary, fontSize: FONT.sizeSm, outline: 'none', textAlign: 'right',
+                  }}
+                />
+              </div>
+              <button
+                onClick={() => {
+                  const descEl = document.getElementById('custom-line-desc') as HTMLInputElement;
+                  const priceEl = document.getElementById('custom-line-price') as HTMLInputElement;
+                  const desc = descEl?.value?.trim();
+                  const price = parseFloat(priceEl?.value || '0');
+                  if (!desc) return;
+                  setTintServices(prev => [...prev, {
+                    serviceKey: `CUSTOM_${Date.now()}`, label: desc, filmId: null,
+                    filmName: null, filmAbbrev: null, shadeFront: null, shadeRear: null, shade: null,
+                    price, originalPrice: 0, priceNote: 'Custom line item',
+                    discountAmount: 0, duration: 0,
+                  }]);
+                  if (descEl) descEl.value = '';
+                  if (priceEl) priceEl.value = '';
+                }}
+                style={{
+                  padding: '6px 14px', background: COLORS.red, border: 'none',
+                  borderRadius: RADIUS.sm, color: '#fff', fontSize: FONT.sizeXs,
+                  fontWeight: FONT.weightBold, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                + Add
+              </button>
+            </div>
+          </div>
         </>
       ) : (
         /* ============================================================ */

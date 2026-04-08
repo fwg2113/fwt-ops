@@ -115,9 +115,11 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
 
     // Also get day summary
     const booked = finalData.filter(a => a.status !== 'cancelled');
-    const dropoffs = booked.filter(a => a.appointment_type === 'dropoff').length;
-    const waiting = booked.filter(a => a.appointment_type === 'waiting').length;
-    const headsups = booked.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60').length;
+    const paid = booked.filter(a => a.status === 'invoiced' || a.status === 'completed').length;
+    const unpaid = booked.filter(a => a.status !== 'invoiced' && a.status !== 'completed');
+    const dropoffs = unpaid.filter(a => a.appointment_type === 'dropoff').length;
+    const waiting = unpaid.filter(a => a.appointment_type === 'waiting').length;
+    const headsups = unpaid.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60').length;
     const totalRevenue = booked.reduce((sum, a) => sum + Number(a.subtotal || 0), 0);
     const totalBalance = booked.reduce((sum, a) => sum + Number(a.balance_due || 0), 0);
 
@@ -131,6 +133,7 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
         dropoffs,
         waiting,
         headsups,
+        paid,
         cancelled: (data || []).filter(a => a.status === 'cancelled').length,
         totalRevenue,
         totalBalance,

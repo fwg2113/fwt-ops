@@ -12,7 +12,7 @@ export async function POST(
   try {
     const { id: documentId } = await params;
     const body = await request.json();
-    const { amount, payment_method, processor, notes } = body;
+    const { amount, payment_method, processor, notes, discount_amount } = body;
 
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 });
@@ -48,9 +48,10 @@ export async function POST(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Update document totals
+    // Update document totals (discount_amount reduces balance without being a "payment")
+    const disc = parseFloat(discount_amount || 0);
     const newTotalPaid = (doc.total_paid || 0) + parseFloat(amount);
-    const newBalanceDue = Math.max(0, (doc.balance_due || 0) - parseFloat(amount));
+    const newBalanceDue = Math.max(0, (doc.balance_due || 0) - parseFloat(amount) - disc);
     const newStatus = newBalanceDue <= 0 ? 'paid' : (newTotalPaid > 0 ? 'partial' : doc.status);
 
     await supabaseAdmin
@@ -60,9 +61,59 @@ export async function POST(
         balance_due: newBalanceDue,
         status: newStatus,
         payment_method: payment_method,
+        ...(disc > 0 ? { cash_discount_percent: disc / (doc.balance_due || 1) * 100 } : {}),
         ...(newStatus === 'paid' ? { paid_at: new Date().toISOString(), payment_confirmed_at: new Date().toISOString() } : {}),
       })
       .eq('id', documentId);
+
+    // If fully paid, update linked booking + customer stats
+    if (newStatus === 'paid') {
+      await supabaseAdmin
+        .from('auto_bookings')
+        .update({ status: 'invoiced', total_paid: newTotalPaid, balance_due: 0, payment_method })
+        .eq('document_id', documentId);
+
+      // Update customer lifetime stats
+      const { data: fullDocForStats } = await supabaseAdmin
+        .from('documents')
+        .select('customer_id')
+        .eq('id', documentId)
+        .single();
+
+      if (fullDocForStats?.customer_id) {
+        const custId = fullDocForStats.customer_id;
+        // Recalculate from all paid bookings + jobs for this customer
+        const { data: paidBookings } = await supabaseAdmin
+          .from('auto_bookings')
+          .select('subtotal, appointment_date')
+          .eq('customer_id', custId)
+          .in('status', ['invoiced', 'completed']);
+
+        const { data: custJobs } = await supabaseAdmin
+          .from('customer_jobs')
+          .select('total, job_date')
+          .eq('customer_id', custId);
+
+        const allTotals = [
+          ...(paidBookings || []).map(b => Number(b.subtotal) || 0),
+          ...(custJobs || []).map(j => Number(j.total) || 0),
+        ];
+        const allDates = [
+          ...(paidBookings || []).map(b => b.appointment_date),
+          ...(custJobs || []).map(j => j.job_date),
+        ].filter(Boolean).sort();
+
+        await supabaseAdmin
+          .from('customers')
+          .update({
+            lifetime_spend: allTotals.reduce((s, t) => s + t, 0),
+            visit_count: allTotals.length,
+            first_visit_date: allDates[0] || null,
+            last_visit_date: allDates[allDates.length - 1] || null,
+          })
+          .eq('id', custId);
+      }
+    }
 
     // Auto-post revenue transaction to bookkeeping ledger
     try {

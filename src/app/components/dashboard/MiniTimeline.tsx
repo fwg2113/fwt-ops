@@ -253,7 +253,8 @@ export default function MiniTimeline({ appointments, loading, dateLabel, summary
               const duration = apt.duration_minutes || 60;
               const top = (startMin - TIMELINE_START_HOUR * 60) * pxPerMin;
               const cardHeight = Math.max(duration * pxPerMin, 24);
-              const typeColor = TYPE_COLORS[apt.appointment_type] || '#6b7280';
+              const isPaid = apt.status === 'invoiced' || apt.status === 'completed';
+              const typeColor = isPaid ? '#22c55e' : (TYPE_COLORS[apt.appointment_type] || '#6b7280');
               const layout = isMobile ? { col: 0, totalCols: 1 } : (columnLayout.get(i) || { col: 0, totalCols: 1 });
               const serviceSummary = buildServiceSummary(apt.services_json);
               const isCompact = cardHeight < 45;

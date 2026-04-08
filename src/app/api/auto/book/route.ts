@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
       windowStatus, hasAftermarketTint,
       additionalInterests, notes,
       emojiMarker, calendarTitle,
+      existingDocumentId, // If a quote document already exists (e.g., from FLQA lead), skip creating a new one
     } = body;
 
     // Upsert customer by phone
@@ -112,6 +113,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create booking' }, { status: 500 });
     }
 
+    // Link existing document or auto-create a backing quote
+    if (existingDocumentId) {
+      // A quote document already exists (e.g., from FLQA lead) -- just link it
+      await supabaseAdmin
+        .from('auto_bookings')
+        .update({ document_id: existingDocumentId })
+        .eq('id', booking.id);
+
+      // Update the document status to approved and link the booking
+      await supabaseAdmin
+        .from('documents')
+        .update({ status: 'approved', booking_id: booking.id })
+        .eq('id', existingDocumentId);
+    } else {
+
     // Auto-create a backing quote document for this appointment
     const quoteResult = await createQuoteForAppointment({
       shopId: 1,
@@ -143,6 +159,7 @@ export async function POST(request: NextRequest) {
         .update({ document_id: quoteResult.documentId })
         .eq('id', booking.id);
     }
+    } // end else (no existingDocumentId)
 
     // If GC was used (dollar type), mark it as redeemed
     if (discountCode && discountType === 'dollar') {

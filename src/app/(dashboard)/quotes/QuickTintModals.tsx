@@ -15,6 +15,8 @@ export interface SelectedRow {
   filmId: number;
   filmName: string;
   price: number;
+  originalPrice: number;  // YMM price before any per-quote override
+  priceNote: string | null; // Reason for override (e.g., "Removal Glue", "Custom incentive")
   shadeFront: string | null;
   shadeRear: string | null;
 }
@@ -149,7 +151,8 @@ export function BookAppointmentModal({
             serviceKey: s.serviceKey, label: s.label,
             filmId: s.filmId || null, filmName: s.filmName, filmAbbrev: null,
             shadeFront: s.shadeFront, shadeRear: s.shadeRear, shade: s.shadeFront,
-            price: s.price, discountAmount: 0, duration: 60, module: 'auto_tint',
+            price: s.price, originalPrice: s.originalPrice, priceNote: s.priceNote || null,
+            discountAmount: 0, duration: 60, module: 'auto_tint',
           })),
           subtotal: total,
           discountCode: gcValid?.code || null,
@@ -334,7 +337,8 @@ export function SendToCustomerModal({
           vehicle_id: vehicle.id, class_keys: vehicle.class_keys.join('|'),
           services: selectedServices.map(s => ({
             service_key: s.serviceKey, label: s.label, film_id: s.filmId || null,
-            film_name: s.filmName, price: s.price, shade_front: s.shadeFront, shade_rear: s.shadeRear,
+            film_name: s.filmName, price: s.price, original_price: s.originalPrice, price_note: s.priceNote || null,
+            shade_front: s.shadeFront, shade_rear: s.shadeRear,
           })),
           total_price: total, charge_deposit: chargeDeposit,
           deposit_amount: chargeDeposit ? depositAmount : 0, send_method: sendMethod,
