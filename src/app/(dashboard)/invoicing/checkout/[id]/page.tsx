@@ -57,7 +57,7 @@ interface ShopConfig {
   shop_name: string;
   shop_phone: string;
   shop_address: string;
-  cash_discount_percent?: number;
+  cash_discount_round?: boolean;
   checkout_flow_config: {
     signature_enabled?: boolean;
     signature_required?: boolean;
@@ -111,6 +111,76 @@ export default function CounterCheckoutPage() {
   const [editingLines, setEditingLines] = useState(false);
   const [editableLines, setEditableLines] = useState<Array<Record<string, unknown>>>([]);
 
+  // Gift certificate / promo code redemption at checkout
+  const [gcCode, setGcCode] = useState('');
+  const [gcLoading, setGcLoading] = useState(false);
+  const [gcError, setGcError] = useState<string | null>(null);
+  const [gcSuccess, setGcSuccess] = useState<string | null>(null);
+
+  // Reload just the invoice data — used after GC redemption or any other
+  // server-side mutation that needs to refresh the displayed totals.
+  const reloadInvoice = async () => {
+    try {
+      const res = await fetch(`/api/documents/${invoiceId}`);
+      const data = await res.json();
+      if (data.id) {
+        const lineItems = (data.document_line_items || data.line_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
+        const composed = {
+          ...data,
+          invoice_number: data.doc_number || data.invoice_number,
+          line_items_json: lineItems.map((li: any) => ({
+            label: li.description,
+            price: li.line_total,
+            filmName: li.custom_fields?.filmName,
+            filmAbbrev: li.custom_fields?.filmAbbrev,
+            filmId: li.custom_fields?.filmId,
+            shade: li.custom_fields?.shade,
+            shadeFront: li.custom_fields?.shadeFront,
+            shadeRear: li.custom_fields?.shadeRear,
+            rollId: li.custom_fields?.rollId,
+            serviceKey: li.custom_fields?.serviceKey,
+            module: li.module,
+            _lineItemId: li.id,
+          })),
+          _normalized_line_items: lineItems,
+        };
+        setInvoice(composed);
+        if (data.status === 'paid') setIsPaid(true);
+      }
+    } catch { /* silent */ }
+  };
+
+  // Apply a gift certificate / promo code at checkout. Calls the redeem-gc
+  // endpoint which atomically: validates, inserts a payment record, updates
+  // doc totals, and (for dollar GCs) marks the GC redeemed in the table.
+  async function handleApplyGC() {
+    const trimmed = gcCode.trim();
+    if (!trimmed) return;
+    setGcLoading(true);
+    setGcError(null);
+    setGcSuccess(null);
+    try {
+      const res = await fetch('/api/auto/redeem-gc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: trimmed, documentId: invoiceId }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setGcError(data.error || 'Failed to apply code');
+        return;
+      }
+      const typeLabel = data.gc.discountType === 'percent' ? `${data.gc.value}% promo` : `$${data.gc.value} GC`;
+      setGcSuccess(`Applied ${typeLabel}: -${formatCurrency(data.appliedAmount)}`);
+      setGcCode('');
+      await reloadInvoice();
+    } catch (err) {
+      setGcError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setGcLoading(false);
+    }
+  }
+
   useEffect(() => {
     async function load() {
       const [invRes, configRes] = await Promise.all([
@@ -154,7 +224,7 @@ export default function CounterCheckoutPage() {
           shop_name: configData.shopConfig.shop_name || '',
           shop_phone: configData.shopConfig.shop_phone || '',
           shop_address: configData.shopConfig.shop_address || '',
-          cash_discount_percent: configData.shopConfig.cash_discount_percent || 0,
+          cash_discount_round: Boolean(configData.shopConfig.cash_discount_round),
           checkout_flow_config: configData.shopConfig.checkout_flow_config || {},
           module_invoice_content: configData.shopConfig.module_invoice_content || {},
         });
@@ -202,33 +272,59 @@ export default function CounterCheckoutPage() {
     ? (warrantyOptions.find(o => o.id === selectedWarrantyOption)?.price || 0)
     : 0;
 
-  // Calculate discount total from selected discounts
-  // Each discount can apply to subtotal or balance_due, and may or may not include warranty
-  const discountTotal = selectedDiscounts.reduce((sum, dId) => {
-    const d = discountTypes.find(dt => dt.id === dId);
-    if (!d) return sum;
-    if (d.discount_type === 'dollar') return sum + d.discount_value;
-    // Percentage discount — determine base amount
-    let base: number;
-    if (d.applies_to === 'subtotal') {
-      base = inv.subtotal;
-    } else {
-      // balance_due = subtotal - booking discount - deposit
-      base = inv.subtotal - (inv.discount_amount || 0) - (inv.deposit_paid || 0);
+  // Sequential discount stacking: iterate discount types in their configured
+  // sort_order and compound percent discounts against the running balance.
+  // Without this, two percent discounts (e.g. 10% friend + 5% cash) would each
+  // compute against the original subtotal independently, giving 15% off — but
+  // a cashier expects them to stack sequentially (10% off, THEN 5% off the
+  // reduced amount = ~14.5% effective). Settings → Discounts sort_order
+  // controls the application order; cash discount should typically be last.
+  // Returns the per-discount amounts so applied_discounts records the same
+  // breakdown the customer was actually charged.
+  const computeStackedDiscounts = () => {
+    // Round each discount amount to whole cents the moment we compute it, so
+    // the running balance and the displayed amounts agree exactly. Without
+    // this, e.g. Cash 5% of $634.50 = $31.725 internally, which one render
+    // path rounds to $31.73 and another to $0.01 of arithmetic drift in the
+    // balance. Always use the rounded value for both display AND the running
+    // balance so the math reconciles to the penny.
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const baseSubtotal = inv.subtotal;
+    const baseBalance = inv.subtotal - (inv.discount_amount || 0) - (inv.deposit_paid || 0);
+    let runningBalance = baseBalance;
+    const amountById = new Map<number, number>();
+    let total = 0;
+    // discountTypes is already sorted by sort_order from the API
+    for (const d of discountTypes) {
+      if (!selectedDiscounts.includes(d.id)) continue;
+      let amount: number;
+      if (d.discount_type === 'dollar') {
+        amount = round2(d.discount_value);
+      } else {
+        // applies_to=subtotal → uses original subtotal (not stacked)
+        // applies_to=balance_due → uses running balance (stacked sequentially)
+        let base = d.applies_to === 'subtotal' ? baseSubtotal : runningBalance;
+        if (d.include_warranty) base += warrantyAmount;
+        amount = round2(base * d.discount_value / 100);
+      }
+      amountById.set(d.id, amount);
+      total = round2(total + amount);
+      runningBalance = round2(runningBalance - amount);
     }
-    if (d.include_warranty) {
-      base += warrantyAmount;
-    }
-    return sum + (base * d.discount_value / 100);
-  }, 0);
+    return { total, amountById };
+  };
+  const { total: discountTotal, amountById: discountAmountById } = computeStackedDiscounts();
 
   // Adjusted balance: original balance - checkout discounts + warranty
-  const adjustedBalance = Math.max(0, inv.balance_due - discountTotal + warrantyAmount);
+  let adjustedBalance = Math.max(0, inv.balance_due - discountTotal + warrantyAmount);
+  // Round to nearest dollar if enabled (no coin change)
+  if (shopConfig?.cash_discount_round && discountTotal > 0) {
+    adjustedBalance = Math.round(adjustedBalance);
+  }
   const balanceDue = adjustedBalance;
   const ccFee = Math.round((balanceDue * ((inv.cc_fee_percent || 0) / 100) + (inv.cc_fee_flat || 0)) * 100) / 100;
   const cardTotal = balanceDue + ccFee;
-  const cashDiscount = inv.cash_discount_percent || shopConfig?.cash_discount_percent || 0;
-  const cashTotal = cashDiscount > 0 ? Math.round(balanceDue * (1 - cashDiscount / 100) * 100) / 100 : balanceDue;
+  // Cash discounts are handled via the checkout discount checkbox, not auto-applied
   const shopName = shopConfig?.shop_name || '';
 
   async function handleSaveSignature() {
@@ -264,20 +360,22 @@ export default function CounterCheckoutPage() {
     setPaying(true);
     setPaymentMethod(method);
 
-    // Build applied add-ons data
-    const appliedDiscounts = selectedDiscounts.map(dId => {
-      const d = discountTypes.find(dt => dt.id === dId);
-      if (!d) return null;
-      let amount: number;
-      if (d.discount_type === 'dollar') {
-        amount = d.discount_value;
-      } else {
-        let base = d.applies_to === 'subtotal' ? inv.subtotal : (inv.subtotal - (inv.discount_amount || 0) - (inv.deposit_paid || 0));
-        if (d.include_warranty) base += warrantyAmount;
-        amount = base * d.discount_value / 100;
-      }
-      return { discount_type_id: d.id, name: d.name, discount_type: d.discount_type, discount_value: d.discount_value, applies_to: d.applies_to, include_warranty: d.include_warranty, amount };
-    }).filter(Boolean);
+    // Build applied add-ons data using the same per-discount amounts the
+    // sequential stacker computed for display, so the recorded breakdown
+    // exactly matches what the customer was charged. Iterate in sort_order
+    // (the order discountTypes is already in) so the entries are stored in
+    // the application sequence.
+    const appliedDiscounts = discountTypes
+      .filter(d => selectedDiscounts.includes(d.id))
+      .map(d => ({
+        discount_type_id: d.id,
+        name: d.name,
+        discount_type: d.discount_type,
+        discount_value: d.discount_value,
+        applies_to: d.applies_to,
+        include_warranty: d.include_warranty,
+        amount: discountAmountById.get(d.id) || 0,
+      }));
 
     const appliedWarranty = selectedWarrantyOption ? (() => {
       const opt = warrantyOptions.find(o => o.id === selectedWarrantyOption);
@@ -422,27 +520,38 @@ export default function CounterCheckoutPage() {
                 </div>
               )}
 
-              {/* Checkout discounts (selected during checkout) */}
-              {selectedDiscounts.map(dId => {
-                const d = discountTypes.find(dt => dt.id === dId);
-                if (!d) return null;
-                let amount: number;
-                if (d.discount_type === 'dollar') {
-                  amount = d.discount_value;
-                } else {
-                  let base = d.applies_to === 'subtotal' ? inv.subtotal : (inv.subtotal - (inv.discount_amount || 0) - (inv.deposit_paid || 0));
-                  if (d.include_warranty) base += warrantyAmount;
-                  amount = base * d.discount_value / 100;
-                }
-                return (
-                  <div key={dId} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              {/* Checkout discounts (selected during checkout) — render in
+                  sort_order with the same per-discount amounts the sequential
+                  stacker computed above so the displayed amounts match exactly
+                  what the customer is being charged. */}
+              {discountTypes
+                .filter(d => selectedDiscounts.includes(d.id))
+                .map(d => (
+                  <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                     <span style={{ fontSize: 14, color: '#22c55e' }}>
                       {d.name} {d.discount_type === 'percent' ? `(${d.discount_value}%)` : ''}
                     </span>
-                    <span style={{ fontSize: 14, color: '#22c55e' }}>-{formatCurrency(amount)}</span>
+                    <span style={{ fontSize: 14, color: '#22c55e' }}>-{formatCurrency(discountAmountById.get(d.id) || 0)}</span>
                   </div>
-                );
-              })}
+                ))}
+
+              {/* Gift Certificate / promo code payments — render any payment
+                  records with method='gift_certificate' so the customer sees
+                  the GC value as a deduction from the subtotal. The notes
+                  field contains "GC: <code>" — strip the prefix for display. */}
+              {((inv as any).payments || (inv as any).document_payments || [])
+                .filter((p: any) => p.payment_method === 'gift_certificate')
+                .map((p: any) => {
+                  const codeLabel = p.notes ? p.notes.replace(/^GC:\s*/, '').replace(/\s*\([^)]*\)\s*$/, '') : null;
+                  return (
+                    <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span style={{ fontSize: 14, color: '#a855f7' }}>
+                        Gift Certificate{codeLabel ? ` (#${codeLabel})` : ''}
+                      </span>
+                      <span style={{ fontSize: 14, color: '#a855f7' }}>-{formatCurrency(Number(p.amount) || 0)}</span>
+                    </div>
+                  );
+                })}
 
               {inv.deposit_paid > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -627,6 +736,57 @@ export default function CounterCheckoutPage() {
                   }}
                   onCancel={() => setEditingLines(false)}
                 />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ---- 0. GIFT CERTIFICATE / PROMO CODE ---- */}
+        {!isPaid && (
+          <div style={{ background: COLORS.cardBg, borderRadius: RADIUS.md, padding: SPACING.lg, border: `1px solid ${COLORS.border}` }}>
+            <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, marginBottom: SPACING.md }}>
+              Gift Certificate or Promo Code
+            </div>
+            <div style={{ display: 'flex', gap: SPACING.sm }}>
+              <input
+                type="text"
+                value={gcCode}
+                onChange={e => { setGcCode(e.target.value); setGcError(null); setGcSuccess(null); }}
+                onKeyDown={e => { if (e.key === 'Enter' && !gcLoading && gcCode.trim()) handleApplyGC(); }}
+                placeholder="Enter code"
+                disabled={gcLoading}
+                style={{
+                  flex: 1, padding: '10px 14px', borderRadius: RADIUS.sm,
+                  border: `1px solid ${COLORS.borderInput}`,
+                  background: COLORS.inputBg, color: COLORS.textPrimary,
+                  fontSize: FONT.sizeSm,
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleApplyGC}
+                disabled={gcLoading || !gcCode.trim()}
+                style={{
+                  padding: '10px 20px', borderRadius: RADIUS.sm,
+                  border: `1px solid ${COLORS.borderAccentSolid}`,
+                  background: gcLoading || !gcCode.trim() ? COLORS.inputBg : COLORS.borderAccentSolid,
+                  color: gcLoading || !gcCode.trim() ? COLORS.textMuted : '#fff',
+                  fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold,
+                  cursor: gcLoading || !gcCode.trim() ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {gcLoading ? 'Applying...' : 'Apply'}
+              </button>
+            </div>
+            {gcSuccess && (
+              <div style={{ marginTop: SPACING.sm, padding: `${SPACING.sm}px ${SPACING.md}px`, background: `${COLORS.success}15`, border: `1px solid ${COLORS.success}`, borderRadius: RADIUS.sm, color: COLORS.success, fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold }}>
+                {gcSuccess}
+              </div>
+            )}
+            {gcError && (
+              <div style={{ marginTop: SPACING.sm, padding: `${SPACING.sm}px ${SPACING.md}px`, background: `${COLORS.red}15`, border: `1px solid ${COLORS.red}`, borderRadius: RADIUS.sm, color: COLORS.red, fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold }}>
+                {gcError}
               </div>
             )}
           </div>
@@ -842,13 +1002,8 @@ export default function CounterCheckoutPage() {
               </svg>
               Collect Payment -- {formatCurrency(balanceDue)}
             </button>
-            {cashDiscount > 0 && (
-              <div style={{ fontSize: FONT.sizeXs, color: '#22c55e', textAlign: 'center', marginTop: 6 }}>
-                Cash discount available: {cashDiscount}% off
-              </div>
-            )}
             {ccFee > 0 && (
-              <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, textAlign: 'center', marginTop: cashDiscount > 0 ? 2 : 6 }}>
+              <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, textAlign: 'center', marginTop: 6 }}>
                 CC fee applies: {formatCurrency(ccFee)}
               </div>
             )}
@@ -867,19 +1022,24 @@ export default function CounterCheckoutPage() {
             </div>
             <button
               onClick={async () => {
-                // Void the payment -- reset document to unpaid
+                // Void payment records
+                await fetch(`/api/documents/${inv.id}/payments`, { method: 'DELETE' });
+                // Reset document to unpaid -- clear checkout discounts too
+                const resetBalance = inv.subtotal - (inv.deposit_paid || 0);
                 await fetch('/api/auto/invoices', {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
-                    id: inv.id, status: 'invoiced', payment_method: null,
-                    payment_processor: null, payment_confirmed_at: null,
-                    total_paid: 0, balance_due: inv.subtotal - (inv.discount_amount || 0) - (inv.deposit_paid || 0),
-                    tip_amount: 0,
+                    id: inv.id, status: 'sent', payment_method: null,
+                    payment_processor: null, payment_confirmed_at: null, paid_at: null,
+                    total_paid: 0, balance_due: resetBalance, discount_amount: 0,
+                    tip_amount: 0, applied_discounts: null, applied_warranty: null,
                   }),
                 });
                 setIsPaid(false);
                 setPaymentMethod(null);
+                // Refresh to get clean state
+                window.location.reload();
               }}
               style={{
                 width: '100%', padding: '10px', borderRadius: RADIUS.sm,
@@ -900,17 +1060,21 @@ export default function CounterCheckoutPage() {
             balanceDue={balanceDue}
             ccFeePercent={inv.cc_fee_percent || 0}
             ccFeeFlat={inv.cc_fee_flat || 0}
-            cashDiscountPercent={cashDiscount}
+            checkoutDiscountTotal={inv.balance_due + warrantyAmount - adjustedBalance}
+            warrantyAmount={warrantyAmount}
+            baseSubtotal={inv.subtotal}
+            startingTotal={Number(inv.starting_total || inv.subtotal || 0)}
             tipAmount={parseFloat(tipAmount) || 0}
             discountNote={discountNote || null}
-            appliedDiscounts={selectedDiscounts.length > 0 ? selectedDiscounts.map(dId => {
-              const d = discountTypes.find(dt => dt.id === dId);
-              if (!d) return null;
-              let amount: number;
-              if (d.discount_type === 'dollar') { amount = d.discount_value; }
-              else { let base = d.applies_to === 'subtotal' ? inv.subtotal : balanceDue; amount = base * d.discount_value / 100; }
-              return { discount_type_id: d.id, name: d.name, discount_type: d.discount_type, discount_value: d.discount_value, amount };
-            }).filter(Boolean) : null}
+            appliedDiscounts={selectedDiscounts.length > 0 ? discountTypes
+              .filter(d => selectedDiscounts.includes(d.id))
+              .map(d => ({
+                discount_type_id: d.id,
+                name: d.name,
+                discount_type: d.discount_type,
+                discount_value: d.discount_value,
+                amount: discountAmountById.get(d.id) || 0,
+              })) : null}
             appliedWarranty={selectedWarrantyOption ? (() => {
               const opt = warrantyOptions.find(o => o.id === selectedWarrantyOption);
               const prod = warrantyProducts.find(w => opt && w.id === opt.warranty_product_id);

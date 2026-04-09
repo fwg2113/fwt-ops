@@ -424,7 +424,17 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
     ? tintServices.reduce((sum, s) => sum + (s.discountAmount || 0), 0)
     : 0;
   const depositPaid = Number(appointment.deposit_paid) || 0;
-  const calculatedBalance = subtotal - totalDiscount - depositPaid;
+
+  // Balance = the saved (already-known) balance + any additional subtotal
+  // introduced by edits in this modal session. This formula naturally handles
+  // already-paid appointments (saved balance = 0, no edits → $0 owed) AND
+  // new edits that add services to a paid invoice (only the delta is owed).
+  // It also avoids needing to know about document-level discounts, which are
+  // not accessible from the booking row.
+  const savedSubtotal = Number(appointment.subtotal) || 0;
+  const savedBalance = Number(appointment.balance_due) || 0;
+  const additionalSubtotal = Math.max(0, subtotal - savedSubtotal);
+  const calculatedBalance = Math.max(0, savedBalance + additionalSubtotal - totalDiscount);
   const finalBalance = priceOverride ? parseFloat(priceOverride) : calculatedBalance;
   const totalDuration = isTintModule
     ? tintServices.reduce((sum, s) => sum + (s.duration || 30), 0)
@@ -926,7 +936,7 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
               <div style={{ display: 'flex', gap: SPACING.sm }}>
                 <Button variant="secondary" size="sm" onClick={() => { setAddingService(false); setNewServiceKey(''); setNewFilmId(null); setNewShadeFront(null); setNewShadeRear(null); }}>Cancel</Button>
                 <Button variant="primary" size="sm" onClick={confirmAddTintService}
-                  disabled={!newServiceKey || (config?.services.find(s => s.service_key === newServiceKey)?.service_type === 'tint' && (!newFilmId || !newShadeFront))}>
+                  disabled={!newServiceKey || (config?.services.find(s => s.service_key === newServiceKey)?.service_type === 'tint' && !['SUN_STRIP', 'SUNROOF_SINGLE', 'SUNROOF_PANO'].includes(newServiceKey) && (!newFilmId || !newShadeFront))}>
                   Add Service
                 </Button>
               </div>

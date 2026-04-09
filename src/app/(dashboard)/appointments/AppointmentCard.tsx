@@ -22,6 +22,7 @@ interface Appointment {
   discount_amount: number;
   deposit_paid: number;
   balance_due: number;
+  total_paid: number;
   discount_code: string | null;
   status: string;
   calendar_title: string | null;
@@ -34,6 +35,8 @@ interface Appointment {
   linked_slots?: Array<{ id: string; module: string; status: string; booking_id: string }>;
   assigned_team_member_id: string | null;
   assigned_team_member_name: string | null;
+  assigned_team_member_ids: string[];
+  assigned_team_member_names: string[];
   document_id: string | null;
 }
 
@@ -55,12 +58,20 @@ export const MODULE_COLORS: Record<string, string> = {
   wraps: '#f97316',
 };
 
+interface TeamMember {
+  id: string;
+  name: string;
+  module_permissions: string[];
+}
+
 interface Props {
   appointment: Appointment;
   onEdit: (apt: Appointment) => void;
   onStatusChange: (id: string, status: string) => void;
   onAddLinkedSlot?: (apt: Appointment) => void;
-  onAssign?: (aptId: string, teamMemberId: string | null) => void;
+  onAssignMulti?: (aptId: string, teamMemberIds: string[]) => void;
+  teamMembers?: TeamMember[];
+  teamAssignmentEnabled?: boolean;
 }
 
 const STATUS_VARIANTS: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'red'> = {
@@ -119,10 +130,11 @@ function buildServiceSummary(servicesJson: unknown): string {
 
 export type { Appointment };
 
-export default function AppointmentCard({ appointment: apt, onEdit, onStatusChange, onAddLinkedSlot }: Props) {
+export default function AppointmentCard({ appointment: apt, onEdit, onStatusChange, onAddLinkedSlot, onAssignMulti, teamMembers, teamAssignmentEnabled }: Props) {
   const typeColor = TYPE_COLORS[apt.appointment_type] || '#6b7280';
   const serviceSummary = buildServiceSummary(apt.services_json);
   const [showLinked, setShowLinked] = useState(false);
+  const [showAssignPopover, setShowAssignPopover] = useState(false);
 
   const showModuleBadge = apt.module !== 'auto_tint' || !!apt.linked_group_id;
   const moduleColor = MODULE_COLORS[apt.module] || '#6b7280';
@@ -136,7 +148,7 @@ export default function AppointmentCard({ appointment: apt, onEdit, onStatusChan
       borderRadius: RADIUS.xl,
       border: `1px solid ${COLORS.border}`,
       borderLeft: `4px solid ${typeColor}`,
-      overflow: 'hidden',
+      overflow: showAssignPopover ? 'visible' : 'hidden',
       transition: 'border-color 0.15s',
       position: 'relative',
     }}>
@@ -285,22 +297,52 @@ export default function AppointmentCard({ appointment: apt, onEdit, onStatusChan
           flexWrap: 'wrap',
         }}>
           <span>{apt.customer_name}</span>
-          {apt.assigned_team_member_name && (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              fontSize: FONT.sizeXs, color: COLORS.textTertiary,
-            }}>
+          {teamAssignmentEnabled && (
+            <span
+              onClick={(e) => { e.stopPropagation(); setShowAssignPopover(!showAssignPopover); }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                fontSize: FONT.sizeXs,
+                color: (apt.assigned_team_member_names?.length > 0) ? COLORS.textTertiary : COLORS.textPlaceholder,
+                cursor: 'pointer', position: 'relative',
+              }}
+            >
               <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="8" cy="5" r="3" />
                 <path d="M2 14c0-3 2.5-5 6-5s6 2 6 5" />
               </svg>
-              {apt.assigned_team_member_name}
+              {apt.assigned_team_member_names?.length > 0
+                ? apt.assigned_team_member_names.join(', ')
+                : 'Assign'}
             </span>
           )}
           {apt.customer_phone && <span>{formatPhone(apt.customer_phone)}</span>}
-          <span style={{ color: COLORS.textPrimary, fontWeight: FONT.weightSemibold }}>
-            ${Number(apt.balance_due).toFixed(0)}
-          </span>
+          {/* Two-number price display:
+              - Final Total (left): the actual amount the customer paid (paid
+                rows) or the estimated all-in (unpaid rows). For paid rows uses
+                total_paid which already includes the deposit. For unpaid rows
+                uses subtotal as a menu-price estimate.
+              - Balance Due (right): what's still owed at the door. Always 0 for
+                paid rows. */}
+          {(() => {
+            const isPaid = apt.status === 'invoiced';
+            const finalTotal = isPaid
+              ? Number(apt.total_paid || 0)
+              : Number(apt.subtotal || 0);
+            const balanceDue = Number(apt.balance_due || 0);
+            return (
+              <>
+                <span style={{ color: COLORS.textPrimary, fontWeight: FONT.weightSemibold }}>
+                  ${finalTotal.toFixed(0)}
+                </span>
+                {!isPaid && balanceDue > 0 && (
+                  <span style={{ color: COLORS.textMuted, fontSize: FONT.sizeXs }}>
+                    bal ${balanceDue.toFixed(0)}
+                  </span>
+                )}
+              </>
+            );
+          })()}
           {apt.duration_minutes && (
             <span>{apt.duration_minutes}m</span>
           )}
@@ -352,6 +394,80 @@ export default function AppointmentCard({ appointment: apt, onEdit, onStatusChan
           icon={<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 1h8v12H3zM5 4h4M5 7h4M5 10h2"/></svg>}
         />
       </div>
+
+      {/* Team Assignment Popover */}
+      {showAssignPopover && teamMembers && onAssignMulti && (
+        <>
+          <div onClick={() => setShowAssignPopover(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
+          <div style={{
+            position: 'absolute', top: '100%', left: SPACING.md, zIndex: 9999,
+            marginTop: 4, minWidth: 200, maxHeight: 280, overflowY: 'auto',
+            background: COLORS.cardBg, border: `1px solid ${COLORS.border}`,
+            borderRadius: RADIUS.md, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            padding: `${SPACING.xs}px 0`,
+          }}>
+            <div style={{ padding: `${SPACING.xs}px ${SPACING.md}px`, fontSize: FONT.sizeXs, color: COLORS.textMuted, fontWeight: FONT.weightSemibold, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Assign Team
+            </div>
+            {/* Sort: module-matching members first */}
+            {[...teamMembers]
+              .sort((a, b) => {
+                const aMatch = a.module_permissions.includes(apt.module) ? 0 : 1;
+                const bMatch = b.module_permissions.includes(apt.module) ? 0 : 1;
+                return aMatch - bMatch || a.name.localeCompare(b.name);
+              })
+              .map(tm => {
+                const isAssigned = (apt.assigned_team_member_ids || []).includes(tm.id);
+                const hasModule = tm.module_permissions.includes(apt.module);
+                return (
+                  <button
+                    key={tm.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const current = apt.assigned_team_member_ids || [];
+                      const updated = isAssigned
+                        ? current.filter((id: string) => id !== tm.id)
+                        : [...current, tm.id];
+                      onAssignMulti(apt.id, updated);
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: SPACING.sm, width: '100%',
+                      padding: `${SPACING.sm}px ${SPACING.md}px`, background: 'none', border: 'none',
+                      cursor: 'pointer', color: COLORS.textPrimary, fontSize: FONT.sizeSm,
+                      textAlign: 'left',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = COLORS.hoverBg; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+                  >
+                    <div style={{
+                      width: 16, height: 16, borderRadius: 3, flexShrink: 0,
+                      border: `2px solid ${isAssigned ? COLORS.success : COLORS.borderInput}`,
+                      background: isAssigned ? COLORS.success : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {isAssigned && <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 5l2 2 4-4"/></svg>}
+                    </div>
+                    <span>{tm.name}</span>
+                    {!hasModule && (
+                      <span style={{ fontSize: '9px', color: COLORS.textPlaceholder, marginLeft: 'auto' }}>other dept</span>
+                    )}
+                  </button>
+                );
+              })}
+            <div style={{ padding: `${SPACING.xs}px ${SPACING.md}px`, borderTop: `1px solid ${COLORS.border}`, marginTop: SPACING.xs }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowAssignPopover(false); }}
+                style={{
+                  width: '100%', padding: `${SPACING.xs}px`, background: 'none', border: 'none',
+                  cursor: 'pointer', color: COLORS.textMuted, fontSize: FONT.sizeXs, textAlign: 'center',
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

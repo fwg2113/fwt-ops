@@ -32,6 +32,7 @@ const PERMISSION_DEFS: Array<{ key: string; label: string }> = [
   { key: 'settings', label: 'Settings' },
   { key: 'team_management', label: 'Team Management' },
   { key: 'module_settings', label: 'Module Settings' },
+  { key: 'upsell_override', label: 'Upsell Override (PIN-gated)' },
 ];
 
 function PermissionToggle({ enabled, onChange }: { enabled: boolean; onChange: (val: boolean) => void }) {

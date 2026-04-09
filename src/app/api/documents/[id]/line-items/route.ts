@@ -131,17 +131,29 @@ export const DELETE = withShopAuth(async ({ shopId, req }) => {
   return NextResponse.json({ success: true });
 });
 
-// Recalculate document subtotal from line items
+// Recalculate document subtotal AND upsell amount from line items (skip if paid)
 async function recalcSubtotal(supabase: any, documentId: string) {
+  // Don't recalculate paid documents -- paid = immutable
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('status, starting_total')
+    .eq('id', documentId)
+    .single();
+
+  if (doc?.status === 'paid') return;
+
   const { data: items } = await supabase
     .from('document_line_items')
     .select('line_total')
     .eq('document_id', documentId);
 
   const subtotal = (items || []).reduce((sum: number, item: any) => sum + (Number(item.line_total) || 0), 0);
+  // Upsell = positive delta between final services and original booking
+  const startingTotal = Number(doc?.starting_total || 0);
+  const upsellAmount = startingTotal > 0 ? Math.max(0, subtotal - startingTotal) : 0;
 
   await supabase
     .from('documents')
-    .update({ subtotal })
+    .update({ subtotal, upsell_amount: upsellAmount })
     .eq('id', documentId);
 }

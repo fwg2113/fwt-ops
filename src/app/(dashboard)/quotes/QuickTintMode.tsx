@@ -72,6 +72,9 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
   const [loadingDay, setLoadingDay] = useState(false);
   const [daySummary, setDaySummary] = useState<{ total: number; dropoffs: number; waiting: number; headsups: number } | null>(null);
 
+  // Shade section collapsed by default
+  const [shadesExpanded, setShadesExpanded] = useState(false);
+
   // Deposit override for "Send as Tailored Quote" path
   const [depositOverride, setDepositOverride] = useState<number | null>(null);
   const [overrideDeposit, setOverrideDeposit] = useState(false);
@@ -88,6 +91,64 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
+
+  // Ghost cards for MiniTimeline preview
+  const ghostCards = useMemo(() => {
+    if (!selectedTime || selectedRows.length === 0 || !config) return [];
+    const vehicleLabel = selectedYear && selectedMake && selectedModel
+      ? `${selectedYear} ${selectedMake} ${selectedModel}` : 'New Vehicle';
+
+    // Build a map of serviceKey -> duration_minutes from config
+    const durationMap = new Map<string, number>();
+    for (const svc of config.services) {
+      durationMap.set(svc.service_key, svc.duration_minutes || 60);
+    }
+
+    // Identify primary vs add-on service keys in selectedRows
+    const primaryKeys = new Set(config.services.filter(s => s.is_primary).map(s => s.service_key));
+    const selectedPrimaries = selectedRows.filter(r => primaryKeys.has(r.serviceKey));
+    const selectedAddons = selectedRows.filter(r => !primaryKeys.has(r.serviceKey));
+
+    // Add-on duration: sum of unique add-on service keys
+    const uniqueAddonKeys = new Set(selectedAddons.map(r => r.serviceKey));
+    const addonDuration = [...uniqueAddonKeys].reduce((sum, key) => sum + (durationMap.get(key) || 0), 0);
+    const addonLabels = [...uniqueAddonKeys].map(key => {
+      const row = selectedAddons.find(r => r.serviceKey === key);
+      return row?.label || key;
+    });
+
+    if (optionsMode && selectedPrimaries.length > 1) {
+      // Options mode with multiple primaries: one ghost card per unique primary serviceKey
+      const uniquePrimaryKeys = [...new Set(selectedPrimaries.map(r => r.serviceKey))];
+      return uniquePrimaryKeys.map((pKey, i) => {
+        const primaryRow = selectedPrimaries.find(r => r.serviceKey === pKey)!;
+        const primaryDuration = durationMap.get(pKey) || 60;
+        const allLabels = [primaryRow.label, ...addonLabels];
+        return {
+          time: selectedTime,
+          durationMinutes: primaryDuration + addonDuration,
+          label: vehicleLabel,
+          services: allLabels.join(' + '),
+          optionLabel: `Opt ${i + 1}`,
+        };
+      });
+    }
+
+    // Normal mode or single primary: one ghost card with unique service durations
+    const uniqueServiceKeys = new Set(selectedRows.map(r => r.serviceKey));
+    const totalDuration = [...uniqueServiceKeys].reduce((sum, key) => sum + (durationMap.get(key) || 60), 0);
+    const serviceLabels = [...uniqueServiceKeys].map(key => {
+      const row = selectedRows.find(r => r.serviceKey === key);
+      return row?.label || key;
+    });
+
+    return [{
+      time: selectedTime,
+      durationMinutes: totalDuration,
+      label: vehicleLabel,
+      services: serviceLabels.join(' + '),
+    }];
+  }, [selectedTime, selectedRows, selectedYear, selectedMake, selectedModel, config, optionsMode]);
 
   // Fetch day schedule when date changes
   useEffect(() => {
@@ -993,11 +1054,29 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
         </div>
       )}
 
-      {/* Selected Services + Shades */}
+      {/* Choose Shades (collapsible) */}
       {selectedRows.length > 0 && config && vehicle && (
         <div style={{ marginTop: SPACING.lg }}>
-          <DashboardCard title="Selected Services">
-            {selectedRows.map((row, i) => {
+          <DashboardCard>
+            <button
+              onClick={() => setShadesExpanded(!shadesExpanded)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                color: COLORS.textPrimary, fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold,
+                marginBottom: shadesExpanded ? SPACING.md : 0,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ transform: shadesExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}>
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+                Choose Shades
+              </div>
+              <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{selectedRows.length} selection{selectedRows.length !== 1 ? 's' : ''}</span>
+            </button>
+            {shadesExpanded && selectedRows.map((row, i) => {
               const shades = row.filmId > 0 ? getAllowedShades(row.serviceKey, row.filmId, config.filmShades, config.serviceShades, config.films) : [];
               const splitShade = row.filmId > 0 && needsSplitShades(vehicle, config.classRules, row.serviceKey);
               return (
@@ -1045,9 +1124,11 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
                 </div>
               );
             })}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: SPACING.md, paddingTop: SPACING.md, borderTop: `1px solid ${COLORS.border}`, fontSize: isMobile ? '1.1rem' : FONT.sizeLg, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>
-              Total: <span style={{ color: COLORS.success, marginLeft: SPACING.sm }}>${totalSelected.toLocaleString()}</span>
-            </div>
+            {shadesExpanded && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: SPACING.md, paddingTop: SPACING.md, borderTop: `1px solid ${COLORS.border}`, fontSize: isMobile ? '1.1rem' : FONT.sizeLg, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>
+                Total: <span style={{ color: COLORS.success, marginLeft: SPACING.sm }}>${totalSelected.toLocaleString()}</span>
+              </div>
+            )}
           </DashboardCard>
         </div>
       )}
@@ -1103,6 +1184,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
               <MiniTimeline
                 appointments={dayAppointments} loading={loadingDay}
                 summary={daySummary} height={360}
+                ghostCards={ghostCards}
               />
             </>)}
           </DashboardCard>
@@ -1513,6 +1595,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
               <MiniTimeline
                 appointments={dayAppointments} loading={loadingDay}
                 summary={daySummary} height={600}
+                ghostCards={ghostCards}
               />
             </div>
           </div>

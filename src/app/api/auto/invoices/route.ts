@@ -47,6 +47,8 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
     const status = searchParams.get('status');
     const bookingId = searchParams.get('bookingId');
     const id = searchParams.get('id');
+    const month = searchParams.get('month'); // YYYY-MM format
+    const limit = parseInt(searchParams.get('limit') || '500');
 
     if (id) {
       const { data, error } = await supabase
@@ -82,10 +84,18 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
       .eq('shop_id', shopId)
       .eq('doc_type', 'invoice')
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(limit);
 
     if (status) {
       query = query.eq('status', status);
+    }
+
+    // Month filter: month is "YYYY-MM" format
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      const [y, m] = month.split('-').map(Number);
+      const start = new Date(y, m - 1, 1).toISOString();
+      const end = new Date(y, m, 1).toISOString();
+      query = query.gte('created_at', start).lt('created_at', end);
     }
 
     const { data, error } = await query;
@@ -117,6 +127,18 @@ export const PATCH = withShopAuth(async ({ shopId, req }) => {
 
     // Strip fields that don't exist on documents table
     const { line_items_json, invoice_number, ...validUpdates } = updates;
+
+    // Protect paid documents: only allow void or explicit payment-related updates
+    const { data: existingDoc } = await supabase
+      .from('documents')
+      .select('status')
+      .eq('id', id)
+      .eq('shop_id', shopId)
+      .single();
+
+    if (existingDoc?.status === 'paid' && validUpdates.status && !['paid', 'void', 'sent'].includes(validUpdates.status)) {
+      return NextResponse.json({ error: 'Cannot change status of a paid document. Void it first.' }, { status: 400 });
+    }
 
     // Update document fields
     const { error: updateError } = await supabase

@@ -62,8 +62,8 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
         : undefined,
     }));
 
-    // Fetch active team members + module colors for this shop
-    const [{ data: teamMembersData }, { data: shopModulesData }] = await Promise.all([
+    // Fetch active team members + module colors + assignment settings for this shop
+    const [{ data: teamMembersData }, { data: shopModulesData }, { data: shopConfigData }] = await Promise.all([
       supabase
         .from('team_members')
         .select('id, name, phone, module_permissions')
@@ -75,6 +75,11 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
         .select('custom_color, service_modules(module_key, label, color)')
         .eq('shop_id', shopId)
         .eq('enabled', true),
+      supabase
+        .from('shop_config')
+        .select('team_assignment_enabled, team_assignment_required_before_checkin')
+        .eq('id', shopId)
+        .single(),
     ]);
 
     // Build module color + label maps (custom_color overrides service_modules.color)
@@ -105,22 +110,41 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
       teamNameMap[tm.id] = tm.name;
     }
 
-    // Attach team member name to each appointment
+    // Attach team member names to each appointment (single + multi)
     const finalData = enrichedData.map(apt => ({
       ...apt,
       assigned_team_member_name: apt.assigned_team_member_id
         ? teamNameMap[apt.assigned_team_member_id] || null
         : null,
+      assigned_team_member_ids: apt.assigned_team_member_ids || [],
+      assigned_team_member_names: (apt.assigned_team_member_ids || [])
+        .map((id: string) => teamNameMap[id])
+        .filter(Boolean),
     }));
 
     // Also get day summary
+    // - "paid" only counts truly invoiced rows (not 'completed', which means
+    //   "work done but not yet invoiced" — that's the state seeded historic
+    //   rows are in before checkout, and live rows are in after work is marked
+    //   complete but before the team clicks Invoice).
+    // - "Est. Revenue" mixes actual + estimate: for paid rows use total_paid
+    //   (the real amount collected, after discounts), for everything else use
+    //   subtotal (the menu-price estimate of what the day SHOULD bring in).
     const booked = finalData.filter(a => a.status !== 'cancelled');
-    const paid = booked.filter(a => a.status === 'invoiced' || a.status === 'completed').length;
-    const unpaid = booked.filter(a => a.status !== 'invoiced' && a.status !== 'completed');
+    const paid = booked.filter(a => a.status === 'invoiced').length;
+    const unpaid = booked.filter(a => a.status !== 'invoiced');
     const dropoffs = unpaid.filter(a => a.appointment_type === 'dropoff').length;
     const waiting = unpaid.filter(a => a.appointment_type === 'waiting').length;
     const headsups = unpaid.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60').length;
-    const totalRevenue = booked.reduce((sum, a) => sum + Number(a.subtotal || 0), 0);
+    const totalRevenue = booked.reduce((sum, a) => {
+      // Paid rows: count what was actually collected (already includes deposit
+      // because of the total_paid fix in createDocumentFromBooking).
+      // Unpaid rows: count the estimated value from the booking subtotal.
+      const actualOrEstimate = a.status === 'invoiced'
+        ? Number(a.total_paid || 0)
+        : Number(a.subtotal || 0);
+      return sum + actualOrEstimate;
+    }, 0);
     const totalBalance = booked.reduce((sum, a) => sum + Number(a.balance_due || 0), 0);
 
     return NextResponse.json({
@@ -128,6 +152,10 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
       teamMembers,
       moduleColorMap,
       moduleLabelMap,
+      teamAssignmentConfig: {
+        enabled: shopConfigData?.team_assignment_enabled ?? true,
+        requiredBeforeCheckin: shopConfigData?.team_assignment_required_before_checkin ?? false,
+      },
       summary: {
         total: booked.length,
         dropoffs,

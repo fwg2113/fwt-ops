@@ -25,7 +25,10 @@ interface Props {
   balanceDue: number;
   ccFeePercent: number;
   ccFeeFlat: number;
-  cashDiscountPercent: number;
+  checkoutDiscountTotal: number;
+  warrantyAmount: number;       // NFW or other warranty add-on amount (counts toward upsell)
+  baseSubtotal: number;          // The current document.subtotal (without warranty)
+  startingTotal: number;         // The original booking total (for upsell recalc)
   tipAmount: number;
   discountNote: string | null;
   appliedDiscounts: unknown;
@@ -37,13 +40,24 @@ interface Props {
 
 const PAYMENT_METHODS = [
   { key: 'cash', label: 'Cash', color: '#22c55e', processor: 'cash', icon: 'M' },
-  { key: 'cc', label: 'Credit Card', color: '#3b82f6', processor: 'square', icon: 'C' },
+  // 'cc' = Credit Card recorded manually (no SDK call). Used by shops that
+  // process cards through Zettle, PayPal, Clover, or any non-Square reader.
+  // Always visible regardless of whether a Square Terminal is paired.
+  { key: 'cc', label: 'Credit Card', color: '#3b82f6', processor: 'manual', icon: 'C' },
+  // 'square_terminal' = sends the charge to a paired Square Terminal device.
+  // Only visible when terminalDeviceId is set (see filter below).
   { key: 'square_terminal', label: 'Card Reader', color: '#3b82f6', processor: 'square_terminal', icon: 'T' },
   { key: 'venmo', label: 'Venmo', color: '#8b5cf6', processor: 'manual', icon: 'V' },
   { key: 'zelle', label: 'Zelle', color: '#8b5cf6', processor: 'manual', icon: 'Z' },
   { key: 'cashapp', label: 'CashApp', color: '#22c55e', processor: 'manual', icon: '$' },
   { key: 'applepay', label: 'Apple Pay', color: '#1a1a1a', processor: 'manual', icon: 'A' },
+  { key: 'apple_cash', label: 'Apple Cash', color: '#1a1a1a', processor: 'manual', icon: 'A' },
   { key: 'check', label: 'Check', color: '#6b7280', processor: 'manual', icon: 'K' },
+  // Gift Certificate redemption recorded as a payment, not a discount —
+  // because the customer paid for the GC originally with cash. Treating it
+  // as a payment keeps the total_paid on the invoice equal to the value of
+  // services rendered, matching the cashier's mental model.
+  { key: 'gift_certificate', label: 'Gift Certificate', color: '#a855f7', processor: 'manual', icon: 'G' },
 ];
 
 function formatCurrency(n: number) {
@@ -53,7 +67,8 @@ function formatCurrency(n: number) {
 let lineIdCounter = 0;
 
 export default function CollectPaymentModal({
-  documentId, balanceDue, ccFeePercent, ccFeeFlat, cashDiscountPercent,
+  documentId, balanceDue, ccFeePercent, ccFeeFlat, checkoutDiscountTotal,
+  warrantyAmount, baseSubtotal, startingTotal,
   tipAmount, discountNote, appliedDiscounts, appliedWarranty,
   terminalDeviceId,
   onPaymentComplete, onClose,
@@ -97,7 +112,7 @@ export default function CollectPaymentModal({
     }, 2000);
   }, []);
 
-  // Calculate totals with fees/discounts per line
+  // Calculate totals with CC fees per line (cash discounts are handled via checkout discount checkbox)
   const lineDetails = useMemo(() => {
     return lines.map(line => {
       const amount = parseFloat(line.amount) || 0;
@@ -105,13 +120,7 @@ export default function CollectPaymentModal({
       let feeOrDiscount = 0;
       let feeLabel = '';
 
-      if (line.method === 'cash' && cashDiscountPercent > 0) {
-        // Cash discount: the amount entered IS the pre-discount amount
-        // The actual charge is less
-        feeOrDiscount = -(amount * cashDiscountPercent / 100);
-        feeLabel = `${cashDiscountPercent}% cash discount`;
-        adjustedAmount = amount + feeOrDiscount; // less than amount
-      } else if ((line.method === 'cc' || line.method === 'square_terminal') && (ccFeePercent > 0 || ccFeeFlat > 0)) {
+      if ((line.method === 'cc' || line.method === 'square_terminal') && (ccFeePercent > 0 || ccFeeFlat > 0)) {
         feeOrDiscount = Math.round((amount * (ccFeePercent / 100) + ccFeeFlat) * 100) / 100;
         feeLabel = `CC fee: ${formatCurrency(feeOrDiscount)}`;
         adjustedAmount = amount + feeOrDiscount;
@@ -119,7 +128,7 @@ export default function CollectPaymentModal({
 
       return { ...line, parsedAmount: amount, adjustedAmount, feeOrDiscount, feeLabel };
     });
-  }, [lines, cashDiscountPercent, ccFeePercent, ccFeeFlat]);
+  }, [lines, ccFeePercent, ccFeeFlat]);
 
   const totalEntered = lineDetails.reduce((sum, l) => sum + l.parsedAmount, 0);
   const totalWithFees = lineDetails.reduce((sum, l) => sum + l.adjustedAmount, 0);
@@ -158,6 +167,35 @@ export default function CollectPaymentModal({
 
     try {
       const payments: Array<{ method: string; amount: number }> = [];
+
+      // Persist checkout discounts, tip, warranty to the document BEFORE recording payments
+      // - subtotal MUST include warranty (NFW) so it counts toward upsell commission
+      // - subtotal must NOT include discounts (those are payment-side, never affect commission)
+      // - upsell auto-recalcs from the new subtotal
+      {
+        const newSubtotal = baseSubtotal + warrantyAmount;
+        const newUpsell = startingTotal > 0 ? Math.max(0, newSubtotal - startingTotal) : 0;
+        const patchBody: Record<string, unknown> = {
+          id: documentId,
+          subtotal: newSubtotal,
+          upsell_amount: newUpsell,
+          tip_amount: tipAmount,
+          discount_note: discountNote || null,
+          applied_discounts: appliedDiscounts || null,
+          applied_warranty: appliedWarranty || null,
+        };
+
+        if (checkoutDiscountTotal > 0) {
+          patchBody.discount_amount = checkoutDiscountTotal;
+          patchBody.balance_due = balanceDue;
+        }
+
+        await fetch('/api/auto/invoices', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patchBody),
+        });
+      }
 
       // Check if any line uses Square Terminal
       const terminalLine = lineDetails.find(l => (l.method === 'square_terminal' || l.method === 'cc') && l.processor === 'square_terminal' && l.parsedAmount > 0);
@@ -238,11 +276,10 @@ export default function CollectPaymentModal({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            amount: detail.adjustedAmount,  // Actual amount collected (after discount or + CC fee)
+            amount: detail.parsedAmount,
             payment_method: detail.method,
             processor: detail.processor,
             processing_fee: detail.feeOrDiscount > 0 ? detail.feeOrDiscount : 0,
-            discount_amount: detail.feeOrDiscount < 0 ? Math.abs(detail.feeOrDiscount) : 0,
             notes: detail.feeLabel || null,
           }),
         });
@@ -253,21 +290,6 @@ export default function CollectPaymentModal({
         }
 
         payments.push({ method: detail.method, amount: detail.parsedAmount });
-      }
-
-      // Update document with tip, discount note, applied add-ons
-      if (tipAmount > 0 || discountNote || appliedDiscounts || appliedWarranty) {
-        await fetch('/api/auto/invoices', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: documentId,
-            tip_amount: tipAmount,
-            discount_note: discountNote || null,
-            applied_discounts: appliedDiscounts || null,
-            applied_warranty: appliedWarranty || null,
-          }),
-        });
       }
 
       onPaymentComplete(payments);
@@ -392,8 +414,9 @@ export default function CollectPaymentModal({
             {PAYMENT_METHODS.filter(m => {
               // Only show Card Reader if a terminal device is paired
               if (m.key === 'square_terminal' && !terminalDeviceId) return false;
-              // Hide generic CC if terminal is available (Card Reader replaces it)
-              if (m.key === 'cc' && terminalDeviceId) return false;
+              // 'cc' (manual Credit Card) is always shown — covers Zettle/PayPal/
+              // any non-Square reader, plus the historic backfill use case where
+              // we record the payment without re-running the card.
               return true;
             }).map(method => (
               <button

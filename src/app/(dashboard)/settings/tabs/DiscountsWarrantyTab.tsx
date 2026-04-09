@@ -58,6 +58,7 @@ export default function DiscountsWarrantyTab({ data, onSave, onAdd, onDelete, on
 
   // Addon discount settings from shop_config
   const config = data.shopConfig as Record<string, unknown> || {};
+  const [cashDiscountRound, setCashDiscountRound] = useState(Boolean(config.cash_discount_round));
   const [addonDiscountEnabled, setAddonDiscountEnabled] = useState(config.addon_discount_enabled !== false);
   const [addonDiscountPercent, setAddonDiscountPercent] = useState(String(config.addon_discount_percent || '10'));
   const [addonExcludedFilms, setAddonExcludedFilms] = useState<string[]>((config.addon_discount_excluded_films as string[]) || []);
@@ -341,6 +342,41 @@ export default function DiscountsWarrantyTab({ data, onSave, onAdd, onDelete, on
               No discounts configured. Add one below.
             </div>
           )}
+        </div>
+
+        {/* Rounding toggle */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: `${SPACING.sm}px ${SPACING.md}px`, marginBottom: SPACING.lg,
+          borderRadius: RADIUS.sm, border: `1px solid ${COLORS.border}`,
+        }}>
+          <div>
+            <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>
+              Round to nearest dollar
+            </div>
+            <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+              No coin change -- e.g. $575 at 5% = ${cashDiscountRound ? '546' : '546.25'}
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              const newVal = !cashDiscountRound;
+              setCashDiscountRound(newVal);
+              await onSave('shop_config', null, { cash_discount_round: newVal });
+            }}
+            style={{
+              width: 44, height: 24, borderRadius: 12, position: 'relative',
+              background: cashDiscountRound ? '#22c55e' : COLORS.borderInput,
+              border: 'none', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0,
+            }}
+          >
+            <div style={{
+              width: 18, height: 18, borderRadius: '50%', background: '#fff',
+              position: 'absolute', top: 3,
+              left: cashDiscountRound ? 23 : 3,
+              transition: 'left 0.2s',
+            }} />
+          </button>
         </div>
 
         {/* Add discount form */}

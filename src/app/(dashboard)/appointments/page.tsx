@@ -58,12 +58,17 @@ function AppointmentsPageInner() {
 
   // Shop config for action buttons
   const [shopConfig, setShopConfig] = useState<ShopConfigSlice | null>(null);
+  const [teamAssignmentConfig, setTeamAssignmentConfig] = useState({ enabled: true, requiredBeforeCheckin: false });
 
   // Modal state
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [messageTarget, setMessageTarget] = useState<{ apt: Appointment; templateKey: string | null } | null>(null);
   const [invoiceChoiceTarget, setInvoiceChoiceTarget] = useState<Appointment | null>(null);
   const [invoiceAnchorRect, setInvoiceAnchorRect] = useState<DOMRect | null>(null);
+
+  // Assignment gate modals
+  const [assignGateTarget, setAssignGateTarget] = useState<Appointment | null>(null); // "assign before check-in" prompt
+  const [invoiceConfirmTarget, setInvoiceConfirmTarget] = useState<{ apt: Appointment; anchorRect: DOMRect | null } | null>(null);
 
   // Create appointment modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -84,6 +89,7 @@ function AppointmentsPageInner() {
       if (data.teamMembers) setTeamMembers(data.teamMembers);
       if (data.moduleColorMap) setModuleColorMap(data.moduleColorMap);
       if (data.moduleLabelMap) setModuleLabelMap(data.moduleLabelMap);
+      if (data.teamAssignmentConfig) setTeamAssignmentConfig(data.teamAssignmentConfig);
     } catch {
       setAppointments([]);
       setSummary(null);
@@ -220,6 +226,27 @@ function AppointmentsPageInner() {
     } catch { /* silent */ }
   }
 
+  async function handleAssignMulti(aptId: string, teamMemberIds: string[]) {
+    const names = teamMemberIds.map(id => teamMembers.find(tm => tm.id === id)?.name).filter(Boolean) as string[];
+    updateLocalAppointment(aptId, {
+      assigned_team_member_ids: teamMemberIds,
+      assigned_team_member_names: names,
+      assigned_team_member_id: teamMemberIds[0] || null,
+      assigned_team_member_name: names[0] || null,
+    });
+    try {
+      await fetch('/api/auto/appointments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: aptId,
+          assigned_team_member_ids: teamMemberIds,
+          assigned_team_member_id: teamMemberIds[0] || null,
+        }),
+      });
+    } catch { /* silent */ }
+  }
+
   // ================================================================
   // UNIFIED ACTION HANDLER — dispatches based on button behavior
   // ================================================================
@@ -235,8 +262,15 @@ function AppointmentsPageInner() {
 
       case 'status_change':
         if (btn.statusTarget) {
+          // Check-in gate: require team assignment before checking in
+          if (btn.statusTarget === 'in_progress' && teamAssignmentConfig.enabled && teamAssignmentConfig.requiredBeforeCheckin) {
+            const hasAssignment = (apt.assigned_team_member_ids?.length > 0) || apt.assigned_team_member_id;
+            if (!hasAssignment) {
+              setAssignGateTarget(apt);
+              return;
+            }
+          }
           handleStatusChange(apt.id, btn.statusTarget);
-          // If this button also has a message template, open message modal after status change
           if (btn.messageTemplate) {
             setMessageTarget({ apt, templateKey: btn.messageTemplate });
           }
@@ -248,6 +282,11 @@ function AppointmentsPageInner() {
         break;
 
       case 'invoice_modal':
+        // Assignment confirmation before invoicing (if team assignment is enabled and someone is assigned)
+        if (teamAssignmentConfig.enabled && (apt.assigned_team_member_ids?.length > 0 || apt.assigned_team_member_id)) {
+          setInvoiceConfirmTarget({ apt, anchorRect: anchorRect || null });
+          return;
+        }
         setInvoiceChoiceTarget(apt);
         setInvoiceAnchorRect(anchorRect || null);
         break;
@@ -271,8 +310,8 @@ function AppointmentsPageInner() {
     .filter(a => activeModules.length === 0 || activeModules.includes(a.module || 'auto_tint'))
     .filter(a => {
       if (teamFilter === 'all') return true;
-      if (teamFilter === 'unassigned') return !a.assigned_team_member_id;
-      return a.assigned_team_member_id === teamFilter;
+      if (teamFilter === 'unassigned') return !(a.assigned_team_member_ids?.length > 0) && !a.assigned_team_member_id;
+      return (a.assigned_team_member_ids || []).includes(teamFilter) || a.assigned_team_member_id === teamFilter;
     });
 
   const displayDate = new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', {
@@ -564,6 +603,8 @@ function AppointmentsPageInner() {
           buttonsConfig={buttonsConfig}
           teamMembers={teamMembers}
           onAssign={handleAssign}
+          onAssignMulti={handleAssignMulti}
+          teamAssignmentConfig={teamAssignmentConfig}
           moduleColorMap={moduleColorMap}
           moduleLabelMap={moduleLabelMap}
           typeColorMap={shopConfig?.appointment_type_colors}
@@ -629,6 +670,152 @@ function AppointmentsPageInner() {
           shopModules={shopModules}
           teamMembers={teamMembers}
         />
+      )}
+
+      {/* Assignment Gate: must assign before check-in */}
+      {assignGateTarget && (
+        <>
+          <div onClick={() => setAssignGateTarget(null)} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.5)' }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            zIndex: 9999, background: COLORS.cardBg, borderRadius: RADIUS.lg,
+            border: `1px solid ${COLORS.border}`, padding: SPACING.xl,
+            maxWidth: 360, width: '90%', boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.textPrimary, marginBottom: SPACING.sm }}>
+              Assign Team Member
+            </div>
+            <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.lg }}>
+              At least one team member must be assigned before checking in.
+            </div>
+            {/* Quick multi-select */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: SPACING.lg, maxHeight: 200, overflowY: 'auto' }}>
+              {[...teamMembers]
+                .sort((a, b) => {
+                  const aMatch = a.module_permissions.includes(assignGateTarget.module || 'auto_tint') ? 0 : 1;
+                  const bMatch = b.module_permissions.includes(assignGateTarget.module || 'auto_tint') ? 0 : 1;
+                  return aMatch - bMatch || a.name.localeCompare(b.name);
+                })
+                .map(tm => {
+                  const isAssigned = (assignGateTarget.assigned_team_member_ids || []).includes(tm.id);
+                  return (
+                    <button
+                      key={tm.id}
+                      onClick={() => {
+                        const current = assignGateTarget.assigned_team_member_ids || [];
+                        const updated = isAssigned ? current.filter(id => id !== tm.id) : [...current, tm.id];
+                        handleAssignMulti(assignGateTarget.id, updated);
+                        setAssignGateTarget({ ...assignGateTarget, assigned_team_member_ids: updated, assigned_team_member_names: updated.map(id => teamMembers.find(t => t.id === id)?.name).filter(Boolean) as string[] });
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: SPACING.sm,
+                        padding: `${SPACING.sm}px ${SPACING.md}px`, background: 'none', border: 'none',
+                        cursor: 'pointer', color: COLORS.textPrimary, fontSize: FONT.sizeSm, textAlign: 'left',
+                        borderRadius: RADIUS.sm,
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = COLORS.hoverBg; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+                    >
+                      <div style={{
+                        width: 16, height: 16, borderRadius: 3, flexShrink: 0,
+                        border: `2px solid ${isAssigned ? '#22c55e' : COLORS.borderInput}`,
+                        background: isAssigned ? '#22c55e' : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {isAssigned && <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 5l2 2 4-4"/></svg>}
+                      </div>
+                      {tm.name}
+                    </button>
+                  );
+                })}
+            </div>
+            <div style={{ display: 'flex', gap: SPACING.sm }}>
+              <button onClick={() => setAssignGateTarget(null)} style={{
+                flex: 1, padding: SPACING.md, background: 'transparent', border: `1px solid ${COLORS.borderInput}`,
+                borderRadius: RADIUS.md, color: COLORS.textMuted, fontSize: FONT.sizeSm, cursor: 'pointer',
+              }}>
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if ((assignGateTarget.assigned_team_member_ids || []).length > 0) {
+                    handleStatusChange(assignGateTarget.id, 'in_progress');
+                    setAssignGateTarget(null);
+                  }
+                }}
+                disabled={(assignGateTarget.assigned_team_member_ids || []).length === 0}
+                style={{
+                  flex: 2, padding: SPACING.md, background: (assignGateTarget.assigned_team_member_ids || []).length > 0 ? '#22c55e' : COLORS.borderInput,
+                  border: 'none', borderRadius: RADIUS.md, color: '#fff', fontSize: FONT.sizeSm, fontWeight: 700,
+                  cursor: (assignGateTarget.assigned_team_member_ids || []).length > 0 ? 'pointer' : 'not-allowed',
+                  opacity: (assignGateTarget.assigned_team_member_ids || []).length === 0 ? 0.5 : 1,
+                }}
+              >
+                Assign & Check In
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Invoice Assignment Confirmation */}
+      {invoiceConfirmTarget && (
+        <>
+          <div onClick={() => setInvoiceConfirmTarget(null)} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.5)' }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            zIndex: 9999, background: COLORS.cardBg, borderRadius: RADIUS.lg,
+            border: `1px solid ${COLORS.border}`, padding: SPACING.xl,
+            maxWidth: 340, width: '90%', boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.textPrimary, marginBottom: SPACING.sm }}>
+              Confirm Team Assignment
+            </div>
+            <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.md }}>
+              Assigned to this job:
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.lg }}>
+              {(invoiceConfirmTarget.apt.assigned_team_member_names?.length > 0
+                ? invoiceConfirmTarget.apt.assigned_team_member_names
+                : invoiceConfirmTarget.apt.assigned_team_member_name ? [invoiceConfirmTarget.apt.assigned_team_member_name] : []
+              ).map((name, i) => (
+                <span key={i} style={{
+                  padding: '4px 12px', borderRadius: RADIUS.lg, fontSize: FONT.sizeSm, fontWeight: 600,
+                  background: `${COLORS.info}20`, color: COLORS.info,
+                }}>
+                  {name}
+                </span>
+              ))}
+            </div>
+            <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginBottom: SPACING.lg }}>
+              Is this correct?
+            </div>
+            <div style={{ display: 'flex', gap: SPACING.sm }}>
+              <button onClick={() => {
+                // Open assignment editor instead
+                setInvoiceConfirmTarget(null);
+                // TODO: could open the assignment popover, but for now just proceed
+                setAssignGateTarget(invoiceConfirmTarget.apt);
+              }} style={{
+                flex: 1, padding: SPACING.md, background: 'transparent', border: `1px solid ${COLORS.borderInput}`,
+                borderRadius: RADIUS.md, color: COLORS.textMuted, fontSize: FONT.sizeSm, cursor: 'pointer',
+              }}>
+                Edit
+              </button>
+              <button onClick={() => {
+                const { apt, anchorRect } = invoiceConfirmTarget;
+                setInvoiceConfirmTarget(null);
+                setInvoiceChoiceTarget(apt);
+                setInvoiceAnchorRect(anchorRect);
+              }} style={{
+                flex: 2, padding: SPACING.md, background: '#22c55e', border: 'none',
+                borderRadius: RADIUS.md, color: '#fff', fontSize: FONT.sizeSm, fontWeight: 700, cursor: 'pointer',
+              }}>
+                Correct, Proceed
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Invoice Choice Popover */}

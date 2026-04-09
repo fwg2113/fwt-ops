@@ -25,6 +25,14 @@ interface TimelineAppointment {
   services_json?: unknown;
 }
 
+export interface GhostCard {
+  time: string;           // "HH:MM" format
+  durationMinutes: number;
+  label: string;          // e.g. "2022 Ford Mustang Mach-E"
+  services: string;       // e.g. "Full 2dr | WS"
+  optionLabel?: string;   // e.g. "Option 1" for multi-option display
+}
+
 interface Props {
   appointments: TimelineAppointment[];
   loading?: boolean;
@@ -32,6 +40,7 @@ interface Props {
   summary?: { total: number; dropoffs: number; waiting: number; headsups: number } | null;
   excludeId?: string;
   height?: number;
+  ghostCards?: GhostCard[];
 }
 
 const TIMELINE_START_HOUR = 7;
@@ -117,7 +126,7 @@ function computeColumns(appts: { startMin: number; endMin: number; index: number
   return result;
 }
 
-export default function MiniTimeline({ appointments, loading, dateLabel, summary, excludeId, height }: Props) {
+export default function MiniTimeline({ appointments, loading, dateLabel, summary, excludeId, height, ghostCards }: Props) {
   const isMobile = useIsMobile();
   const PPH = isMobile ? 100 : PIXELS_PER_HOUR;
   const pxPerMin = PPH / 60;
@@ -135,15 +144,25 @@ export default function MiniTimeline({ appointments, loading, dateLabel, summary
   // Resolve effective time: work_order_time > appointment_time
   const effectiveTime = (apt: TimelineAppointment) => apt.work_order_time || apt.appointment_time;
 
-  // Compute overlap layout
+  // Ghost card indices start after real appointments
+  const ghostStartIndex = filtered.length;
+
+  // Compute overlap layout (includes ghost cards if present)
   const columnLayout = useMemo(() => {
     const items = filtered.map((apt, i) => {
       const startMin = timeToMinutes(effectiveTime(apt));
       const duration = apt.duration_minutes || 60;
       return { startMin, endMin: startMin + duration, index: i };
     });
+    // Include ghost cards in overlap computation
+    if (ghostCards) {
+      ghostCards.forEach((gc, gi) => {
+        const startMin = timeToMinutes(gc.time);
+        items.push({ startMin, endMin: startMin + gc.durationMinutes, index: ghostStartIndex + gi });
+      });
+    }
     return computeColumns(items);
-  }, [filtered]);
+  }, [filtered, ghostCards, ghostStartIndex]);
 
   // Hour markers
   const hourMarkers = useMemo(() => {
@@ -331,6 +350,97 @@ export default function MiniTimeline({ appointments, loading, dateLabel, summary
                       lineHeight: 1.3,
                     }}>
                       {apt.customer_name}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Ghost card previews */}
+            {ghostCards && ghostCards.map((gc, gi) => {
+              const ghostStartMin = timeToMinutes(gc.time);
+              const ghostTop = (ghostStartMin - TIMELINE_START_HOUR * 60) * pxPerMin;
+              const ghostHeight = Math.max(gc.durationMinutes * pxPerMin, 24);
+              const ghostLayout = isMobile ? { col: 0, totalCols: 1 } : (columnLayout.get(ghostStartIndex + gi) || { col: 0, totalCols: 1 });
+              const ghostColWidth = 100 / ghostLayout.totalCols;
+              const ghostLeftPct = ghostLayout.col * ghostColWidth;
+              const ghostCompact = ghostHeight < 45;
+
+              // Check if ghost overlaps any real appointment
+              const hasOverlap = filtered.some(apt => {
+                const aStart = timeToMinutes(effectiveTime(apt));
+                const aEnd = aStart + (apt.duration_minutes || 60);
+                const gEnd = ghostStartMin + gc.durationMinutes;
+                return ghostStartMin < aEnd && gEnd > aStart;
+              });
+
+              const ghostColor = hasOverlap ? '#f59e0b' : '#8b5cf6';
+
+              return (
+                <div
+                  key={`ghost-${gi}`}
+                  style={{
+                    position: 'absolute',
+                    top: ghostTop,
+                    left: `calc(${ghostLeftPct}% + 3px)`,
+                    width: `calc(${ghostColWidth}% - 6px)`,
+                    height: ghostHeight,
+                    background: `${ghostColor}12`,
+                    border: `1.5px dashed ${ghostColor}50`,
+                    borderLeft: `3px dashed ${ghostColor}`,
+                    borderRadius: RADIUS.sm,
+                    overflow: 'hidden',
+                    display: 'flex', flexDirection: 'column',
+                    justifyContent: 'center',
+                    padding: ghostCompact ? '2px 8px' : '4px 10px',
+                    opacity: 0.85,
+                  }}
+                >
+                  {/* Row 1: Time + Preview badge */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    fontSize: ghostCompact ? '10px' : FONT.sizeXs,
+                    lineHeight: 1.3,
+                  }}>
+                    <span style={{ fontWeight: FONT.weightBold, color: ghostColor }}>
+                      {gc.optionLabel || formatTime(gc.time)}
+                    </span>
+                    <span style={{
+                      fontSize: '8px', fontWeight: 700,
+                      color: ghostColor, textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      {gc.optionLabel ? formatTime(gc.time) : 'Preview'} {gc.durationMinutes}m
+                    </span>
+                    {hasOverlap && (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={ghostColor} strokeWidth="3" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                        <path d="M12 9v4M12 17h.01"/>
+                      </svg>
+                    )}
+                  </div>
+
+                  {/* Row 2: Vehicle */}
+                  <div style={{
+                    fontSize: ghostCompact ? '10px' : FONT.sizeXs,
+                    fontWeight: FONT.weightSemibold,
+                    color: COLORS.textPrimary,
+                    opacity: 0.7,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    lineHeight: 1.3,
+                  }}>
+                    {gc.label}
+                  </div>
+
+                  {/* Row 3: Services (if enough room) */}
+                  {!ghostCompact && gc.services && (
+                    <div style={{
+                      fontSize: '10px',
+                      color: COLORS.textMuted,
+                      opacity: 0.6,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      lineHeight: 1.3,
+                    }}>
+                      {gc.services}
                     </div>
                   )}
                 </div>

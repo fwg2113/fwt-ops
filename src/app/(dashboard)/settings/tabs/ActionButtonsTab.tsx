@@ -170,12 +170,32 @@ export default function ActionButtonsTab({ data, onSave, onRefresh }: Props) {
               border: `1px solid ${COLORS.borderInput}`,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
-                <span style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>
-                  {key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                </span>
+                <input
+                  defaultValue={key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                  onBlur={(e) => {
+                    const newName = e.target.value.trim();
+                    const newKey = newName.toLowerCase().replace(/\s+/g, '_');
+                    if (!newKey || newKey === key) return;
+                    setTemplates(prev => {
+                      const next = { ...prev };
+                      next[newKey] = next[key];
+                      delete next[key];
+                      return next;
+                    });
+                    // Update any action buttons that reference the old template key
+                    setButtons(prev => prev.map(b =>
+                      b.messageTemplate === key ? { ...b, messageTemplate: newKey } : b
+                    ));
+                  }}
+                  style={{
+                    fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary,
+                    background: 'transparent', border: 'none', outline: 'none', padding: 0,
+                    borderBottom: `1px dashed ${COLORS.borderInput}`, flex: 1,
+                  }}
+                />
                 <button onClick={() => removeTemplate(key)} style={{
                   background: 'transparent', border: 'none', color: COLORS.textMuted,
-                  cursor: 'pointer', fontSize: FONT.sizeXs,
+                  cursor: 'pointer', fontSize: FONT.sizeXs, marginLeft: SPACING.sm,
                 }}>
                   Remove
                 </button>

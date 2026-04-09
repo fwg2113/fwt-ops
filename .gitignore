@@ -42,9 +42,24 @@ next-env.d.ts
 # reference/notes (not needed for deployment)
 legacy/
 Screenshots/
+ScreenShot/
 Test Results
 Last Conversation/
 Revision Notes/
 FWG_OPS/
 .claude/
 film_data_base/
+
+# customer data exports (PII)
+FWT Customers & Appointments/
+FWT Customer*.xlsx
+
+# legacy import data dumps (large, one-off)
+scripts/chunks/
+scripts/import_bookings.sql
+scripts/import_customers.sql
+scripts/import_sequences.sql
+scripts/test_bookings.sql
+scripts/test_customers.sql
+scripts/test_import_bookings.sql
+scripts/test_import_customers.sql

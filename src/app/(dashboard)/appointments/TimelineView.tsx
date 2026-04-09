@@ -43,6 +43,8 @@ interface Props {
   onAddLinkedSlot?: (apt: Appointment) => void;
   teamMembers?: TeamMember[];
   onAssign?: (aptId: string, teamMemberId: string | null) => void;
+  onAssignMulti?: (aptId: string, teamMemberIds: string[]) => void;
+  teamAssignmentConfig?: { enabled: boolean; requiredBeforeCheckin: boolean };
   moduleColorMap?: Record<string, string>;
   moduleLabelMap?: Record<string, string>;
   typeColorMap?: Record<string, string>;
@@ -309,7 +311,7 @@ function buildServiceSummary(servicesJson: unknown): string {
 }
 
 export default function TimelineView({
-  appointments, isMobile, isTablet, onEdit, onStatusChange, onOrderChange, onDurationChange, onAction, buttonsConfig, onAddLinkedSlot, teamMembers, onAssign, moduleColorMap, moduleLabelMap, typeColorMap,
+  appointments, isMobile, isTablet, onEdit, onStatusChange, onOrderChange, onDurationChange, onAction, buttonsConfig, onAddLinkedSlot, teamMembers, onAssign, onAssignMulti, teamAssignmentConfig, moduleColorMap, moduleLabelMap, typeColorMap,
 }: Props) {
   // isTouch = any touch device (phone or tablet) -- controls button sizing, badge position
   const isTouch = isMobile || isTablet;
@@ -358,6 +360,7 @@ export default function TimelineView({
 
   // Assign dropdown state
   const [assignDropdownId, setAssignDropdownId] = useState<string | null>(null);
+  const [assignDropdownRect, setAssignDropdownRect] = useState<{ top: number; left: number } | null>(null);
   const [directionsModalApt, setDirectionsModalApt] = useState<Appointment | null>(null);
 
   // Work order positions — use work_order_time if saved, otherwise fall back to appointment_time
@@ -369,6 +372,10 @@ export default function TimelineView({
     });
     return order;
   });
+  // Keep workOrderRef in sync with the live state so drag-end handlers
+  // (running inside event-listener closures) can read the latest positions
+  // without needing to reinstall their listeners.
+  useEffect(() => { workOrderRef.current = workOrder; }, [workOrder]);
   const [localDurations, setLocalDurations] = useState<Map<string, number>>(() => {
     const durations = new Map<string, number>();
     appointments.forEach(apt => durations.set(apt.id, apt.duration_minutes || 60));
@@ -407,6 +414,27 @@ export default function TimelineView({
   const lastSwapXRef = useRef(0);
   const resizeStartRef = useRef({ y: 0, duration: 0 });
   const timelineRef = useRef<HTMLDivElement>(null);
+
+  // Refs that always point at the latest workOrder + appointments so the
+  // drag-end handlers (which run inside event listener closures) can access
+  // current state without reinstalling listeners on every change.
+  const workOrderRef = useRef<Map<string, number>>(new Map());
+  const appointmentsRef = useRef(appointments);
+  useEffect(() => { appointmentsRef.current = appointments; }, [appointments]);
+
+  // Auto-save the current order to the DB. Called on drag-end so the user
+  // never has to remember to click "Save Order" — the cards just stick where
+  // you put them. Without this, any unsaved drag is lost on the next HMR
+  // reload, page refresh, or component remount.
+  const autoSaveOrder = useCallback(() => {
+    const apts = appointmentsRef.current;
+    const map = workOrderRef.current;
+    const positions = apts.map(apt => ({
+      id: apt.id,
+      minutes: map.get(apt.id) ?? timeToMinutes(apt.appointment_time),
+    }));
+    onOrderChange(positions);
+  }, [onOrderChange]);
 
   // Frozen column assignments: snapshot taken when drag/resize starts so other cards don't shift
   const frozenColumnsRef = useRef<Map<string, { column: number; totalColumns: number }> | null>(null);
@@ -505,12 +533,18 @@ export default function TimelineView({
       }
     }
 
-    function onUp() { setDragId(null); }
+    function onUp() {
+      setDragId(null);
+      // Auto-save so the user never has to remember to click "Save Order".
+      // Without this, the new position only lives in local state and gets
+      // wiped on the next HMR / refresh / remount.
+      autoSaveOrder();
+    }
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
-  }, [dragId, linkedLocked, appointments, workOrder]);
+  }, [dragId, linkedLocked, appointments, workOrder, autoSaveOrder]);
 
   // Resize — drag bottom edge to change duration
   const handleResizeStart = useCallback((e: React.MouseEvent, id: string) => {
@@ -573,9 +607,14 @@ export default function TimelineView({
   }, [PPM, TIMELINE_END_HOUR]);
 
   const handleTouchDragEnd = useCallback(() => {
+    const wasDragging = !!touchDragRef.current;
     touchDragRef.current = null;
     frozenColumnsRef.current = null;
-  }, []);
+    if (wasDragging) {
+      // Persist the new position immediately so a refresh / HMR doesn't lose it
+      autoSaveOrder();
+    }
+  }, [autoSaveOrder]);
 
   const handleTouchResizeStart = useCallback((e: React.TouchEvent, id: string) => {
     e.stopPropagation();
@@ -994,12 +1033,14 @@ export default function TimelineView({
                         fontSize: '0.7rem', color: cardTextMuted, marginTop: 1,
                       }}>
                         <span>{apt.customer_name}</span>
-                        {apt.assigned_team_member_name && (
+                        {(apt.assigned_team_member_names?.length > 0 || apt.assigned_team_member_name) && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                             <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                               <circle cx="8" cy="5" r="3" /><path d="M2 14c0-3 2.5-5 6-5s6 2 6 5" />
                             </svg>
-                            {apt.assigned_team_member_name.split(' ')[0]}
+                            {(apt.assigned_team_member_names?.length > 0
+                              ? apt.assigned_team_member_names.map(n => n.split(' ')[0]).join(', ')
+                              : apt.assigned_team_member_name?.split(' ')[0]) || ''}
                           </span>
                         )}
                       </div>
@@ -1302,53 +1343,39 @@ export default function TimelineView({
                     }}>
                       <span>{apt.customer_name}</span>
                       {apt.customer_phone && <span>{formatPhone(apt.customer_phone)}</span>}
-                      {apt.assigned_team_member_name && (
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 3,
-                          color: cardTextMuted,
-                        }}>
-                          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="8" cy="5" r="3" />
-                            <path d="M2 14c0-3 2.5-5 6-5s6 2 6 5" />
-                          </svg>
-                          {apt.assigned_team_member_name}
-                        </span>
-                      )}
-                      {/* Assign button */}
-                      {teamMembers && teamMembers.length > 0 && onAssign && (
+                      {/* Assigned team members display + assign button */}
+                      {teamAssignmentConfig?.enabled !== false && teamMembers && teamMembers.length > 0 && onAssignMulti && (
                         <span
                           onMouseDown={e => e.stopPropagation()}
-                          style={{ position: 'relative', display: 'inline-flex' }}
+                          style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 3 }}
                         >
                           <button
-                            onClick={() => setAssignDropdownId(assignDropdownId === apt.id ? null : apt.id)}
-                            title={apt.assigned_team_member_name ? `Assigned to ${apt.assigned_team_member_name}` : 'Assign team member'}
+                            onClick={(e) => {
+                              if (assignDropdownId === apt.id) {
+                                setAssignDropdownId(null);
+                                setAssignDropdownRect(null);
+                              } else {
+                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                setAssignDropdownRect({ top: rect.bottom + 4, left: rect.left });
+                                setAssignDropdownId(apt.id);
+                              }
+                            }}
+                            title={apt.assigned_team_member_names?.length ? `Assigned: ${apt.assigned_team_member_names.join(', ')}` : 'Assign team member'}
                             style={{
-                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                              width: 18, height: 18, borderRadius: '50%',
-                              background: apt.assigned_team_member_id ? `${COLORS.info}25` : 'transparent',
-                              border: `1px solid ${apt.assigned_team_member_id ? COLORS.info + '50' : COLORS.borderInput}`,
-                              color: apt.assigned_team_member_id ? COLORS.info : COLORS.textMuted,
-                              cursor: 'pointer', padding: 0,
-                              transition: 'all 0.15s',
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                              color: apt.assigned_team_member_ids?.length > 0 ? COLORS.info : COLORS.textMuted,
+                              fontSize: FONT.sizeXs,
                             }}
                           >
                             <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                               <circle cx="8" cy="5" r="3" />
                               <path d="M2 14c0-3 2.5-5 6-5s6 2 6 5" />
                             </svg>
+                            {apt.assigned_team_member_names?.length > 0
+                              ? apt.assigned_team_member_names.join(', ')
+                              : 'Assign'}
                           </button>
-                          {assignDropdownId === apt.id && (
-                            <AssignDropdown
-                              appointment={apt}
-                              teamMembers={teamMembers}
-                              onAssign={(memberId) => {
-                                onAssign(apt.id, memberId);
-                                setAssignDropdownId(null);
-                              }}
-                              onClose={() => setAssignDropdownId(null)}
-                            />
-                          )}
                         </span>
                       )}
                     </div>
@@ -1360,9 +1387,11 @@ export default function TimelineView({
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1,
                     }}>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{apt.customer_name}</span>
-                      {apt.assigned_team_member_name && (
+                      {(apt.assigned_team_member_names?.length > 0 || apt.assigned_team_member_name) && (
                         <span style={{ color: cardTextMuted, flexShrink: 0 }}>
-                          / {apt.assigned_team_member_name.split(' ')[0]}
+                          / {apt.assigned_team_member_names?.length > 0
+                            ? apt.assigned_team_member_names.map(n => n.split(' ')[0]).join(', ')
+                            : apt.assigned_team_member_name?.split(' ')[0]}
                         </span>
                       )}
                     </div>
@@ -1450,12 +1479,39 @@ export default function TimelineView({
                   flexShrink: 0, minWidth: isTiny ? 50 : 70,
                   gap: isTiny ? 0 : 2,
                 }}>
-                  <span style={{
-                    fontSize: isTiny ? '0.65rem' : isCompact ? FONT.sizeXs : FONT.sizeSm,
-                    fontWeight: FONT.weightBold, color: cardTextPrimary,
-                  }}>
-                    ${Number(apt.balance_due).toFixed(0)}
-                  </span>
+                  {(() => {
+                    // Two-number price display:
+                    // - Final Total (large): paid → total_paid (the actual all-in
+                    //   the customer paid, including deposit). Unpaid → subtotal
+                    //   (the menu-price estimate).
+                    // - Balance Due (small): always shown as confirmation. $0
+                    //   for paid rows, the remaining amount for unpaid rows.
+                    //   Hidden only on tiny cards (no room).
+                    const isPaidApt = apt.status === 'invoiced';
+                    const finalTotal = isPaidApt
+                      ? Number(apt.total_paid || 0)
+                      : Number(apt.subtotal || 0);
+                    const balanceDue = Number(apt.balance_due || 0);
+                    return (
+                      <>
+                        <span style={{
+                          fontSize: isTiny ? '0.65rem' : isCompact ? FONT.sizeXs : FONT.sizeSm,
+                          fontWeight: FONT.weightBold, color: cardTextPrimary,
+                        }}>
+                          ${finalTotal.toFixed(0)}
+                        </span>
+                        {!isTiny && (
+                          <span style={{
+                            fontSize: '0.6rem',
+                            color: balanceDue > 0 ? cardTextPrimary : cardTextMuted,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            Bal ${balanceDue.toFixed(0)}
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                   {!isTiny && scheduledDiffers && (
                     <span style={{ fontSize: '0.6rem', color: cardTextMuted, whiteSpace: 'nowrap' }}>
                       Sched {scheduledTime}
@@ -1592,6 +1648,21 @@ export default function TimelineView({
         </div>
       </div>
 
+      {/* Multi-Assign Dropdown (fixed position, outside card overflow) */}
+      {assignDropdownId && assignDropdownRect && teamMembers && onAssignMulti && (() => {
+        const apt = appointments.find(a => a.id === assignDropdownId);
+        if (!apt) return null;
+        return (
+          <MultiAssignDropdown
+            appointment={apt}
+            teamMembers={teamMembers}
+            anchorPos={assignDropdownRect}
+            onAssign={(ids) => { onAssignMulti(apt.id, ids); }}
+            onClose={() => { setAssignDropdownId(null); setAssignDropdownRect(null); }}
+          />
+        );
+      })()}
+
       {/* Send Directions Modal */}
       {directionsModalApt && (() => {
         const apt = directionsModalApt;
@@ -1717,6 +1788,113 @@ function AssignDropdown({
         );
       })}
     </div>
+  );
+}
+
+function MultiAssignDropdown({
+  appointment,
+  teamMembers,
+  onAssign,
+  onClose,
+  anchorPos,
+}: {
+  appointment: Appointment;
+  teamMembers: TeamMember[];
+  onAssign: (memberIds: string[]) => void;
+  onClose: () => void;
+  anchorPos?: { top: number; left: number };
+}) {
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const aptModule = appointment.module || 'auto_tint';
+
+  // Sort: module-matching members first, then alphabetical
+  const sorted = [...teamMembers].sort((a, b) => {
+    const aMatch = a.module_permissions.includes(aptModule) ? 0 : 1;
+    const bMatch = b.module_permissions.includes(aptModule) ? 0 : 1;
+    return aMatch - bMatch || a.name.localeCompare(b.name);
+  });
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [onClose]);
+
+  const currentIds = appointment.assigned_team_member_ids || [];
+
+  return (
+    <>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
+    <div
+      ref={dropdownRef}
+      style={{
+        position: 'fixed',
+        top: anchorPos?.top ?? 100,
+        left: anchorPos?.left ?? 100,
+        zIndex: 9999, minWidth: 200, maxHeight: 300, overflowY: 'auto',
+        background: COLORS.cardBg,
+        border: `1px solid ${COLORS.borderAccent}`,
+        borderRadius: RADIUS.md,
+        boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+        padding: '4px 0',
+      }}
+    >
+      <div style={{ padding: '4px 12px', fontSize: '9px', color: COLORS.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        Assign Team
+      </div>
+      {sorted.map(tm => {
+        const isAssigned = currentIds.includes(tm.id);
+        const hasModule = tm.module_permissions.includes(aptModule);
+        return (
+          <button
+            key={tm.id}
+            onClick={() => {
+              const updated = isAssigned
+                ? currentIds.filter((id: string) => id !== tm.id)
+                : [...currentIds, tm.id];
+              onAssign(updated);
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              width: '100%', textAlign: 'left',
+              padding: '6px 12px', background: 'transparent', border: 'none',
+              fontSize: FONT.sizeXs, color: COLORS.textPrimary, cursor: 'pointer',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = COLORS.hoverBg; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          >
+            <div style={{
+              width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+              border: `2px solid ${isAssigned ? '#22c55e' : COLORS.borderInput}`,
+              background: isAssigned ? '#22c55e' : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {isAssigned && <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M2 5l2 2 4-4"/></svg>}
+            </div>
+            <span>{tm.name}</span>
+            {!hasModule && (
+              <span style={{ fontSize: '9px', color: COLORS.textPlaceholder, marginLeft: 'auto' }}>other dept</span>
+            )}
+          </button>
+        );
+      })}
+      <div style={{ padding: '4px 12px', borderTop: `1px solid ${COLORS.border}`, marginTop: 4 }}>
+        <button
+          onClick={onClose}
+          style={{
+            width: '100%', padding: '4px', background: 'none', border: 'none',
+            cursor: 'pointer', color: COLORS.textMuted, fontSize: FONT.sizeXs, textAlign: 'center',
+          }}
+        >
+          Done
+        </button>
+      </div>
+    </div>
+    </>
   );
 }
 

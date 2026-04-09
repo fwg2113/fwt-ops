@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { PageHeader, DashboardCard, DataTable, StatusBadge, Button } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
+import EditUpsellModal from './EditUpsellModal';
 
 // ============================================================================
 // TYPES
@@ -22,6 +23,9 @@ interface Invoice {
   vehicle_model: string | null;
   line_items_json: unknown[];
   subtotal: number;
+  starting_total: number | null;
+  upsell_amount: number | null;
+  upsell_override: number | null;
   discount_code: string | null;
   discount_amount: number;
   deposit_paid: number;
@@ -104,11 +108,19 @@ export default function InvoicingPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [editingUpsellInvoice, setEditingUpsellInvoice] = useState<Invoice | null>(null);
+  // Month filter -- defaults to current month, "all" shows everything
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const [monthFilter, setMonthFilter] = useState<string>(currentMonth);
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/auto/invoices');
+      const params = new URLSearchParams();
+      if (monthFilter && monthFilter !== 'all') params.set('month', monthFilter);
+      params.set('limit', '1000');
+      const res = await fetch(`/api/auto/invoices?${params.toString()}`);
       const data = await res.json();
       setInvoices(data.invoices || []);
     } catch {
@@ -116,7 +128,7 @@ export default function InvoicingPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [monthFilter]);
 
   useEffect(() => {
     fetchInvoices();
@@ -136,7 +148,10 @@ export default function InvoicingPage() {
       .reduce((sum, i) => sum + i.balance_due, 0),
     totalCollected: invoices
       .filter(i => i.status === 'paid')
-      .reduce((sum, i) => sum + i.subtotal - i.discount_amount, 0),
+      .reduce((sum, i) => sum + Number(i.total_paid || 0), 0),
+    totalUpsell: invoices
+      .filter(i => i.status === 'paid')
+      .reduce((sum, i) => sum + Number(i.upsell_override ?? i.upsell_amount ?? 0), 0),
   };
 
   // Mark as paid (manual confirmation)
@@ -205,10 +220,106 @@ export default function InvoicingPage() {
       ),
     },
     {
+      key: 'starting_total',
+      label: 'Starting',
+      align: 'right' as const,
+      width: 90,
+      render: (row: Invoice) => {
+        const start = Number(row.starting_total || 0);
+        return start > 0 ? (
+          <span style={{ color: COLORS.textMuted, fontSize: FONT.sizeSm }}>
+            {formatCurrency(start)}
+          </span>
+        ) : (
+          <span style={{ color: COLORS.textPlaceholder, fontSize: FONT.sizeXs }}>--</span>
+        );
+      },
+    },
+    {
+      key: 'final_subtotal',
+      label: 'Final Sub',
+      align: 'right' as const,
+      width: 90,
+      render: (row: Invoice) => (
+        <span
+          title="Pre-discount services value (used for upsell calculation)"
+          style={{ color: COLORS.textPrimary, fontWeight: FONT.weightSemibold }}
+        >
+          {formatCurrency(Number(row.subtotal || 0))}
+        </span>
+      ),
+    },
+    {
+      key: 'total',
+      label: 'Total Paid',
+      align: 'right' as const,
+      width: 90,
+      render: (row: Invoice) => (
+        <span
+          title="Final amount paid by customer (after discounts, deposits, etc.)"
+          style={{ color: COLORS.textSecondary, fontSize: FONT.sizeSm }}
+        >
+          {formatCurrency(Number(row.total_paid || 0))}
+        </span>
+      ),
+    },
+    {
+      key: 'upsell_amount',
+      label: 'Upsell',
+      align: 'right' as const,
+      width: 120,
+      render: (row: Invoice) => {
+        const isOverridden = row.upsell_override != null;
+        const effective = Number(row.upsell_override ?? row.upsell_amount ?? 0);
+        return (
+          <div
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {effective > 0 ? (
+              <span
+                title={isOverridden ? `Manual override (auto: ${formatCurrency(Number(row.upsell_amount || 0))})` : undefined}
+                style={{
+                  color: '#22c55e', fontWeight: FONT.weightBold, fontSize: FONT.sizeSm,
+                  fontStyle: isOverridden ? 'italic' : 'normal',
+                  textDecoration: isOverridden ? 'underline dotted' : 'none',
+                }}
+              >
+                +{formatCurrency(effective)}{isOverridden ? '*' : ''}
+              </span>
+            ) : (
+              <span
+                title={isOverridden ? `Manual override (auto: ${formatCurrency(Number(row.upsell_amount || 0))})` : undefined}
+                style={{
+                  color: COLORS.textPlaceholder, fontSize: FONT.sizeXs,
+                  fontStyle: isOverridden ? 'italic' : 'normal',
+                }}
+              >
+                {isOverridden ? '$0*' : '--'}
+              </span>
+            )}
+            <button
+              onClick={() => setEditingUpsellInvoice(row)}
+              title="Override upsell (PIN required)"
+              style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: COLORS.textMuted, padding: 2, display: 'flex', alignItems: 'center',
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </button>
+          </div>
+        );
+      },
+    },
+    {
       key: 'balance_due',
       label: 'Balance',
       align: 'right' as const,
-      width: 100,
+      width: 90,
       render: (row: Invoice) => (
         <span style={{
           fontWeight: FONT.weightBold,
@@ -295,23 +406,28 @@ export default function InvoicingPage() {
 
       {/* Stats Row */}
       <div style={{
-        display: 'flex', gap: isMobile ? SPACING.sm : SPACING.lg, marginBottom: SPACING.xl, flexWrap: 'wrap',
-        flexDirection: isMobile ? 'column' : 'row',
+        display: 'flex', gap: isMobile ? SPACING.sm : SPACING.lg, marginBottom: SPACING.md, flexWrap: 'wrap',
+        flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center',
       }}>
-        <div style={{ display: 'flex', gap: SPACING.sm }}>
+        <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'center' }}>
           <StatPill label="Total" value={stats.total} />
           <StatPill label="Unpaid" value={stats.unpaid} color="#f59e0b" />
+          <MonthPicker value={monthFilter} onChange={setMonthFilter} />
         </div>
         {!isMobile && <div style={{ flex: 1 }} />}
         <div style={{
           display: 'flex', alignItems: 'center', gap: isMobile ? SPACING.md : SPACING.lg,
           fontSize: isMobile ? FONT.sizeSm : FONT.sizeBase, color: COLORS.textTertiary,
+          flexWrap: 'wrap',
         }}>
           <span>
             Outstanding: <strong style={{ color: COLORS.warning }}>{formatCurrency(stats.totalOutstanding)}</strong>
           </span>
           <span>
             Collected: <strong style={{ color: COLORS.success }}>{formatCurrency(stats.totalCollected)}</strong>
+          </span>
+          <span>
+            Upsell: <strong style={{ color: '#22c55e' }}>{formatCurrency(stats.totalUpsell)}</strong>
           </span>
         </div>
       </div>
@@ -442,7 +558,26 @@ export default function InvoicingPage() {
             setSelectedInvoice(null);
             router.push(`/invoicing/checkout/${invoiceId}`);
           }}
+          onEditUpsell={() => setEditingUpsellInvoice(selectedInvoice)}
           isMobile={isMobile}
+        />
+      )}
+
+      {/* Edit Upsell PIN-gated modal */}
+      {editingUpsellInvoice && (
+        <EditUpsellModal
+          documentId={editingUpsellInvoice.id}
+          customerName={editingUpsellInvoice.customer_name}
+          autoUpsell={Number(editingUpsellInvoice.upsell_amount || 0)}
+          currentOverride={editingUpsellInvoice.upsell_override}
+          currentSubtotal={Number(editingUpsellInvoice.subtotal || 0)}
+          currentStartingTotal={Number(editingUpsellInvoice.starting_total || 0)}
+          onClose={() => setEditingUpsellInvoice(null)}
+          onSaved={() => {
+            setEditingUpsellInvoice(null);
+            fetchInvoices();
+            setSelectedInvoice(null);
+          }}
         />
       )}
     </div>
@@ -452,6 +587,33 @@ export default function InvoicingPage() {
 // ============================================================================
 // STAT PILL
 // ============================================================================
+function MonthPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  // Build a list of months from Jan 2024 to current month + "All Time"
+  const options: { value: string; label: string }[] = [{ value: 'all', label: 'All Time' }];
+  const now = new Date();
+  for (let y = now.getFullYear(); y >= 2024; y--) {
+    const startMonth = y === now.getFullYear() ? now.getMonth() : 11;
+    for (let m = startMonth; m >= 0; m--) {
+      const key = `${y}-${String(m + 1).padStart(2, '0')}`;
+      const label = new Date(y, m, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      options.push({ value: key, label });
+    }
+  }
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      style={{
+        padding: '8px 12px', borderRadius: RADIUS.lg, fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold,
+        background: COLORS.inputBg, color: COLORS.textPrimary,
+        border: `1px solid ${COLORS.borderInput}`, cursor: 'pointer', outline: 'none',
+      }}
+    >
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
 function StatPill({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
     <div style={{
@@ -479,13 +641,14 @@ function StatPill({ label, value, color }: { label: string; value: number; color
 // ============================================================================
 // INVOICE DETAIL PANEL
 // ============================================================================
-function InvoiceDetailPanel({ invoice, onClose, onMarkPaid, onVoid, onRefresh, onCounterCheckout, isMobile }: {
+function InvoiceDetailPanel({ invoice, onClose, onMarkPaid, onVoid, onRefresh, onCounterCheckout, onEditUpsell, isMobile }: {
   invoice: Invoice;
   onClose: () => void;
   onMarkPaid: () => void;
   onVoid: () => void;
   onRefresh: () => void;
   onCounterCheckout: (invoiceId: string) => void;
+  onEditUpsell?: () => void;
   isMobile?: boolean;
 }) {
   const inv = invoice;
@@ -623,7 +786,42 @@ function InvoiceDetailPanel({ invoice, onClose, onMarkPaid, onVoid, onRefresh, o
           background: COLORS.cardBg, borderRadius: RADIUS.lg, padding: SPACING.lg,
           border: `1px solid ${COLORS.border}`, marginBottom: SPACING.xl,
         }}>
+          {Number(inv.starting_total || 0) > 0 && Number(inv.starting_total || 0) !== inv.subtotal && (
+            <Row label="Original Booking" value={formatCurrency(Number(inv.starting_total || 0))} color={COLORS.textMuted} />
+          )}
           <Row label="Subtotal" value={formatCurrency(inv.subtotal)} />
+          {(() => {
+            const isOverridden = inv.upsell_override != null;
+            const effective = Number(inv.upsell_override ?? inv.upsell_amount ?? 0);
+            if (effective > 0 || isOverridden) {
+              return (
+                <Row
+                  label={isOverridden ? 'Upsell (overridden)' : 'Upsell'}
+                  value={`+${formatCurrency(effective)}`}
+                  color="#22c55e"
+                  bold
+                />
+              );
+            }
+            return null;
+          })()}
+          {onEditUpsell && (
+            <button
+              onClick={onEditUpsell}
+              style={{
+                background: 'transparent', border: `1px dashed ${COLORS.borderInput}`,
+                color: COLORS.textMuted, padding: '4px 10px', borderRadius: RADIUS.sm,
+                fontSize: FONT.sizeXs, cursor: 'pointer', marginTop: 4, marginBottom: SPACING.sm,
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              Override Upsell (PIN required)
+            </button>
+          )}
           {inv.discount_amount > 0 && (
             <Row label={`Discount${inv.discount_code ? ` (${inv.discount_code})` : ''}`} value={`-${formatCurrency(inv.discount_amount)}`} color={COLORS.success} />
           )}

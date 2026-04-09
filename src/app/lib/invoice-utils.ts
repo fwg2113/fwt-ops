@@ -92,25 +92,53 @@ export async function createDocumentFromBooking(
         .from('document_line_items')
         .insert(refreshedRows);
 
-      // Update document: totals, convert quote to invoice, set checkout type
-      const { data: docNumber } = await supabaseAdmin
-        .rpc('generate_document_number', { p_shop_id: shopId, p_doc_type: 'invoice' });
+      // Update document: totals, convert quote to invoice, set checkout type.
+      // Generate a NEW doc_number ONLY if the existing one is still a quote
+      // number (Q- prefix). If the doc was already an invoice (any "INV-"
+      // prefix, including historic backfill INV-260401-006), keep its existing
+      // number — never regenerate, otherwise re-clicking "Invoice" would
+      // overwrite a stable number with a fresh sequential one.
+      const wasQuote = (existingDoc.doc_number || '').startsWith('Q-');
+      let nextDocNumber = existingDoc.doc_number;
+      if (wasQuote) {
+        const { data: rpcDocNumber } = await supabaseAdmin
+          .rpc('generate_document_number', { p_shop_id: shopId, p_doc_type: 'invoice' });
+        nextDocNumber = rpcDocNumber || existingDoc.doc_number;
+      }
 
+      const startingTotal = booking.starting_total_override ?? booking.subtotal;
+      const upsellAmount = Math.max(0, booking.subtotal - startingTotal);
+      // Recompute balance_due from the booking's authoritative components
+      // (subtotal − discount − deposit) instead of trusting booking.balance_due.
+      const recomputedBalance = Math.max(0, (Number(booking.subtotal) || 0)
+        - (Number(booking.discount_amount) || 0)
+        - (Number(booking.deposit_paid) || 0));
       await supabaseAdmin
         .from('documents')
         .update({
           doc_type: 'invoice',
-          doc_number: docNumber || existingDoc.doc_number,
+          doc_number: nextDocNumber,
           checkout_type: checkoutType,
           subtotal: booking.subtotal,
-          starting_total: booking.subtotal,
+          starting_total: startingTotal,
+          upsell_amount: upsellAmount,
           discount_amount: booking.discount_amount,
           deposit_paid: booking.deposit_paid,
-          balance_due: booking.balance_due,
-          status: 'draft',
+          balance_due: recomputedBalance,
+          // Don't reset status to 'draft' — only set it if this was actually
+          // a quote being converted to an invoice. Otherwise leave the existing
+          // status alone (could be 'paid', 'partial', 'sent', etc.).
+          ...(wasQuote ? { status: 'draft' as const } : {}),
         })
         .eq('id', existingDoc.id);
     }
+
+    // Make sure the bidirectional link is set even on the existing-doc path,
+    // in case it was missing (e.g. quote created before this fix).
+    await supabaseAdmin
+      .from('auto_bookings')
+      .update({ document_id: existingDoc.id })
+      .eq('id', bookingId);
 
     return { document: existingDoc, existing: true };
   }
@@ -135,12 +163,36 @@ export async function createDocumentFromBooking(
     }
   }
 
-  // Generate document number
-  const { data: docNumber } = await supabaseAdmin
-    .rpc('generate_document_number', { p_shop_id: shopId, p_doc_type: 'invoice' });
+  // Generate document number — for historic backfill rows, reuse the
+  // booking_id (e.g. "260401-001") as the doc number so it matches the
+  // legacy spreadsheet's InvoiceNum. For live rows, use the auto-generated
+  // sequential number from the RPC.
+  const isHistoric = booking.import_source === 'historic_import';
+  let docNumber: string | null = null;
+  if (isHistoric && booking.booking_id) {
+    docNumber = `INV-${booking.booking_id}`;
+  } else {
+    const { data: rpcDocNumber } = await supabaseAdmin
+      .rpc('generate_document_number', { p_shop_id: shopId, p_doc_type: 'invoice' });
+    docNumber = rpcDocNumber;
+  }
 
-  // Create the document
-  const document = {
+  // For historic backfill, backdate created_at to the appointment date so
+  // the document filters correctly under the historic month, not "today."
+  // Use 17:00 UTC (1pm EDT / noon EST) so any continental US local-time month
+  // filter classifies it under the correct calendar month.
+  const historicCreatedAt = (isHistoric && booking.appointment_date)
+    ? `${booking.appointment_date}T17:00:00+00:00`
+    : null;
+
+  // Create the document.
+  // total_paid is seeded with the deposit_paid amount so the running total
+  // already reflects money the customer has paid. When counter payments come
+  // in via /api/documents/[id]/payments, they add on top of this base, giving
+  // total_paid = deposit + counter payments = customer's all-in payment.
+  // Without this seeding, deposits silently disappear from the "total paid"
+  // displayed on the invoice, the customer profile, and the bookkeeping ledger.
+  const document: Record<string, unknown> = {
     shop_id: shopId,
     doc_type: 'invoice' as const,
     doc_number: docNumber || `INV-${Date.now()}`,
@@ -154,20 +206,32 @@ export async function createDocumentFromBooking(
     vehicle_model: booking.vehicle_model,
     class_keys: booking.class_keys,
     subtotal: booking.subtotal,
-    starting_total: booking.subtotal,
+    starting_total: booking.starting_total_override ?? booking.subtotal,
+    upsell_amount: 0, // No upsell at creation; recalcs as line items change
     discount_code: booking.discount_code,
     discount_type: booking.discount_type,
     discount_percent: booking.discount_percent,
     discount_amount: booking.discount_amount,
     deposit_paid: booking.deposit_paid,
+    total_paid: booking.deposit_paid || 0, // seed with deposit so payments accumulate correctly
     cc_fee_percent: shopConfig?.cc_fee_percent || 3.5,
     cc_fee_flat: shopConfig?.cc_fee_flat || 0.30,
     cash_discount_percent: shopConfig?.cash_discount_percent || 5.0,
-    balance_due: booking.balance_due,
+    // Always recompute balance_due from subtotal − discount − deposit instead
+    // of trusting booking.balance_due, which may be stale or wrong (e.g. when
+    // a discount was applied at booking time but the booking row didn't fold
+    // it into balance_due, like a GC redemption that wasn't subtracted).
+    balance_due: Math.max(0, (Number(booking.subtotal) || 0)
+      - (Number(booking.discount_amount) || 0)
+      - (Number(booking.deposit_paid) || 0)),
     status: 'draft',
     checkout_type: checkoutType,
     warranty_content_snapshot: Object.keys(warrantySnapshot).length > 0 ? warrantySnapshot : null,
+    import_source: isHistoric ? 'historic_import' : null,
   };
+  if (historicCreatedAt) {
+    document.created_at = historicCreatedAt;
+  }
 
   const { data: created, error: insertError } = await supabaseAdmin
     .from('documents')
@@ -205,10 +269,12 @@ export async function createDocumentFromBooking(
     }
   }
 
-  // Update the booking status to 'invoiced'
+  // Update the booking status to 'invoiced' AND set the bidirectional link
+  // (auto_bookings.document_id → documents.id) so the payment route can find
+  // the booking by document_id when payment is recorded.
   await supabaseAdmin
     .from('auto_bookings')
-    .update({ status: 'invoiced' })
+    .update({ status: 'invoiced', document_id: created.id })
     .eq('id', bookingId);
 
   return { document: created, existing: false };

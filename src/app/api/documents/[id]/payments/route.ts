@@ -12,7 +12,7 @@ export async function POST(
   try {
     const { id: documentId } = await params;
     const body = await request.json();
-    const { amount, payment_method, processor, notes, discount_amount } = body;
+    const { amount, payment_method, processor, notes } = body;
 
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 });
@@ -21,7 +21,7 @@ export async function POST(
     // Verify document exists
     const { data: doc } = await supabaseAdmin
       .from('documents')
-      .select('id, shop_id, balance_due, total_paid, status')
+      .select('id, shop_id, balance_due, total_paid, status, import_source, created_at')
       .eq('id', documentId)
       .single();
 
@@ -48,11 +48,19 @@ export async function POST(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Update document totals (discount_amount reduces balance without being a "payment")
-    const disc = parseFloat(discount_amount || 0);
+    // Update document totals
     const newTotalPaid = (doc.total_paid || 0) + parseFloat(amount);
-    const newBalanceDue = Math.max(0, (doc.balance_due || 0) - parseFloat(amount) - disc);
-    const newStatus = newBalanceDue <= 0 ? 'paid' : (newTotalPaid > 0 ? 'partial' : doc.status);
+    const newBalanceDue = Math.max(0, (doc.balance_due || 0) - parseFloat(amount));
+    const newStatus = newBalanceDue <= 0.01 ? 'paid' : (newTotalPaid > 0 ? 'partial' : doc.status);
+
+    // For historic backfill rows, backdate paid_at to the document's
+    // created_at (which is already the historic appointment date) instead
+    // of "now". Otherwise the invoice payment would appear today even though
+    // the work was done weeks/months ago.
+    const isHistoric = doc.import_source === 'historic_import';
+    const paidAtTimestamp = isHistoric && doc.created_at
+      ? doc.created_at
+      : new Date().toISOString();
 
     await supabaseAdmin
       .from('documents')
@@ -61,8 +69,7 @@ export async function POST(
         balance_due: newBalanceDue,
         status: newStatus,
         payment_method: payment_method,
-        ...(disc > 0 ? { cash_discount_percent: disc / (doc.balance_due || 1) * 100 } : {}),
-        ...(newStatus === 'paid' ? { paid_at: new Date().toISOString(), payment_confirmed_at: new Date().toISOString() } : {}),
+        ...(newStatus === 'paid' ? { paid_at: paidAtTimestamp, payment_confirmed_at: paidAtTimestamp } : {}),
       })
       .eq('id', documentId);
 
@@ -157,6 +164,32 @@ export async function POST(
     });
   } catch (err) {
     console.error('Payment recording error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// ============================================================================
+// DELETE /api/documents/[id]/payments — Void all payments for a document
+// ============================================================================
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: documentId } = await params;
+
+    const { error } = await supabaseAdmin
+      .from('document_payments')
+      .delete()
+      .eq('document_id', documentId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('Payment void error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

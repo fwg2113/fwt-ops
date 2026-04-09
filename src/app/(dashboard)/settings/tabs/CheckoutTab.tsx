@@ -43,6 +43,10 @@ export default function CheckoutTab({ data, onSave, onRefresh }: Props) {
   const [selfCheckoutSubtext, setSelfCheckoutSubtext] = useState(String(config.self_checkout_subtext || 'Find your vehicle below and tap to check out.'));
   const [qrGenerated, setQrGenerated] = useState(false);
 
+  // Team assignment settings
+  const [teamAssignmentEnabled, setTeamAssignmentEnabled] = useState(config.team_assignment_enabled !== false);
+  const [teamAssignmentRequired, setTeamAssignmentRequired] = useState(Boolean(config.team_assignment_required_before_checkin));
+
   // Quote approval modes
   const approvalModesRaw = (config.quote_approval_modes || {}) as Record<string, boolean>;
   const [amScheduleApprove, setAmScheduleApprove] = useState(Boolean(approvalModesRaw.schedule_approve));
@@ -67,6 +71,8 @@ export default function CheckoutTab({ data, onSave, onRefresh }: Props) {
         just_approve: amJustApprove,
       },
       quote_default_approval_mode: defaultApprovalMode,
+      team_assignment_enabled: teamAssignmentEnabled,
+      team_assignment_required_before_checkin: teamAssignmentRequired,
       self_checkout_enabled: selfCheckoutEnabled,
       self_checkout_heading: selfCheckoutHeading,
       self_checkout_subtext: selfCheckoutSubtext,
@@ -121,6 +127,76 @@ export default function CheckoutTab({ data, onSave, onRefresh }: Props) {
           </div>
         </DashboardCard>
       )}
+
+      {/* ================================================================ */}
+      {/* TEAM ASSIGNMENT */}
+      {/* ================================================================ */}
+      <DashboardCard title="Team Assignment" icon={
+        <svg viewBox="0 0 24 24" fill="none" stroke={COLORS.red} strokeWidth="2" style={{ width: 18, height: 18 }}>
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      }>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.md }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>
+                Enable Team Assignment
+              </div>
+              <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                Allow assigning team members to appointments
+              </div>
+            </div>
+            <button
+              onClick={() => setTeamAssignmentEnabled(!teamAssignmentEnabled)}
+              style={{
+                width: 44, height: 24, borderRadius: 12, position: 'relative',
+                background: teamAssignmentEnabled ? '#22c55e' : COLORS.borderInput,
+                border: 'none', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0,
+              }}
+            >
+              <div style={{
+                width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                position: 'absolute', top: 3,
+                left: teamAssignmentEnabled ? 23 : 3,
+                transition: 'left 0.2s',
+              }} />
+            </button>
+          </div>
+
+          {teamAssignmentEnabled && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: `${SPACING.sm}px ${SPACING.md}px`,
+              borderRadius: RADIUS.sm, border: `1px solid ${COLORS.border}`,
+            }}>
+              <div>
+                <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>
+                  Require Before Check-In
+                </div>
+                <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                  Block check-in until at least one team member is assigned
+                </div>
+              </div>
+              <button
+                onClick={() => setTeamAssignmentRequired(!teamAssignmentRequired)}
+                style={{
+                  width: 44, height: 24, borderRadius: 12, position: 'relative',
+                  background: teamAssignmentRequired ? '#22c55e' : COLORS.borderInput,
+                  border: 'none', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0,
+                }}
+              >
+                <div style={{
+                  width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                  position: 'absolute', top: 3,
+                  left: teamAssignmentRequired ? 23 : 3,
+                  transition: 'left 0.2s',
+                }} />
+              </button>
+            </div>
+          )}
+        </div>
+      </DashboardCard>
 
       {/* ================================================================ */}
       {/* QUOTE APPROVAL MODES */}
