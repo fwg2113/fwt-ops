@@ -40,6 +40,7 @@ interface Appointment {
   document_id: string | null;
   window_status: string | null;
   headsup_notified_at: string | null;
+  created_at?: string;
 }
 
 export const MODULE_LABELS: Record<string, string> = {

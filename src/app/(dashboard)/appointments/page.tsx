@@ -273,15 +273,16 @@ function AppointmentsPageInner() {
         return;
       }
 
-      // Already acknowledged on this session → bail entirely. No toast, no
-      // sound, no refetch. Local state already reflects whatever this user
-      // just did (drag reorder, edit save, status change) via optimistic
-      // updates in the respective handlers. Refetching here would cause the
-      // timeline to re-render on every update, which is visually jarring and
-      // disruptive (especially mid-drag). In a multi-user scenario where
-      // another user drags a card, this user won't see it until they
-      // manually refresh — acceptable trade-off for single-user launch.
+      // Already acknowledged on this session → bail for most updates.
+      // Exception: heads-up claim (appointment_time just got set) needs
+      // a refetch to move the card from the queue to the timeline.
       if (seenBookedIdsRef.current.has(id)) {
+        const aptType = String(row.appointment_type || '');
+        const aptTime = row.appointment_time;
+        if ((aptType === 'headsup_30' || aptType === 'headsup_60') && aptTime) {
+          // Customer claimed a slot -- refetch to move card from queue to timeline
+          fetchAppointmentsRef.current();
+        }
         return;
       }
 
@@ -504,6 +505,13 @@ function AppointmentsPageInner() {
   });
 
   const buttonsConfig = shopConfig?.action_buttons_config?.buttons || DEFAULT_BUTTONS_CONFIG;
+
+  // Split: heads-up appointments without a time go in the queue, everything else on the timeline
+  const headsupQueue = activeAppointments
+    .filter(a => (a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60') && !a.appointment_time)
+    .sort((a, b) => new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime()); // oldest first (left)
+  const timelineAppointments = activeAppointments
+    .filter(a => !((a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60') && !a.appointment_time));
 
   return (
     <div>
@@ -774,6 +782,108 @@ function AppointmentsPageInner() {
       )}
       </div>{/* end sticky header wrapper */}
 
+      {/* Heads-Up Queue (above timeline) */}
+      {headsupQueue.length > 0 && (
+        <div style={{ marginBottom: SPACING.lg }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm,
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Heads-Up Queue ({headsupQueue.length})
+            </span>
+            <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+              Waiting for time assignment -- ordered by booking date
+            </span>
+          </div>
+          <div style={{
+            display: 'flex', gap: SPACING.md, overflowX: 'auto',
+            paddingBottom: SPACING.sm,
+          }}>
+            {headsupQueue.map((apt, idx) => {
+              const typeLabel = apt.appointment_type === 'headsup_60' ? '60-min' : '30-min';
+              const modColor = moduleColorMap?.[apt.module || 'auto_tint'] || '#3b82f6';
+              const services = (() => {
+                if (!apt.services_json || !Array.isArray(apt.services_json)) return '';
+                return (apt.services_json as Array<{ label?: string; filmAbbrev?: string; shade?: string; shadeFront?: string; shadeRear?: string }>)
+                  .map(s => {
+                    const parts = [s.label || ''];
+                    if (s.filmAbbrev) parts.push(s.filmAbbrev);
+                    if (s.shadeFront && s.shadeRear) parts.push(`${s.shadeFront}/${s.shadeRear}`);
+                    else if (s.shade) parts.push(s.shade);
+                    return parts.join(' ');
+                  }).join(' | ');
+              })();
+              const notified = !!apt.headsup_notified_at;
+              return (
+                <div
+                  key={apt.id}
+                  onClick={() => setEditingAppointment(apt)}
+                  style={{
+                    minWidth: isMobile ? 260 : 280, maxWidth: 340, flex: '0 0 auto',
+                    background: `linear-gradient(135deg, ${modColor}18, ${modColor}08)`,
+                    border: `2px solid ${notified ? '#f59e0b' : modColor}40`,
+                    borderRadius: RADIUS.lg, padding: SPACING.md,
+                    cursor: 'pointer', position: 'relative',
+                    transition: 'border-color 0.2s, box-shadow 0.2s',
+                  }}
+                >
+                  {/* Order badge */}
+                  <div style={{
+                    position: 'absolute', top: -8, left: 12,
+                    background: '#f59e0b', color: '#fff', fontSize: '0.65rem', fontWeight: 800,
+                    padding: '2px 8px', borderRadius: 10,
+                  }}>
+                    #{idx + 1} {typeLabel}
+                  </div>
+
+                  {/* Notified badge */}
+                  {notified && (
+                    <div style={{
+                      position: 'absolute', top: -8, right: 12,
+                      background: '#22c55e', color: '#fff', fontSize: '0.6rem', fontWeight: 700,
+                      padding: '2px 8px', borderRadius: 10,
+                    }}>
+                      Sent
+                    </div>
+                  )}
+
+                  {/* Customer + Vehicle */}
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>
+                      {apt.customer_name}
+                    </div>
+                    <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textSecondary, marginTop: 2 }}>
+                      {apt.vehicle_year} {apt.vehicle_make} {apt.vehicle_model}
+                    </div>
+                  </div>
+
+                  {/* Services */}
+                  <div style={{
+                    fontSize: FONT.sizeXs, color: COLORS.textTertiary, marginTop: 6,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {services}
+                  </div>
+
+                  {/* Price + booking ID */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8 }}>
+                    <span style={{ fontSize: FONT.sizeMd, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>
+                      ${Number(apt.subtotal || 0).toFixed(0)}
+                    </span>
+                    <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                      #{apt.booking_id}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Timeline View */}
       {loading ? (
         <DashboardCard>
@@ -781,7 +891,7 @@ function AppointmentsPageInner() {
             Loading appointments...
           </div>
         </DashboardCard>
-      ) : activeAppointments.length === 0 ? (
+      ) : timelineAppointments.length === 0 && headsupQueue.length === 0 ? (
         <DashboardCard>
           <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>
             No appointments scheduled for this date.
@@ -789,7 +899,7 @@ function AppointmentsPageInner() {
         </DashboardCard>
       ) : (
         <TimelineView
-          appointments={activeAppointments}
+          appointments={timelineAppointments}
           isMobile={isMobile}
           isTablet={isTablet}
           onEdit={setEditingAppointment}
