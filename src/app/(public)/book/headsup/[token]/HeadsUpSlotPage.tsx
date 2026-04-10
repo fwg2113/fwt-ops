@@ -36,6 +36,8 @@ export default function HeadsUpSlotPage() {
   const [claimError, setClaimError] = useState<string | null>(null);
   const [rescheduled, setRescheduled] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
+  const [newTimeRequested, setNewTimeRequested] = useState(false);
+  const [requestingNewTime, setRequestingNewTime] = useState(false);
 
   const fetchSlots = useCallback(async () => {
     try {
@@ -109,6 +111,20 @@ export default function HeadsUpSlotPage() {
       if (result.success) setRescheduled(true);
     } catch { /* silent */ }
     setRescheduling(false);
+  }
+
+  async function handleRequestNewTime() {
+    setRequestingNewTime(true);
+    try {
+      const res = await fetch('/api/auto/headsup/request-new-time', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const result = await res.json();
+      if (result.success) setNewTimeRequested(true);
+    } catch { /* silent */ }
+    setRequestingNewTime(false);
   }
 
   // -- STYLES (mobile-first, clean, large touch targets) --
@@ -227,6 +243,21 @@ export default function HeadsUpSlotPage() {
     );
   }
 
+  // -- NEW TIME REQUESTED --
+  if (newTimeRequested) {
+    return (
+      <div style={pageStyle}>
+        <div style={centerCardStyle}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 16px', display: 'block' }}>
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#1a1a1a', marginBottom: 8 }}>New time requested!</div>
+          <div style={{ fontSize: '0.95rem', color: '#6b7280' }}>The team has been notified and will send you a new time slot shortly. Keep an eye on your texts.</div>
+        </div>
+      </div>
+    );
+  }
+
   // -- SLOT PICKER (main state) --
   const availableSlots = data.slots.filter(s => s.status === 'available');
 
@@ -244,8 +275,22 @@ export default function HeadsUpSlotPage() {
       {/* Slots */}
       {availableSlots.length === 0 ? (
         <div style={{ ...centerCardStyle, marginBottom: 16 }}>
-          <div style={{ fontSize: '1rem', fontWeight: 600, color: '#6b7280' }}>All time slots have been taken or expired.</div>
-          <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: 8 }}>Tap below to request a reschedule.</div>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 12px', display: 'block' }}>
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#374151', marginBottom: 4 }}>These time slots have expired.</div>
+          <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: 16 }}>No worries -- tap below and the team will send you a fresh time.</div>
+          <button
+            onClick={handleRequestNewTime}
+            disabled={requestingNewTime}
+            style={{
+              width: '100%', padding: '14px', borderRadius: 10,
+              background: '#f59e0b', color: '#fff', fontSize: '1rem', fontWeight: 700,
+              border: 'none', cursor: 'pointer',
+            }}
+          >
+            {requestingNewTime ? 'Requesting...' : 'Request a New Time'}
+          </button>
         </div>
       ) : (
         <div>
