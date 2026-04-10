@@ -100,23 +100,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No Square location found. Please check your Square account setup.' }, { status: 400 });
     }
 
-    // Idempotency key for the Square API call (cryptographically random per
-    // call, see lib/square.ts). Used ONLY by Square to deduplicate retries.
+    // sessionKey is the cryptographically-random lookup key used in the
+    // redirect URL and stored in stripe_checkout_session_id. This is what
+    // /api/auto/checkout/verify looks up bookings by (not the Square order id,
+    // which the customer's browser never sees).
     const sessionKey = idempotencyKey();
 
-    // Create Square Payment Link FIRST so we can store the resulting order_id
-    // on the pending booking. The webhook uses payment.order_id as the lookup
-    // key — without storing it here the webhook can never find the booking.
     const response: any = await tenantSquare.checkout.paymentLinks.create({
       idempotencyKey: sessionKey,
       order: {
         locationId,
         lineItems,
+        // Tag the order so we can also search Square for it by reference if
+        // the stored order_id ever gets lost.
+        referenceId: sessionKey,
       },
       checkoutOptions: {
-        // Redirect URL uses the Square order_id so /api/auto/checkout/verify
-        // can look up the booking by the same key the webhook uses.
-        redirectUrl: `${origin}/book/confirmation?source=square&session_id={ORDER_ID}`,
+        // Use sessionKey directly — Square does NOT expand template vars in
+        // redirect URLs, so anything like {ORDER_ID} would be sent literal.
+        redirectUrl: `${origin}/book/confirmation?source=square&session_id=${sessionKey}`,
         askForShippingAddress: false,
       },
     });
@@ -126,26 +128,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create Square checkout link' }, { status: 500 });
     }
 
-    // Square assigns an order_id to every payment link. This is the same id
-    // that comes back in payment.completed webhook events as `payment.order_id`.
-    // It must be the lookup key for the pending booking, NOT the API
-    // idempotency key. (Audit C7 — the previous code stored the wrong key,
-    // which meant the webhook never found pending bookings and confirmation
-    // ran only via the /verify redirect path.)
-    const squareOrderId = paymentLink?.orderId;
+    // Square returns the orderId on the created payment link. We store it in
+    // the dedicated square_order_id column so the webhook can look it up by
+    // payment.order_id (which is what Square sends in payment.completed events).
+    const squareOrderId = paymentLink?.orderId || null;
     if (!squareOrderId) {
       console.error('Square checkout: paymentLink response had no orderId');
-      return NextResponse.json({ error: 'Square checkout link missing order id' }, { status: 500 });
     }
 
-    // Patch the redirectUrl placeholder with the real order_id so the
-    // confirmation page can pass it to /api/auto/checkout/verify.
-    // (Square doesn't expand {ORDER_ID} on its end — we have to do it.)
-    const finalUrl = paymentLink.url.includes('{ORDER_ID}')
-      ? paymentLink.url
-      : paymentLink.url; // Square uses the literal redirect_url we passed
-
-    // Store pending booking (same pattern as Stripe flow)
+    // Store pending booking
     const pendingId = `sq_pending_${Date.now().toString(36)}`;
     const { error: insertError } = await supabaseAdmin
       .from('auto_bookings')
@@ -179,9 +170,10 @@ export async function POST(request: NextRequest) {
         additional_interests: body.additionalInterests || null,
         notes: body.notes || null,
         booking_source: 'online',
-        // STORE THE SQUARE order_id here, not the idempotency key. This is the
-        // single lookup key shared by the webhook AND the verify endpoint.
-        stripe_checkout_session_id: squareOrderId,
+        // sessionKey is the verify-endpoint lookup key (what's in the redirect URL)
+        stripe_checkout_session_id: sessionKey,
+        // square_order_id is the webhook lookup key (what payment.completed sends)
+        square_order_id: squareOrderId,
         shop_id: shopId,
       });
 
@@ -190,10 +182,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      url: finalUrl,
+      url: paymentLink?.url,
       paymentLinkId: paymentLink?.id,
       orderId: squareOrderId,
-      sessionId: squareOrderId, // backward-compat with confirmation page param name
+      sessionId: sessionKey,
     });
   } catch (error) {
     console.error('Square checkout error:', error);

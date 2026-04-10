@@ -189,14 +189,26 @@ export async function POST(request: NextRequest) {
       const orderId = payment.order_id;
       if (!orderId) return NextResponse.json({ received: true });
 
-      // Find the pending booking by the Square order/payment link ID
-      // We stored the payment link ID in stripe_checkout_session_id (reused field)
-      const { data: pendingBooking } = await supabaseAdmin
+      // Find the pending booking by the Square order_id.
+      // Primary key: square_order_id column (new schema). Fallback to the
+      // legacy stripe_checkout_session_id for rows created under the old
+      // (pre-2026-04-10) flow that stored the order_id there.
+      let { data: pendingBooking } = await supabaseAdmin
         .from('auto_bookings')
         .select('*')
-        .eq('stripe_checkout_session_id', orderId)
+        .eq('square_order_id', orderId)
         .eq('status', 'pending_payment')
         .single();
+
+      if (!pendingBooking) {
+        const legacy = await supabaseAdmin
+          .from('auto_bookings')
+          .select('*')
+          .eq('stripe_checkout_session_id', orderId)
+          .eq('status', 'pending_payment')
+          .single();
+        pendingBooking = legacy.data;
+      }
 
       if (!pendingBooking) {
         // Not a booking deposit -- check if this is a remote invoice payment

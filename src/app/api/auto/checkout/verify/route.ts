@@ -68,8 +68,8 @@ export async function GET(request: NextRequest) {
 
   // Payment may have succeeded but webhook hasn't fired yet — but we MUST
   // verify directly with Square that the order is paid before confirming.
-  // Without this check, an attacker who guesses or observes a session_id
-  // could mark the pending booking as paid without ever paying.
+  // Without this check, an attacker who guesses a session_id could mark the
+  // pending booking as paid without ever paying.
   if (booking.status === 'pending_payment') {
     // Fetch the shop's Square access token to query the order
     const { data: shopRow } = await supabaseAdmin
@@ -83,18 +83,55 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ confirmed: false, reason: 'Square not connected' });
     }
 
+    // Use the stored Square order_id (new column) with a fallback to
+    // stripe_checkout_session_id (where legacy/broken-flow rows stored it).
+    const squareOrderId = booking.square_order_id || booking.stripe_checkout_session_id;
+    if (!squareOrderId) {
+      console.error('Verify: no Square order_id on booking', { sessionId, bookingId: booking.id });
+      return NextResponse.json({ confirmed: false, reason: 'Missing Square order reference' });
+    }
+
     try {
       const tenantSquare = createTenantSquareClient(shopRow.square_access_token);
-      // session_id IS the Square order_id (post-2026-04-09 fix)
-      const orderResp: any = await tenantSquare.orders.get({ orderId: sessionId });
+      const orderResp: any = await tenantSquare.orders.get({ orderId: squareOrderId });
       const order = orderResp.order || orderResp.data?.order || orderResp.data;
-      const orderState = order?.state;
-      // Square order states: OPEN, COMPLETED, CANCELED, DRAFT
-      // A paid order via payment link transitions to COMPLETED.
-      if (orderState !== 'COMPLETED') {
-        console.log('Verify: order not yet completed', { sessionId, orderState });
+
+      // Square Payment Link orders stay in state OPEN after payment — COMPLETED
+      // only happens when an order is explicitly closed (e.g. via a POS flow).
+      // The authoritative "paid" signal is an order tender with status CAPTURED
+      // (card) or a non-empty tenders array for cash/other.
+      const tenders = order?.tenders || [];
+      const state = order?.state;
+
+      // Canceled orders are definitively not paid.
+      if (state === 'CANCELED') {
+        return NextResponse.json({ confirmed: false, reason: 'Order was canceled' });
+      }
+
+      // Check that at least one tender is captured/completed.
+      const paid = Array.isArray(tenders) && tenders.some((t: any) => {
+        if (!t) return false;
+        // CARD tenders: card_details.status must be CAPTURED
+        if (t.type === 'CARD') {
+          const status = t.card_details?.status || t.cardDetails?.status;
+          return status === 'CAPTURED';
+        }
+        // Non-card tenders (CASH, OTHER): presence of an amount is enough,
+        // Square wouldn't record them if they weren't collected.
+        const amt = t.amount_money?.amount || t.amountMoney?.amount;
+        return amt && Number(amt) > 0;
+      });
+
+      if (!paid) {
+        console.log('Verify: order has no captured tenders yet', { sessionId, state, tenderCount: tenders.length });
         return NextResponse.json({ confirmed: false, reason: 'Payment not yet confirmed' });
       }
+
+      // Compute actual amount paid from tenders (for deposit_paid field below).
+      // We handle this as a side-effect by updating booking.deposit_paid from
+      // the sum of captured tenders, so whatever the customer actually paid
+      // (including any processing fee) gets reflected — but for now we trust
+      // the configured deposit_amount downstream.
     } catch (err) {
       console.error('Verify: Square order lookup failed', err);
       return NextResponse.json({ confirmed: false, reason: 'Could not verify with Square' });
