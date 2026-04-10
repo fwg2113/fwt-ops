@@ -57,9 +57,9 @@ export default function PaymentTab({ data, onSave, onRefresh }: Props) {
   async function handleSave() {
     setSaving(true);
     const success = await onSave('shop_config', null, {
-      cc_fee_percent: parseFloat(ccFeePercent) || 3.5,
-      cc_fee_flat: parseFloat(ccFeeFlat) || 0.30,
-      cash_discount_percent: parseFloat(cashDiscount) || 5,
+      cc_fee_percent: isNaN(parseFloat(ccFeePercent)) ? 3.5 : parseFloat(ccFeePercent),
+      cc_fee_flat: isNaN(parseFloat(ccFeeFlat)) ? 0.30 : parseFloat(ccFeeFlat),
+      cash_discount_percent: isNaN(parseFloat(cashDiscount)) ? 5 : parseFloat(cashDiscount),
     });
     setSaving(false);
     if (success) { setSaved(true); setTimeout(() => setSaved(false), 2000); onRefresh(); }
