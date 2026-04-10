@@ -21,9 +21,9 @@ export default function PaymentTab({ data, onSave, onRefresh }: Props) {
   const squareConnected = Boolean(config.square_connected);
   const squareMerchantId = config.square_merchant_id as string | null;
 
-  const [ccFeePercent, setCcFeePercent] = useState(String(config.cc_fee_percent || '3.5'));
-  const [ccFeeFlat, setCcFeeFlat] = useState(String(config.cc_fee_flat || '0.30'));
-  const [cashDiscount, setCashDiscount] = useState(String(config.cash_discount_percent || '5'));
+  const [ccFeePercent, setCcFeePercent] = useState(String(config.cc_fee_percent ?? 3.5));
+  const [ccFeeFlat, setCcFeeFlat] = useState(String(config.cc_fee_flat ?? 0.30));
+  const [cashDiscount, setCashDiscount] = useState(String(config.cash_discount_percent ?? 5));
 
   async function handleConnectSquare() {
     setConnectingSquare(true);
