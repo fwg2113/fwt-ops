@@ -99,6 +99,13 @@ function AppointmentsPageInner() {
     customUrl: null,
     soundEnabled: true,
   });
+  // Set of booking IDs we've already acknowledged as "booked" on this page
+  // session. Used to prevent the new-booking toast from firing on ordinary
+  // UPDATE events (drag reorder, status changes, edits) — Supabase Realtime
+  // doesn't send the old row's fields by default (REPLICA IDENTITY DEFAULT
+  // only ships the primary key), so we can't compare old→new status at the
+  // payload level. Client-side dedup by id is the reliable fix.
+  const seenBookedIdsRef = useRef<Set<string>>(new Set());
 
   // Fetch appointments
   const fetchAppointments = useCallback(async () => {
@@ -106,12 +113,19 @@ function AppointmentsPageInner() {
     try {
       const res = await fetch(`/api/auto/appointments?date=${selectedDate}`);
       const data = await res.json();
-      setAppointments(data.appointments || []);
+      const apts: Appointment[] = data.appointments || [];
+      setAppointments(apts);
       setSummary(data.summary || null);
       if (data.teamMembers) setTeamMembers(data.teamMembers);
       if (data.moduleColorMap) setModuleColorMap(data.moduleColorMap);
       if (data.moduleLabelMap) setModuleLabelMap(data.moduleLabelMap);
       if (data.teamAssignmentConfig) setTeamAssignmentConfig(data.teamAssignmentConfig);
+      // Seed the toast dedup set with the IDs of every appointment already on
+      // the page. Future realtime UPDATEs for these rows (drag reorder, status
+      // changes, edits) will be recognized as "already seen" and skip the toast.
+      for (const a of apts) {
+        if (a.id) seenBookedIdsRef.current.add(String(a.id));
+      }
     } catch {
       setAppointments([]);
       setSummary(null);
@@ -200,12 +214,23 @@ function AppointmentsPageInner() {
   // REALTIME — listen for new bookings (insert OR pending→booked update from
   // the Square confirmation flow) and refresh the timeline + show a toast.
   // The team needs the appointment to land WITHOUT manual refresh.
+  //
+  // DEDUP: Supabase Realtime's default REPLICA IDENTITY only ships the primary
+  // key in payload.old, so we can't compare old→new status at the payload
+  // level. Instead, we track seenBookedIdsRef — a client-side set of booking
+  // IDs that have already been acknowledged as "booked" on this page session.
+  // - Initial fetch seeds the set with every visible booking's id.
+  // - INSERTs/UPDATEs only fire the toast if the id is NOT already in the set.
+  // - When a row transitions AWAY from 'booked' (cancelled, etc.) we remove it
+  //   so a future re-book fires correctly.
+  // This prevents drag-reorder, status changes, or edit-save from spuriously
+  // re-triggering the toast while still firing correctly for genuinely new
+  // bookings and pending→booked Square confirmations.
   // ============================================================================
   useEffect(() => {
     const supabase = createSupabaseBrowser();
     const channel = supabase
       .channel('auto-bookings-realtime')
-      // Brand new bookings (internal create, online with no deposit, etc.)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'auto_bookings' },
@@ -213,35 +238,51 @@ function AppointmentsPageInner() {
           handleRealtimeBooking(payload.new as Record<string, unknown>);
         }
       )
-      // Pending → booked transition (Square deposit confirmation flow). The
-      // INSERT happens at /api/square/checkout time with status='pending_payment'
-      // and the booking is invisible to the timeline; the UPDATE that flips it
-      // to 'booked' is the moment the team should see it.
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'auto_bookings' },
         (payload) => {
-          const oldRow = payload.old as Record<string, unknown>;
-          const newRow = payload.new as Record<string, unknown>;
-          // Only fire if status transitioned INTO 'booked' from anything else.
-          if (oldRow?.status !== 'booked' && newRow?.status === 'booked') {
-            handleRealtimeBooking(newRow);
-          }
+          handleRealtimeBooking(payload.new as Record<string, unknown>);
         }
       )
       .subscribe();
 
     function handleRealtimeBooking(row: Record<string, unknown>) {
+      const id = row.id ? String(row.id) : null;
+      if (!id) return;
+      const status = String(row.status || '');
+
+      // If the row is NOT in booked status, make sure it's not in the seen set
+      // so that a future re-transition to booked will fire. (Cancel → rebook
+      // scenario, or the initial pending_payment INSERT that should be ignored.)
+      if (status !== 'booked') {
+        seenBookedIdsRef.current.delete(id);
+        return;
+      }
+
       // Only react to bookings on the currently-displayed date.
       const apptDate = String(row.appointment_date || '');
-      if (apptDate !== selectedDateRef.current) return;
+      if (apptDate !== selectedDateRef.current) {
+        // Even off-date bookings should be marked seen so drag reorders on the
+        // same row don't trigger later if the user navigates to that date.
+        seenBookedIdsRef.current.add(id);
+        return;
+      }
 
-      // Re-fetch the timeline so the new card shows up.
+      // Already acknowledged on this session → just refetch the timeline (to
+      // pick up any field changes like new time after a drag) and bail, NO
+      // toast, NO sound.
+      if (seenBookedIdsRef.current.has(id)) {
+        fetchAppointmentsRef.current();
+        return;
+      }
+
+      // Genuinely new booking — mark it seen, refetch, show toast, play sound.
+      seenBookedIdsRef.current.add(id);
       fetchAppointmentsRef.current();
 
-      // Build the toast payload from the row.
       const toast: NewBookingToastData = {
-        id: String(row.id),
+        id,
         customerName: String(row.customer_name || ''),
         vehicleYear: (row.vehicle_year as number) || null,
         vehicleMake: (row.vehicle_make as string) || null,
@@ -257,12 +298,8 @@ function AppointmentsPageInner() {
       };
 
       setNewBookingToasts((prev) => {
-        // Dedupe by id (in case both INSERT and UPDATE fire for the same row)
+        // Defense-in-depth: dedupe by id in the toast list too
         if (prev.some((t) => t.id === toast.id)) return prev;
-        // Play the booking alert sound (only on the first time the toast is added,
-        // not on duplicate events). Best-effort — browser may suppress audio if
-        // the user hasn't interacted with the page yet, in which case nothing
-        // happens and the visual toast still works.
         const cfg = bookingSoundRef.current;
         if (cfg.soundEnabled) {
           try { playSound(cfg.key, cfg.customUrl || undefined); } catch { /* ignore */ }
