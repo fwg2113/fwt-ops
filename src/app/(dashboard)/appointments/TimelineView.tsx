@@ -66,6 +66,7 @@ const TYPE_COLORS: Record<string, string> = {
   waiting: '#ef4444',
   headsup_30: '#f59e0b',
   headsup_60: '#f59e0b',
+  warranty: '#8b5cf6',
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -73,6 +74,7 @@ const TYPE_LABELS: Record<string, string> = {
   waiting: 'Waiting',
   headsup_30: '30m Heads-Up',
   headsup_60: '60m Heads-Up',
+  warranty: 'Warranty',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -362,6 +364,7 @@ export default function TimelineView({
   const [assignDropdownId, setAssignDropdownId] = useState<string | null>(null);
   const [assignDropdownRect, setAssignDropdownRect] = useState<{ top: number; left: number } | null>(null);
   const [directionsModalApt, setDirectionsModalApt] = useState<Appointment | null>(null);
+  const [detailApt, setDetailApt] = useState<Appointment | null>(null);
 
   // Work order positions — use work_order_time if saved, otherwise fall back to appointment_time
   const [workOrder, setWorkOrder] = useState<Map<string, number>>(() => {
@@ -876,7 +879,7 @@ export default function TimelineView({
             const leftPercent = colInfo.column * colWidthPercent;
             const cardLeft = `calc(${leftPercent}% + ${COL_GAP / 2}px)`;
             const cardWidth = `calc(${colWidthPercent}% - ${COL_GAP}px)`;
-            const isNarrow = !isMobile && colInfo.totalColumns >= 3;
+            const isNarrow = !isMobile && colInfo.totalColumns >= 2;
             // Card text colors
             const cardTextPrimary = 'rgba(255,255,255,0.95)';
             const cardTextSecondary = 'rgba(255,255,255,0.7)';
@@ -920,6 +923,22 @@ export default function TimelineView({
                       position: 'relative',
                     }}
                   >
+                    {/* Detail eye icon (left) */}
+                    <button
+                      onClick={e => { e.stopPropagation(); setDetailApt(apt); }}
+                      style={{
+                        position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)',
+                        background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: 4, padding: '2px 5px', cursor: 'pointer',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'rgba(255,255,255,0.7)', zIndex: 2, lineHeight: 1,
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    </button>
                     {/* Drag area (center) */}
                     <div
                       onTouchStart={e => handleTouchDragStart(e, apt.id)}
@@ -1158,13 +1177,17 @@ export default function TimelineView({
                 }}
                 onMouseDown={isTouch ? undefined : (e => handleDragStart(e, apt.id))}
               >
-                {/* Module badge: centered on desktop, top-right on tablet */}
+                {/* Module badge (clickable — opens detail modal) */}
                 {isTouch ? (
                   !isTiny && !isNarrow && (
-                    <div style={{
-                      position: 'absolute', top: 4, right: 8,
-                      zIndex: 2, pointerEvents: 'none',
-                    }}>
+                    <div
+                      onMouseDown={e => e.stopPropagation()}
+                      onClick={e => { e.stopPropagation(); setDetailApt(apt); }}
+                      style={{
+                        position: 'absolute', top: 4, right: 8,
+                        zIndex: 2, cursor: 'pointer',
+                      }}
+                    >
                       <span style={{
                         fontSize: '0.65rem', fontWeight: 800,
                         color: 'rgba(255,255,255,0.7)',
@@ -1172,18 +1195,26 @@ export default function TimelineView({
                         padding: '2px 8px', borderRadius: 4,
                         textTransform: 'uppercase', letterSpacing: '1px',
                         whiteSpace: 'nowrap',
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
                       }}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                        </svg>
                         {moduleLabelMap?.[apt.module] || MODULE_LABELS[apt.module] || apt.module}
                       </span>
                     </div>
                   )
                 ) : (
                   !isTiny && (
-                  <div style={{
-                    position: 'absolute', bottom: isCompact ? 2 : 4, left: '50%',
-                    transform: 'translateX(-50%)',
-                    zIndex: 1, pointerEvents: 'none',
-                  }}>
+                  <div
+                    onMouseDown={e => e.stopPropagation()}
+                    onClick={e => { e.stopPropagation(); setDetailApt(apt); }}
+                    style={{
+                      position: 'absolute', bottom: isCompact ? 2 : 4, left: '50%',
+                      transform: 'translateX(-50%)',
+                      zIndex: 2, cursor: 'pointer',
+                    }}
+                  >
                     <span style={{
                       fontSize: isCompact ? '0.55rem' : '0.65rem',
                       fontWeight: 800,
@@ -1194,7 +1225,11 @@ export default function TimelineView({
                       textTransform: 'uppercase',
                       letterSpacing: '1px',
                       whiteSpace: 'nowrap',
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
                     }}>
+                      <svg width={isCompact ? 8 : 10} height={isCompact ? 8 : 10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                      </svg>
                       {moduleLabelMap?.[apt.module] || MODULE_LABELS[apt.module] || apt.module}
                     </span>
                   </div>
@@ -1373,7 +1408,7 @@ export default function TimelineView({
                             style={{
                               display: 'inline-flex', alignItems: 'center', gap: 3,
                               background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                              color: apt.assigned_team_member_ids?.length > 0 ? COLORS.info : COLORS.textMuted,
+                              color: apt.assigned_team_member_ids?.length > 0 ? cardTextSecondary : cardTextMuted,
                               fontSize: FONT.sizeXs,
                             }}
                           >
@@ -1690,6 +1725,233 @@ export default function TimelineView({
             assignedTeamMemberId={apt.assigned_team_member_id}
             onClose={() => setDirectionsModalApt(null)}
           />
+        );
+      })()}
+
+      {/* Appointment Detail Modal */}
+      {detailApt && (() => {
+        const apt = detailApt;
+        const workMin = workOrder.get(apt.id) ?? timeToMinutes(apt.appointment_time);
+        const serviceLines = buildMobileServiceLines(apt.services_json);
+        const services = (apt.services_json && Array.isArray(apt.services_json)
+          ? apt.services_json : []) as Array<{
+            label?: string; filmName?: string; filmAbbrev?: string;
+            shade?: string; shadeFront?: string; shadeRear?: string;
+            price?: number; discountAmount?: number; originalPrice?: number;
+            description?: string; duration?: number; serviceKey?: string;
+          }>;
+        const modLabel = moduleLabelMap?.[apt.module] || MODULE_LABELS[apt.module] || apt.module;
+        const typeLabel = TYPE_LABELS[apt.appointment_type] || apt.appointment_type;
+        const statusLabel = apt.status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const statusColor = STATUS_COLORS[apt.status] || '#6b7280';
+        const typeColor = typeColorMap?.[apt.appointment_type] || TYPE_COLORS[apt.appointment_type] || '#6b7280';
+        const isPaid = apt.status === 'invoiced';
+        const finalTotal = isPaid ? Number(apt.total_paid || 0) : Number(apt.subtotal || 0);
+        const balanceDue = Number(apt.balance_due || 0);
+        const depositPaid = Number(apt.deposit_paid || 0);
+        return (
+          <div
+            onClick={() => setDetailApt(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 20,
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: COLORS.cardBg, borderRadius: RADIUS.lg,
+                border: `1px solid ${COLORS.border}`,
+                boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+                width: '100%', maxWidth: 520, maxHeight: '85vh',
+                overflow: 'auto',
+              }}
+            >
+              {/* Header */}
+              <div style={{
+                padding: '10px 20px', borderBottom: `1px solid ${COLORS.border}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <span style={{
+                  fontSize: FONT.sizeSm, fontWeight: 600, color: COLORS.textMuted,
+                }}>
+                  #{apt.booking_id}
+                </span>
+                <button
+                  onClick={() => setDetailApt(null)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: COLORS.textMuted, padding: 4, lineHeight: 1,
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+
+              {/* Body */}
+              <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                {/* HERO: Vehicle */}
+                {apt.vehicle_year && (
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.35rem', fontWeight: 800, color: COLORS.textPrimary, lineHeight: 1.2 }}>
+                      {apt.vehicle_year} {apt.vehicle_make} {apt.vehicle_model}
+                    </div>
+                    {apt.class_keys && (
+                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 4 }}>{apt.class_keys}</div>
+                    )}
+                    {apt.window_status === 'previously' && (
+                      <span style={{
+                        display: 'inline-block', marginTop: 6,
+                        fontSize: FONT.sizeXs, fontWeight: 700, color: '#f59e0b',
+                        background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.35)',
+                        padding: '2px 10px', borderRadius: RADIUS.sm,
+                      }}>Previously Tinted</span>
+                    )}
+                  </div>
+                )}
+
+                {/* HERO: Services */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {services.length > 0 ? services.map((svc, i) => (
+                    <div key={i} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                      padding: '10px 12px', borderRadius: RADIUS.md,
+                      background: COLORS.pageBg,
+                      borderLeft: '3px solid #3b82f6',
+                    }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                        <span style={{ fontSize: FONT.sizeMd, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>
+                          {svc.label || svc.description || 'Service'}
+                        </span>
+                        {(svc.filmName || svc.filmAbbrev) && (
+                          <span style={{
+                            fontSize: FONT.sizeMd, fontWeight: FONT.weightBold, color: COLORS.textPrimary,
+                          }}>
+                            {svc.filmName || svc.filmAbbrev}
+                          </span>
+                        )}
+                        {(svc.shadeFront || svc.shadeRear || svc.shade) && (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {svc.shadeFront && svc.shadeRear ? (
+                              <>
+                                <span style={{
+                                  fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.textPrimary,
+                                }}>Front: {svc.shadeFront}</span>
+                                <span style={{
+                                  fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.textPrimary,
+                                }}>Rear: {svc.shadeRear}</span>
+                              </>
+                            ) : svc.shade ? (
+                              <span style={{
+                                fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.textPrimary,
+                              }}>{svc.shade}</span>
+                            ) : null}
+                          </div>
+                        )}
+                        {svc.duration && (
+                          <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>{svc.duration}m</span>
+                        )}
+                      </div>
+                      {svc.price != null && (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0, marginLeft: 12 }}>
+                          <span style={{ fontSize: FONT.sizeMd, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>
+                            ${svc.price.toFixed(0)}
+                          </span>
+                          {svc.discountAmount != null && svc.discountAmount > 0 && (
+                            <span style={{ fontSize: FONT.sizeXs, color: '#22c55e', fontWeight: 600 }}>-${svc.discountAmount.toFixed(0)}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )) : (
+                    <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, fontStyle: 'italic' }}>No services listed</span>
+                  )}
+                </div>
+
+                {/* Pricing summary */}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                  padding: '10px 12px', borderRadius: RADIUS.sm,
+                  background: COLORS.pageBg,
+                }}>
+                  <div style={{ display: 'flex', gap: 12, fontSize: FONT.sizeSm, color: COLORS.textSecondary }}>
+                    <span>Sub ${Number(apt.subtotal || 0).toFixed(0)}</span>
+                    {Number(apt.discount_amount || 0) > 0 && (
+                      <span style={{ color: '#22c55e' }}>-${Number(apt.discount_amount).toFixed(0)}</span>
+                    )}
+                    {depositPaid > 0 && <span>Dep ${depositPaid.toFixed(0)}</span>}
+                  </div>
+                  <span style={{ fontSize: '1.1rem', fontWeight: 800, color: COLORS.textPrimary }}>
+                    {isPaid ? 'Paid' : 'Bal'} ${isPaid ? finalTotal.toFixed(0) : balanceDue.toFixed(0)}
+                  </span>
+                </div>
+
+                {/* Divider */}
+                <div style={{ height: 1, background: COLORS.border }} />
+
+                {/* Secondary details */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {/* Status badges row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: FONT.sizeXs, fontWeight: 700, color: '#fff',
+                      background: statusColor, padding: '2px 8px', borderRadius: RADIUS.sm,
+                      textTransform: 'uppercase', letterSpacing: '0.5px',
+                    }}>{statusLabel}</span>
+                    <span style={{
+                      fontSize: FONT.sizeXs, fontWeight: 700, color: '#fff',
+                      background: typeColor, padding: '2px 8px', borderRadius: RADIUS.sm,
+                    }}>{typeLabel}</span>
+                    <span style={{
+                      fontSize: FONT.sizeXs, fontWeight: 600, color: COLORS.textMuted,
+                      background: COLORS.pageBg, padding: '2px 8px', borderRadius: RADIUS.sm,
+                    }}>{modLabel}</span>
+                  </div>
+
+                  {/* Info grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: FONT.sizeSm }}>
+                    <div>
+                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 2 }}>Customer</div>
+                      <div style={{ color: COLORS.textPrimary, fontWeight: 600 }}>{apt.customer_name}</div>
+                      {apt.customer_phone && <div style={{ color: COLORS.textSecondary, fontSize: FONT.sizeXs }}>{formatPhone(apt.customer_phone)}</div>}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 2 }}>Schedule</div>
+                      <div style={{ color: COLORS.textPrimary, fontWeight: 600 }}>{formatTime(workMin)}</div>
+                      <div style={{ color: COLORS.textSecondary, fontSize: FONT.sizeXs }}>{apt.duration_minutes || 60}m / {typeLabel}</div>
+                    </div>
+                    {(apt.assigned_team_member_names?.length > 0 || apt.assigned_team_member_name) && (
+                      <div>
+                        <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 2 }}>Assigned</div>
+                        <div style={{ color: COLORS.textPrimary, fontWeight: 600 }}>
+                          {apt.assigned_team_member_names?.length > 0
+                            ? apt.assigned_team_member_names.join(', ')
+                            : apt.assigned_team_member_name}
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 2 }}>Source</div>
+                      <div style={{ color: COLORS.textSecondary }}>{apt.booking_source}</div>
+                    </div>
+                  </div>
+
+                  {/* Notes */}
+                  {apt.notes && (
+                    <div>
+                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 2 }}>Notes</div>
+                      <div style={{ fontSize: FONT.sizeSm, color: COLORS.textSecondary, whiteSpace: 'pre-wrap' }}>{apt.notes}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         );
       })()}
     </div>

@@ -65,6 +65,7 @@ export interface ShopConfig {
   enable_waiting: boolean;
   enable_headsup_30: boolean;
   enable_headsup_60: boolean;
+  enable_warranty: boolean;
   enable_multi_vehicle: boolean;
   enable_gift_certificates: boolean;
   cc_fee_percent: number;
@@ -333,7 +334,7 @@ export interface BulkConfig {
 // --- Frontend state types ---
 
 export type ServiceType = 'tint' | 'removal' | 'alacarte';
-export type AppointmentType = 'dropoff' | 'waiting' | 'headsup_30' | 'headsup_60';
+export type AppointmentType = 'dropoff' | 'waiting' | 'headsup_30' | 'headsup_60' | 'warranty';
 
 export interface SelectedService {
   serviceKey: string;

@@ -16,6 +16,7 @@ interface ShopModule {
   enable_waiting: boolean;
   enable_headsup_30: boolean;
   enable_headsup_60: boolean;
+  enable_warranty: boolean;
   booking_page_title: string | null;
   booking_page_subtitle: string | null;
   override_deposit: boolean;
@@ -143,6 +144,7 @@ export default function ModulesTab({ data, onSave, onRefresh }: Props) {
       enable_waiting: mod.enable_waiting,
       enable_headsup_30: mod.enable_headsup_30,
       enable_headsup_60: mod.enable_headsup_60,
+      enable_warranty: mod.enable_warranty,
       override_deposit: mod.override_deposit,
       deposit_amount: mod.deposit_amount ?? '',
       require_deposit: mod.require_deposit,
@@ -165,6 +167,7 @@ export default function ModulesTab({ data, onSave, onRefresh }: Props) {
       enable_waiting: advancedDraft.enable_waiting,
       enable_headsup_30: advancedDraft.enable_headsup_30,
       enable_headsup_60: advancedDraft.enable_headsup_60,
+      enable_warranty: advancedDraft.enable_warranty,
       override_deposit: advancedDraft.override_deposit,
       require_deposit: advancedDraft.require_deposit,
       deposit_refundable: advancedDraft.deposit_refundable,
@@ -427,6 +430,7 @@ export default function ModulesTab({ data, onSave, onRefresh }: Props) {
               { key: 'enable_waiting', label: 'Waiting' },
               { key: 'enable_headsup_30', label: 'Heads-Up 30 min' },
               { key: 'enable_headsup_60', label: 'Heads-Up 60 min' },
+              { key: 'enable_warranty', label: 'Warranty' },
             ] as const).map(item => (
               <label key={item.key} style={{
                 display: 'flex', alignItems: 'center', gap: SPACING.sm,

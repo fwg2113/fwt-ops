@@ -90,6 +90,7 @@ const TYPE_COLORS: Record<string, string> = {
   waiting: '#ef4444',
   headsup_30: '#f59e0b',
   headsup_60: '#f59e0b',
+  warranty: '#8b5cf6',
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -97,6 +98,7 @@ const TYPE_LABELS: Record<string, string> = {
   waiting: 'Waiting',
   headsup_30: '30m Heads-Up',
   headsup_60: '60m Heads-Up',
+  warranty: 'Warranty',
 };
 
 function formatTime(time: string | null): string {

@@ -46,7 +46,7 @@ export default function Modal({ title, children, onClose, width = 520, footer }:
       }}
     >
       <div style={{
-        background: '#1d1d1d',
+        background: COLORS.cardBg,
         borderRadius: isMobile ? `${RADIUS.modal}px ${RADIUS.modal}px 0 0` : RADIUS.modal,
         maxWidth: isMobile ? '100%' : width, width: '100%', maxHeight: isMobile ? '95vh' : '90vh',
         overflow: 'auto',

@@ -9,7 +9,7 @@ interface Props {
   onDecline: () => void;
 }
 
-const CONTENT: Record<Exclude<AppointmentType, 'dropoff'>, {
+const CONTENT: Record<Exclude<AppointmentType, 'dropoff' | 'warranty'>, {
   title: string;
   sections: { heading?: string; body: string }[];
   summary: string;
@@ -96,7 +96,7 @@ export default function AppointmentTypeModal({ type, onAccept, onDecline }: Prop
     return () => { document.body.style.overflow = ''; };
   }, []);
 
-  if (type === 'dropoff') return null;
+  if (type === 'dropoff' || type === 'warranty') return null;
   const content = CONTENT[type];
   if (!content) return null;
 

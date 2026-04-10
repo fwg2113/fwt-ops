@@ -75,11 +75,19 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
   // Shade section collapsed by default
   const [shadesExpanded, setShadesExpanded] = useState(false);
 
+  // Warranty
+  const [warrantyDetails, setWarrantyDetails] = useState('');
+  const [warrantyPriorApts, setWarrantyPriorApts] = useState<{ id: string; booking_id: string; appointment_date: string; services_json: unknown; subtotal: number; status: string }[]>([]);
+  const [warrantyForBookingId, setWarrantyForBookingId] = useState<string | null>(null);
+  const [loadingWarrantyApts, setLoadingWarrantyApts] = useState(false);
+
   // Deposit override for "Send as Tailored Quote" path
   const [depositOverride, setDepositOverride] = useState<number | null>(null);
   const [overrideDeposit, setOverrideDeposit] = useState(false);
   const [tailoredSendMethod, setTailoredSendMethod] = useState<'sms' | 'email' | 'copy'>('copy');
   const [tailoredSentVia, setTailoredSentVia] = useState<string | null>(null);
+
+  const isWarranty = appointmentType === 'warranty';
 
   useEffect(() => {
     Promise.all([
@@ -168,6 +176,25 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
       .catch(() => { setDayAppointments([]); setDaySummary(null); })
       .finally(() => setLoadingDay(false));
   }, [selectedDate]);
+
+  // Fetch prior appointments for warranty linking
+  useEffect(() => {
+    if (!isWarranty || !selectedYear || !selectedMake || !selectedModel) {
+      setWarrantyPriorApts([]);
+      setWarrantyForBookingId(null);
+      return;
+    }
+    setLoadingWarrantyApts(true);
+    fetch(`/api/auto/appointments?vehicle_year=${selectedYear}&vehicle_make=${encodeURIComponent(selectedMake)}&vehicle_model=${encodeURIComponent(selectedModel)}&limit=20`)
+      .then(r => r.json())
+      .then(data => {
+        const apts = (data.appointments || [])
+          .filter((a: { status: string; appointment_type: string }) => a.status !== 'cancelled' && a.appointment_type !== 'warranty');
+        setWarrantyPriorApts(apts);
+      })
+      .catch(() => setWarrantyPriorApts([]))
+      .finally(() => setLoadingWarrantyApts(false));
+  }, [isWarranty, selectedYear, selectedMake, selectedModel]);
 
   // YMM cascade
   const years = useMemo(() => {
@@ -314,7 +341,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
     return selectedRows.some(r => r.serviceKey === serviceKey && r.filmId === filmId);
   }, [selectedRows]);
 
-  const totalSelected = selectedRows.reduce((sum, r) => sum + r.price, 0);
+  const totalSelected = isWarranty ? 0 : selectedRows.reduce((sum, r) => sum + r.price, 0);
   useEffect(() => { setSelectedRows([]); }, [vehicle]);
 
   const appointmentTypes = useMemo(() => {
@@ -324,6 +351,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
     if (config.shopConfig.enable_waiting) types.push({ value: 'waiting', label: 'Waiting' });
     if (config.shopConfig.enable_headsup_30) types.push({ value: 'headsup_30', label: 'Heads-Up (30 min)' });
     if (config.shopConfig.enable_headsup_60) types.push({ value: 'headsup_60', label: 'Heads-Up (60 min)' });
+    if (config.shopConfig.enable_warranty) types.push({ value: 'warranty', label: 'Warranty' });
     return types;
   }, [config]);
 
@@ -366,7 +394,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
   // ACTION: Add to Schedule (direct book, no deposit)
   // ============================================================
   async function handleDirectBook() {
-    if (!vehicle || !selectedDate || !selectedTime || !customerName) return;
+    if ((!vehicle && !isWarranty) || !selectedDate || !selectedTime || !customerName) return;
     setBookingDirect(true);
     try {
       const isHeadsUp = appointmentType === 'headsup_30' || appointmentType === 'headsup_60';
@@ -377,23 +405,27 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
           firstName: nameParts[0] || '', lastName: nameParts.slice(1).join(' ') || '',
           phone: customerPhone, email: customerEmail,
           vehicleYear: selectedYear, vehicleMake: selectedMake, vehicleModel: selectedModel,
-          classKeys: vehicle.class_keys.join('|'),
+          classKeys: vehicle?.class_keys?.join('|') || '',
           serviceType: 'tint', appointmentType,
-          servicesJson: selectedRows.map(s => ({
-            serviceKey: s.serviceKey, label: s.label, filmId: s.filmId || null,
-            filmName: s.filmName, filmAbbrev: null, shadeFront: s.shadeFront,
-            shadeRear: s.shadeRear, shade: s.shadeFront, price: s.price,
-            originalPrice: s.originalPrice, priceNote: s.priceNote || null,
-            discountAmount: 0, duration: 60, module: 'auto_tint',
-          })),
+          servicesJson: isWarranty && selectedRows.length === 0
+            ? [{ serviceKey: 'WARRANTY', label: 'Warranty', filmId: null, filmName: null, filmAbbrev: null, shadeFront: null, shadeRear: null, shade: null, price: 0, originalPrice: 0, priceNote: null, discountAmount: 0, duration: 60, module: 'auto_tint', description: warrantyDetails || 'Warranty visit' }]
+            : selectedRows.map(s => ({
+              serviceKey: s.serviceKey, label: s.label, filmId: s.filmId || null,
+              filmName: s.filmName, filmAbbrev: null, shadeFront: s.shadeFront,
+              shadeRear: s.shadeRear, shade: s.shadeFront, price: isWarranty ? 0 : s.price,
+              originalPrice: s.originalPrice, priceNote: s.priceNote || null,
+              discountAmount: 0, duration: 60, module: 'auto_tint',
+            })),
           subtotal: totalSelected, discountCode: null, discountType: null,
           discountPercent: 0, discountAmount: 0, depositPaid: 0,
           balanceDue: totalSelected,
           appointmentDate: selectedDate,
           appointmentTime: isHeadsUp ? null : selectedTime,
-          durationMinutes: selectedRows.length * 60,
+          durationMinutes: isWarranty ? 60 : (selectedRows.length * 60),
           windowStatus: 'never', hasAftermarketTint: null, additionalInterests: '',
-          notes: 'Booked from Fast Lane', calendarTitle: '', emojiMarker: '',
+          notes: isWarranty ? `Warranty: ${warrantyDetails || 'No details'}`.trim() : 'Booked from Fast Lane',
+          calendarTitle: '', emojiMarker: '',
+          warrantyForBookingId: isWarranty ? warrantyForBookingId : null,
         }),
       });
       const data = await res.json();
@@ -799,6 +831,59 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
                   );
                 })}
 
+                {/* Warranty Row (mobile) */}
+                {config?.shopConfig?.enable_warranty && (
+                  <div style={{ marginBottom: SPACING.md }}>
+                    <div style={{
+                      padding: `${SPACING.sm}px 0`, fontSize: '0.75rem',
+                      fontWeight: 700, color: '#8b5cf6',
+                      textTransform: 'uppercase', letterSpacing: '1px',
+                      borderBottom: `1px solid ${COLORS.border}`, marginBottom: SPACING.md,
+                    }}>Warranty</div>
+                    <button
+                      onClick={() => {
+                        if (isWarranty) { setAppointmentType('dropoff'); setWarrantyDetails(''); }
+                        else setAppointmentType('warranty');
+                      }}
+                      style={{
+                        width: '100%', padding: '12px 18px', borderRadius: RADIUS.md, cursor: 'pointer',
+                        background: isWarranty ? 'rgba(139,92,246,0.2)' : COLORS.inputBg,
+                        border: `2px solid ${isWarranty ? '#8b5cf6' : COLORS.borderInput}`,
+                        color: isWarranty ? '#8b5cf6' : COLORS.textSecondary,
+                        fontSize: '0.9rem', fontWeight: 700, textAlign: 'left',
+                      }}
+                    >
+                      Warranty -- $0
+                    </button>
+                    {isWarranty && (
+                      <div style={{ marginTop: SPACING.sm }}>
+                        <textarea
+                          value={warrantyDetails}
+                          onChange={e => setWarrantyDetails(e.target.value)}
+                          placeholder="Describe the issue (e.g., Front door contamination, Rear window peeling)"
+                          rows={2}
+                          style={{
+                            width: '100%', padding: '8px 12px', borderRadius: RADIUS.sm,
+                            border: `1px solid ${COLORS.borderInput}`, background: COLORS.cardBg,
+                            color: COLORS.textPrimary, fontSize: FONT.sizeSm,
+                            resize: 'vertical', fontFamily: 'inherit',
+                          }}
+                        />
+                        {warrantyPriorApts.length > 0 && (
+                          <div style={{ marginTop: SPACING.sm }}>
+                            <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 4 }}>Link to prior appointment (optional)</div>
+                            <SelectInput value={warrantyForBookingId || ''} onChange={e => setWarrantyForBookingId(e.target.value || null)}>
+                              <option value="">None</option>
+                              {warrantyPriorApts.map(a => <option key={a.id} value={a.id}>#{a.booking_id} -- {a.appointment_date} -- ${Number(a.subtotal || 0).toFixed(0)} -- {a.status}</option>)}
+                            </SelectInput>
+                          </div>
+                        )}
+                        {loadingWarrantyApts && <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 4 }}>Loading prior appointments...</div>}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Removal Services */}
                 {visibleRemovalServices.length > 0 && (
                   <>
@@ -961,6 +1046,63 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
                     </tr>
                   );
                   })}
+                  {/* Warranty Row (desktop) */}
+                  {config?.shopConfig?.enable_warranty && (
+                    <>
+                      <tr><td colSpan={films.length + 1} style={{
+                        padding: `${SPACING.sm}px ${SPACING.lg}px`, fontSize: FONT.sizeXs,
+                        fontWeight: FONT.weightSemibold, color: '#8b5cf6',
+                        textTransform: 'uppercase', letterSpacing: '1px',
+                        borderBottom: `1px solid ${COLORS.border}`, borderTop: `2px solid ${COLORS.border}`,
+                        background: COLORS.inputBg,
+                      }}>Warranty</td></tr>
+                      <tr>
+                        <td style={{ ...tdStyle, position: 'sticky', left: 0, zIndex: 1, background: COLORS.cardBg, fontWeight: FONT.weightMedium, color: COLORS.textSecondary }}>Warranty Visit</td>
+                        <td
+                          colSpan={films.length}
+                          onClick={() => {
+                            if (isWarranty) { setAppointmentType('dropoff'); setWarrantyDetails(''); }
+                            else setAppointmentType('warranty');
+                          }}
+                          style={{ ...tdStyle, cursor: 'pointer', background: isWarranty ? 'rgba(139,92,246,0.15)' : 'transparent', transition: 'background 0.15s' }}
+                          onMouseEnter={e => { if (!isWarranty) e.currentTarget.style.background = COLORS.hoverBg; }}
+                          onMouseLeave={e => { if (!isWarranty) e.currentTarget.style.background = isWarranty ? 'rgba(139,92,246,0.15)' : 'transparent'; }}
+                        >
+                          <span style={{ fontSize: FONT.sizeBase, fontWeight: isWarranty ? FONT.weightBold : FONT.weightMedium, color: isWarranty ? '#8b5cf6' : COLORS.textPrimary }}>$0</span>
+                          <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginLeft: 6 }}>no charge</span>
+                        </td>
+                      </tr>
+                      {isWarranty && (
+                        <tr>
+                          <td colSpan={films.length + 1} style={{ padding: `${SPACING.sm}px ${SPACING.lg}px` }}>
+                            <textarea
+                              value={warrantyDetails}
+                              onChange={e => setWarrantyDetails(e.target.value)}
+                              placeholder="Describe the issue (e.g., Front door contamination, Rear window peeling)"
+                              rows={2}
+                              style={{
+                                width: '100%', padding: '8px 12px', borderRadius: RADIUS.sm,
+                                border: `1px solid ${COLORS.borderInput}`, background: COLORS.cardBg,
+                                color: COLORS.textPrimary, fontSize: FONT.sizeSm,
+                                resize: 'vertical', fontFamily: 'inherit',
+                              }}
+                            />
+                            {warrantyPriorApts.length > 0 && (
+                              <div style={{ marginTop: SPACING.sm, maxWidth: 400 }}>
+                                <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 4 }}>Link to prior appointment (optional)</div>
+                                <SelectInput value={warrantyForBookingId || ''} onChange={e => setWarrantyForBookingId(e.target.value || null)}>
+                                  <option value="">None</option>
+                                  {warrantyPriorApts.map(a => <option key={a.id} value={a.id}>#{a.booking_id} -- {a.appointment_date} -- ${Number(a.subtotal || 0).toFixed(0)} -- {a.status}</option>)}
+                                </SelectInput>
+                              </div>
+                            )}
+                            {loadingWarrantyApts && <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginTop: 4 }}>Loading prior appointments...</div>}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  )}
+
                   {/* Removal Services */}
                   {visibleRemovalServices.length > 0 && (
                     <>
@@ -1136,7 +1278,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
       {/* ============================================================ */}
       {/* SCHEDULING -- appointment type, date, time, MiniTimeline */}
       {/* ============================================================ */}
-      {selectedRows.length > 0 && config && (
+      {(selectedRows.length > 0 || isWarranty) && config && (
         <div style={{ marginTop: SPACING.lg }}>
           <DashboardCard title="Schedule (optional)">
             <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: SPACING.md }}>
@@ -1194,10 +1336,10 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
       {/* ============================================================ */}
       {/* ACTION BUTTONS */}
       {/* ============================================================ */}
-      {selectedRows.length > 0 && vehicle && (
+      {(selectedRows.length > 0 || isWarranty) && (vehicle || isWarranty) && (
         <div style={{ marginTop: SPACING.lg }}>
           <DashboardCard>
-            {optionsMode ? (
+            {optionsMode && !isWarranty ? (
               /* Options Mode */
               optionsSent ? (
                 /* Success state */
@@ -1360,7 +1502,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
       {/* ============================================================ */}
       {/* BOOK APPOINTMENT CONFIRMATION MODAL -- two choices */}
       {/* ============================================================ */}
-      {showBookConfirm && config && vehicle && (
+      {showBookConfirm && config && (vehicle || isWarranty) && (
         <Modal title="Book Appointment" onClose={() => { setShowBookConfirm(false); setGeneratedLink(''); setOverrideDeposit(false); setDepositOverride(null); }}>
           {bookingSuccess ? (
             <div style={{ textAlign: 'center', padding: SPACING.xxl }}>
@@ -1438,56 +1580,44 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
               {/* Summary */}
               <div style={{ padding: SPACING.md, background: COLORS.inputBg, borderRadius: RADIUS.sm, marginBottom: SPACING.lg, border: `1px solid ${COLORS.border}` }}>
                 <div style={{ fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>{customerName} -- {selectedYear} {selectedMake} {selectedModel}</div>
-                <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginTop: 4 }}>
+                <div style={{ fontSize: FONT.sizeSm, color: COLORS.textSecondary, marginTop: 4 }}>
                   {selectedRows.length} service{selectedRows.length !== 1 ? 's' : ''} -- ${totalSelected.toLocaleString()}
                   {' -- '}{selectedDate} at {selectedTime}
                 </div>
               </div>
 
-              {/* Step 1: Choose path (selection, not action) */}
-              <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textMuted, marginBottom: SPACING.sm, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              {/* Step 1: Choose path */}
+              <div style={{ fontSize: FONT.sizeXs, fontWeight: 700, color: COLORS.textSecondary, marginBottom: SPACING.sm, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 What would you like to do?
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.sm, marginBottom: SPACING.lg }}>
-                <button onClick={() => setBookPath('schedule')}
-                  style={{
-                    padding: `${SPACING.md}px ${SPACING.lg}px`, textAlign: 'left', cursor: 'pointer',
-                    background: bookPath === 'schedule' ? COLORS.activeBg : 'transparent',
-                    border: bookPath === 'schedule' ? `2px solid ${COLORS.red}` : `1px solid ${COLORS.borderInput}`,
-                    borderRadius: RADIUS.md,
-                  }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
-                    <div style={{
-                      width: 18, height: 18, borderRadius: '50%',
-                      border: bookPath === 'schedule' ? `5px solid ${COLORS.red}` : `2px solid ${COLORS.borderInput}`,
-                      flexShrink: 0,
-                    }} />
-                    <div>
-                      <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>Add to Schedule</div>
-                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>Book directly. No deposit, no customer approval needed.</div>
-                    </div>
-                  </div>
-                </button>
-
-                <button onClick={() => setBookPath('tailored')}
-                  style={{
-                    padding: `${SPACING.md}px ${SPACING.lg}px`, textAlign: 'left', cursor: 'pointer',
-                    background: bookPath === 'tailored' ? COLORS.activeBg : 'transparent',
-                    border: bookPath === 'tailored' ? `2px solid ${COLORS.red}` : `1px solid ${COLORS.borderInput}`,
-                    borderRadius: RADIUS.md,
-                  }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
-                    <div style={{
-                      width: 18, height: 18, borderRadius: '50%',
-                      border: bookPath === 'tailored' ? `5px solid ${COLORS.red}` : `2px solid ${COLORS.borderInput}`,
-                      flexShrink: 0,
-                    }} />
-                    <div>
-                      <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>Send as Tailored Quote</div>
-                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>Customer receives a personalized link to review, approve, and book.</div>
-                    </div>
-                  </div>
-                </button>
+                {[
+                  { key: 'schedule' as const, title: 'Add to Schedule', desc: 'Book directly. No deposit, no customer approval needed.' },
+                  { key: 'tailored' as const, title: 'Send as Tailored Quote', desc: 'Customer receives a personalized link to review, approve, and book.' },
+                ].map(opt => {
+                  const sel = bookPath === opt.key;
+                  return (
+                    <button key={opt.key} onClick={() => setBookPath(opt.key)}
+                      style={{
+                        padding: `${SPACING.md}px ${SPACING.lg}px`, textAlign: 'left', cursor: 'pointer',
+                        background: sel ? COLORS.activeBg : COLORS.inputBg,
+                        border: sel ? `2px solid ${COLORS.red}` : `1px solid ${COLORS.borderInput}`,
+                        borderRadius: RADIUS.md,
+                      }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
+                        <div style={{
+                          width: 18, height: 18, borderRadius: '50%',
+                          border: sel ? `5px solid ${COLORS.red}` : `2px solid ${COLORS.textTertiary}`,
+                          flexShrink: 0,
+                        }} />
+                        <div>
+                          <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: COLORS.textPrimary }}>{opt.title}</div>
+                          <div style={{ fontSize: FONT.sizeXs, color: COLORS.textSecondary }}>{opt.desc}</div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Step 2: Options for tailored path */}
@@ -1497,7 +1627,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md }}>
                     <div>
                       <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary }}>Deposit</div>
-                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
+                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textSecondary }}>
                         {overrideDeposit
                           ? (depositOverride && depositOverride > 0 ? `$${depositOverride}` : 'No deposit')
                           : (config.shopConfig.require_deposit ? `$${config.shopConfig.deposit_amount || 50} (shop default)` : 'No deposit (shop default)')
@@ -1508,11 +1638,11 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
                       <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                         <input type="checkbox" checked={overrideDeposit} onChange={e => setOverrideDeposit(e.target.checked)}
                           style={{ width: 14, height: 14, accentColor: COLORS.red, cursor: 'pointer' }} />
-                        <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>Override</span>
+                        <span style={{ fontSize: FONT.sizeXs, color: COLORS.textSecondary }}>Override</span>
                       </label>
                       {overrideDeposit && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted }}>$</span>
+                          <span style={{ fontSize: FONT.sizeSm, color: COLORS.textSecondary }}>$</span>
                           <TextInput type="number" value={depositOverride !== null ? String(depositOverride) : ''}
                             onChange={e => setDepositOverride(Number(e.target.value) || 0)}
                             placeholder="0" style={{ width: 70, minHeight: 26, fontSize: FONT.sizeSm }} />
@@ -1523,7 +1653,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
 
                   {/* Send method */}
                   <div>
-                    <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textMuted, marginBottom: SPACING.xs, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Send via</div>
+                    <div style={{ fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, color: COLORS.textSecondary, marginBottom: SPACING.xs, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Send via</div>
                     <div style={{ display: 'flex', gap: SPACING.sm }}>
                       {[
                         { key: 'sms' as const, label: 'SMS', disabled: !customerPhone },
@@ -1535,7 +1665,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
                             flex: 1, padding: `${SPACING.sm}px ${SPACING.sm}px`, borderRadius: RADIUS.sm,
                             cursor: opt.disabled ? 'not-allowed' : 'pointer', opacity: opt.disabled ? 0.4 : 1,
                             background: tailoredSendMethod === opt.key ? COLORS.activeBg : 'transparent',
-                            color: tailoredSendMethod === opt.key ? COLORS.red : COLORS.textMuted,
+                            color: tailoredSendMethod === opt.key ? COLORS.red : COLORS.textSecondary,
                             border: `1px solid ${tailoredSendMethod === opt.key ? COLORS.red : COLORS.borderInput}`,
                             fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold,
                           }}>

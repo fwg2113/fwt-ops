@@ -9,14 +9,34 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
     const supabase = getAdminClient();
     const { searchParams } = new URL(req.url);
     const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+    const vehicleYear = searchParams.get('vehicle_year');
+    const vehicleMake = searchParams.get('vehicle_make');
+    const vehicleModel = searchParams.get('vehicle_model');
+    const limit = searchParams.get('limit');
 
-    const { data, error } = await supabase
+    // Vehicle-based query (for warranty prior appointment lookup)
+    const isVehicleQuery = vehicleYear && vehicleMake && vehicleModel;
+
+    let query = supabase
       .from('auto_bookings')
       .select('*')
       .eq('shop_id', shopId)
-      .eq('appointment_date', date)
-      .not('status', 'in', '("pending_payment","cancelled")')
-      .order('appointment_time', { ascending: true, nullsFirst: false });
+      .not('status', 'in', '("pending_payment","cancelled")');
+
+    if (isVehicleQuery) {
+      query = query
+        .eq('vehicle_year', parseInt(vehicleYear))
+        .eq('vehicle_make', vehicleMake)
+        .eq('vehicle_model', vehicleModel)
+        .order('appointment_date', { ascending: false });
+      if (limit) query = query.limit(parseInt(limit));
+    } else {
+      query = query
+        .eq('appointment_date', date)
+        .order('appointment_time', { ascending: true, nullsFirst: false });
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Appointments fetch error:', error);

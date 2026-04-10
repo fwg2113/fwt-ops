@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
       additionalInterests, notes,
       emojiMarker, calendarTitle,
       existingDocumentId, // If a quote document already exists (e.g., from FLQA lead), skip creating a new one
+      warrantyForBookingId, // For warranty appointments — links to the original appointment being redone
     } = body;
 
     // SECURITY (audit H1/H2): basic sanity check on the total math.
@@ -147,10 +148,10 @@ export async function POST(request: NextRequest) {
         customer_name: `${firstName} ${lastName}`.trim(),
         customer_email: email,
         customer_phone: phone?.replace(/\D/g, ''),
-        vehicle_year: vehicleYear ? parseInt(vehicleYear) : null,
-        vehicle_make: vehicleMake,
-        vehicle_model: vehicleModel,
-        class_keys: classKeys,
+        vehicle_year: vehicleYear ? parseInt(vehicleYear) || null : null,
+        vehicle_make: vehicleMake || null,
+        vehicle_model: vehicleModel || null,
+        class_keys: classKeys || null,
         appointment_date: appointmentDate,
         appointment_time: appointmentTime,
         duration_minutes: durationMinutes,
@@ -168,6 +169,7 @@ export async function POST(request: NextRequest) {
         has_aftermarket_tint: hasAftermarketTint || null,
         additional_interests: additionalInterests || null,
         notes,
+        warranty_for_booking_id: warrantyForBookingId || null,
       })
       .select()
       .single();
