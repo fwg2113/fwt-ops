@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -92,6 +93,39 @@ export function withShopAuth(handler: AuthenticatedHandler) {
       }
 
       if (!user) {
+        // Check for station-mode cookie. Station logins are HMAC-signed tokens
+        // that encode team_member_id:shop_id:timestamp. We verify the HMAC here
+        // (not in middleware — middleware just checks cookie presence for speed)
+        // and extract the shopId so the handler gets correct tenant scoping.
+        const stationToken = req.cookies.get('station_token')?.value;
+        if (stationToken) {
+          try {
+            const decoded = Buffer.from(stationToken, 'base64').toString();
+            const parts = decoded.split(':');
+            // Format: team_member_id:shop_id:timestamp:hmac_signature
+            if (parts.length === 4) {
+              const [memberId, shopIdStr, timestampStr, signature] = parts;
+              const payload = `${memberId}:${shopIdStr}:${timestampStr}`;
+              const secret = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+              const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+              if (crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) {
+                // Token is valid. Check age (12 hours max).
+                const age = Date.now() - parseInt(timestampStr);
+                if (age < 12 * 60 * 60 * 1000) {
+                  return handler({
+                    shopId: parseInt(shopIdStr) || 1,
+                    userId: `station:${memberId}`,
+                    userEmail: '',
+                    req,
+                  });
+                }
+              }
+            }
+          } catch {
+            // Token parse/verify failed — fall through to 401
+          }
+        }
+
         // SECURITY: only the allowlisted customer-facing routes get the shop-1
         // fallback. Everything else returns 401. Without this restriction, ANY
         // route accidentally added to the middleware PUBLIC_ROUTES whitelist

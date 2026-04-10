@@ -51,15 +51,34 @@ export async function POST(req: NextRequest) {
     const signature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
     const token = Buffer.from(`${payload}:${signature}`).toString('base64');
 
-    return NextResponse.json({
+    // Build the JSON response first, then set the cookie on it.
+    // The cookie lets the server-side middleware recognize station-mode
+    // sessions without a Supabase Auth user — sessionStorage alone is
+    // invisible to middleware because it only exists on the client.
+    const res = NextResponse.json({
       token,
       teamMemberId: member.id,
+      user_name: member.name,
+      team_member_id: member.id,
       name: member.name,
       role: member.role,
       shopId,
       rolePermissions,
       modulePermissions: member.module_permissions,
     });
+
+    // HttpOnly cookie — not accessible to JS, only sent server-side.
+    // SameSite=Lax so it's sent on same-site navigations but not cross-origin.
+    // MaxAge = 12 hours (station sessions are for a single shift).
+    res.cookies.set('station_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 12, // 12 hours
+    });
+
+    return res;
   } catch (error) {
     console.error('Station login error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

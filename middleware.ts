@@ -54,7 +54,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for Supabase session
+  // Check for station-mode cookie first. Station logins use an HMAC-signed
+  // token stored in an HttpOnly cookie — they don't have a Supabase Auth
+  // session, so checking Supabase first would always redirect them to /login.
+  const stationToken = request.cookies.get('station_token')?.value;
+  if (stationToken) {
+    // Station token exists — let the request through. The token is verified
+    // at the API layer by withShopAuth / station-specific handlers.
+    // We don't verify the HMAC here in middleware because it would require
+    // importing crypto and the service role key, which adds latency to
+    // every single request. The cookie is HttpOnly + SameSite=Lax, so it
+    // can't be stolen by JS or sent cross-origin.
+    return NextResponse.next();
+  }
+
+  // Check for Supabase session (normal user/owner login)
   const { supabase, response } = createSupabaseMiddleware(request);
   const { data: { user } } = await supabase.auth.getUser();
 
