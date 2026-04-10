@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     const { data: shop } = await supabaseAdmin
       .from('shop_config')
-      .select('shop_name, shop_phone, shop_address')
+      .select('shop_name, shop_phone, shop_address, shop_timezone')
       .eq('id', 1)
       .single();
 
@@ -37,10 +37,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
     }
 
-    const now = new Date();
+    const shopTz = shop?.shop_timezone || 'America/New_York';
+    // Get current time in the shop's timezone for slot expiry comparison
+    const nowInShopTz = new Date(new Date().toLocaleString('en-US', { timeZone: shopTz }));
+    const nowMinutes = nowInShopTz.getHours() * 60 + nowInShopTz.getMinutes();
+
     const aptDate = booking.appointment_date;
     const noticeMin = offer.notice_minutes || 30;
     const firstName = (booking.customer_name || '').split(' ')[0];
+
+    // Check if appointment date is today (in shop timezone)
+    const todayInShopTz = new Date().toLocaleDateString('en-CA', { timeZone: shopTz }); // YYYY-MM-DD
+    const isToday = aptDate === todayInShopTz;
+
+    function isSlotPast(time: string): boolean {
+      if (!isToday) return false; // future date slots never expired
+      const [h, m] = time.split(':').map(Number);
+      return nowMinutes > h * 60 + m;
+    }
 
     // Build slot list
     let slots: { time: string; display: string; status: string }[] = [];
@@ -48,12 +62,10 @@ export async function GET(request: NextRequest) {
     if (offer.mode === 'pool' && offer.headsup_pools) {
       const poolSlots = offer.headsup_pools.slots || [];
       slots = poolSlots.map((s: { time: string; claimed_by: string | null }) => {
-        const slotTime = new Date(`${aptDate}T${s.time}:00`);
         let status = 'available';
         if (s.claimed_by && s.claimed_by !== 'null') {
           status = s.claimed_by === offer.booking_id ? 'yours' : 'taken';
-        } else if (now > slotTime) {
-          // Only expire if the slot time itself has passed
+        } else if (isSlotPast(s.time)) {
           status = 'expired';
         }
         return {
@@ -65,10 +77,8 @@ export async function GET(request: NextRequest) {
     } else {
       const offeredSlots = offer.offered_slots || [];
       slots = offeredSlots.map((s: { time: string; status: string }) => {
-        const slotTime = new Date(`${aptDate}T${s.time}:00`);
         let status = s.status;
-        // Only expire if the slot time itself has passed
-        if (status === 'available' && now > slotTime) status = 'expired';
+        if (status === 'available' && isSlotPast(s.time)) status = 'expired';
         return {
           time: s.time,
           display: formatTimeDisplay(s.time),
