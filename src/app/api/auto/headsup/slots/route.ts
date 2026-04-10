@@ -49,11 +49,11 @@ export async function GET(request: NextRequest) {
       const poolSlots = offer.headsup_pools.slots || [];
       slots = poolSlots.map((s: { time: string; claimed_by: string | null }) => {
         const slotTime = new Date(`${aptDate}T${s.time}:00`);
-        const cutoff = new Date(slotTime.getTime() - noticeMin * 60 * 1000);
         let status = 'available';
         if (s.claimed_by && s.claimed_by !== 'null') {
           status = s.claimed_by === offer.booking_id ? 'yours' : 'taken';
-        } else if (now > cutoff) {
+        } else if (now > slotTime) {
+          // Only expire if the slot time itself has passed
           status = 'expired';
         }
         return {
@@ -66,9 +66,9 @@ export async function GET(request: NextRequest) {
       const offeredSlots = offer.offered_slots || [];
       slots = offeredSlots.map((s: { time: string; status: string }) => {
         const slotTime = new Date(`${aptDate}T${s.time}:00`);
-        const cutoff = new Date(slotTime.getTime() - noticeMin * 60 * 1000);
         let status = s.status;
-        if (status === 'available' && now > cutoff) status = 'expired';
+        // Only expire if the slot time itself has passed
+        if (status === 'available' && now > slotTime) status = 'expired';
         return {
           time: s.time,
           display: formatTimeDisplay(s.time),
