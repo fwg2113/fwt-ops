@@ -834,7 +834,7 @@ function AppointmentsPageInner() {
                   <div style={{
                     position: 'absolute', top: -8, left: 12,
                     background: '#f59e0b', color: '#fff', fontSize: '0.65rem', fontWeight: 800,
-                    padding: '2px 8px', borderRadius: 10, textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+                    padding: '2px 8px', borderRadius: 10, textShadow: '0 1px 3px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.5)',
                   }}>
                     #{idx + 1} {typeLabel}
                   </div>
