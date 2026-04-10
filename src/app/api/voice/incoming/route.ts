@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
 import { verifyTwilioRequest } from '@/app/lib/twilio-verify';
 
+// Helper: is a team member available right now per their schedule + shop tz?
+// Mirrors the implementation in /api/voice/menu/route.ts.
+function isAvailableNow(
+  schedule: Record<string, { start: string; end: string } | null> | null,
+  timezone: string,
+): boolean {
+  if (!schedule) return true; // null = always available
+  const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+  const dayKey = DAYS[now.getDay()];
+  const day = schedule[dayKey];
+  if (!day) return false;
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const [sh, sm] = day.start.split(':').map(Number);
+  const [eh, em] = day.end.split(':').map(Number);
+  return cur >= sh * 60 + sm && cur < eh * 60 + em;
+}
+
 // POST /api/voice/incoming
 // Twilio webhook: incoming call entry point. Plays IVR greeting + menu.
 //
@@ -46,20 +64,44 @@ export async function POST(request: NextRequest) {
 
   // PHONE MENU KILL SWITCH
   // When shop_config.voice_menu_enabled is FALSE, skip the IVR entirely and
-  // ring the dashboard browser client directly. Used for Google Voice and
-  // other third-party verification calls that can't press keys, or any time
-  // the owner wants direct ringthrough without the menu.
+  // ring the dashboard browser client + all enabled SIP endpoints directly,
+  // mirroring what the menu route does after a digit is pressed (minus the
+  // category-specific greeting). Used for Google Voice / third-party
+  // verification calls that can't press keys.
   const { data: cfg } = await supabaseAdmin
     .from('shop_config')
-    .select('voice_menu_enabled')
+    .select('voice_menu_enabled, shop_timezone')
     .eq('id', 1)
     .single();
 
   if (cfg?.voice_menu_enabled === false) {
+    // Fetch enabled team members (same query the menu route uses)
+    const { data: allMembers } = await supabaseAdmin
+      .from('call_settings')
+      .select('*')
+      .eq('shop_id', 1)
+      .eq('enabled', true)
+      .order('ring_order', { ascending: true });
+
+    // Filter by schedule availability so off-hours members don't ring
+    const timezone = cfg.shop_timezone || 'America/New_York';
+    const teamMembers = (allMembers || []).filter((m: { schedule: Record<string, { start: string; end: string } | null> | null }) =>
+      isAvailableNow(m.schedule, timezone)
+    );
+
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
     const statusUrl = `${origin}/api/voice/status`;
     const completeUrl = `${origin}/api/voice/complete?callSid=${callSid}&amp;category=bypass`;
     const dialCallerId = from || to || '';
+
+    // Build <Sip> endpoints for every available team member with a sip_uri
+    const sipEndpoints = teamMembers
+      .filter((m: { sip_uri: string | null }) => m.sip_uri)
+      .map((m: { sip_uri: string }) =>
+        `<Sip statusCallback="${statusUrl}" statusCallbackEvent="initiated ringing answered completed" statusCallbackMethod="POST">${m.sip_uri}</Sip>`
+      )
+      .join('\n        ');
+
     const bypassTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial callerId="${dialCallerId}" timeout="40" action="${completeUrl}" method="POST">
@@ -68,6 +110,7 @@ export async function POST(request: NextRequest) {
       <Parameter name="categoryKey" value="bypass" />
       <Parameter name="categoryLabel" value="Direct (menu off)" />
     </Client>
+    ${sipEndpoints}
   </Dial>
 </Response>`;
     return new NextResponse(bypassTwiml, { headers: { 'Content-Type': 'text/xml' } });
