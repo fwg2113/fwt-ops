@@ -269,11 +269,15 @@ function AppointmentsPageInner() {
         return;
       }
 
-      // Already acknowledged on this session → just refetch the timeline (to
-      // pick up any field changes like new time after a drag) and bail, NO
-      // toast, NO sound.
+      // Already acknowledged on this session → bail entirely. No toast, no
+      // sound, no refetch. Local state already reflects whatever this user
+      // just did (drag reorder, edit save, status change) via optimistic
+      // updates in the respective handlers. Refetching here would cause the
+      // timeline to re-render on every update, which is visually jarring and
+      // disruptive (especially mid-drag). In a multi-user scenario where
+      // another user drags a card, this user won't see it until they
+      // manually refresh — acceptable trade-off for single-user launch.
       if (seenBookedIdsRef.current.has(id)) {
-        fetchAppointmentsRef.current();
         return;
       }
 
