@@ -800,7 +800,7 @@ function AppointmentsPageInner() {
           </div>
           <div style={{
             display: 'flex', gap: SPACING.md, overflowX: 'auto',
-            paddingBottom: SPACING.sm,
+            paddingTop: 10, paddingBottom: SPACING.md,
           }}>
             {headsupQueue.map((apt, idx) => {
               const typeLabel = apt.appointment_type === 'headsup_60' ? '60-min' : '30-min';
@@ -825,7 +825,7 @@ function AppointmentsPageInner() {
                     minWidth: isMobile ? 260 : 280, maxWidth: 340, flex: '0 0 auto',
                     background: `linear-gradient(135deg, ${modColor}18, ${modColor}08)`,
                     border: `2px solid ${notified ? '#f59e0b' : modColor}40`,
-                    borderRadius: RADIUS.lg, padding: SPACING.md,
+                    borderRadius: RADIUS.lg, padding: `${SPACING.md}px ${SPACING.md}px ${SPACING.lg}px`,
                     cursor: 'pointer', position: 'relative',
                     transition: 'border-color 0.2s, box-shadow 0.2s',
                   }}
