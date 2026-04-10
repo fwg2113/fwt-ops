@@ -104,12 +104,12 @@ export default function CommandCenter() {
       />
 
       {/* Quick Stats Row */}
-      {data && (
+      {data?.today && (
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: SPACING.lg, marginBottom: SPACING.xl }}>
-          <QuickStat label="Today's Appointments" value={data.today.total} color={COLORS.textPrimary} compact={isMobile} />
-          <QuickStat label="Checked In" value={data.today.checkedIn} color="#22c55e" compact={isMobile} />
-          <QuickStat label="Today's Revenue" value={`$${data.today.revenue.toLocaleString()}`} color={COLORS.red} compact={isMobile} />
-          <QuickStat label="Pending Inquiries" value={data.inquiries.length} color="#f59e0b" compact={isMobile} />
+          <QuickStat label="Today's Appointments" value={data.today.total ?? 0} color={COLORS.textPrimary} compact={isMobile} />
+          <QuickStat label="Checked In" value={data.today.checkedIn ?? 0} color="#22c55e" compact={isMobile} />
+          <QuickStat label="Today's Revenue" value={`$${(data.today.revenue ?? 0).toLocaleString()}`} color={COLORS.red} compact={isMobile} />
+          <QuickStat label="Pending Inquiries" value={data.inquiries?.length ?? 0} color="#f59e0b" compact={isMobile} />
         </div>
       )}
 
@@ -127,14 +127,14 @@ export default function CommandCenter() {
             </svg>
           }
           actions={
-            data ? (
+            data?.today ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: SPACING.sm, alignItems: 'center' }}>
-                <StatusBadge label={`${data.today.dropoffs} Drop-Off`} variant="info" />
-                <StatusBadge label={`${data.today.waiting} Waiting`} variant="danger" />
-                {data.today.headsups > 0 && <StatusBadge label={`${data.today.headsups} Heads-Up`} variant="warning" />}
+                <StatusBadge label={`${data.today.dropoffs ?? 0} Drop-Off`} variant="info" />
+                <StatusBadge label={`${data.today.waiting ?? 0} Waiting`} variant="danger" />
+                {(data.today.headsups ?? 0) > 0 && <StatusBadge label={`${data.today.headsups} Heads-Up`} variant="warning" />}
                 {!isMobile && (
                   <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginLeft: SPACING.sm }}>
-                    Est. ${data.today.revenue.toLocaleString()}
+                    Est. ${(data.today.revenue ?? 0).toLocaleString()}
                   </span>
                 )}
               </div>
@@ -143,7 +143,7 @@ export default function CommandCenter() {
         >
           {loading ? (
             <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>Loading...</div>
-          ) : !data || data.today.appointments.length === 0 ? (
+          ) : !data?.today?.appointments?.length ? (
             <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>
               No appointments scheduled for today.
             </div>
@@ -285,14 +285,14 @@ export default function CommandCenter() {
             </svg>
           }
           actions={
-            data && data.inquiries.length > 0 ? (
+            data?.inquiries?.length ? (
               <StatusBadge label={`${data.inquiries.length} pending`} variant="warning" />
             ) : undefined
           }
         >
           {loading ? (
             <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>Loading...</div>
-          ) : !data || data.inquiries.length === 0 ? (
+          ) : !data?.inquiries?.length ? (
             <div style={{ padding: SPACING.xxxl, textAlign: 'center', color: COLORS.textMuted }}>
               No new inquiries.
             </div>
@@ -358,27 +358,27 @@ export default function CommandCenter() {
             </svg>
           }
         >
-          {data ? (
+          {data?.mtd ? (
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: SPACING.lg }}>
               <StatCard
                 label="Total Sales"
-                value={data.mtd.totalSales.toLocaleString()}
+                value={(data.mtd.totalSales ?? 0).toLocaleString()}
                 prefix="$"
                 color={COLORS.red}
-                subtitle={`${data.mtd.bookedCount} bookings`}
+                subtitle={`${data.mtd.bookedCount ?? 0} bookings`}
               />
               <StatCard
                 label="Projected Sales"
-                value={data.mtd.projectedSales.toLocaleString()}
+                value={(data.mtd.projectedSales ?? 0).toLocaleString()}
                 prefix="$"
                 color="#f59e0b"
-                subtitle={`$${data.mtd.dailyAvg}/day avg`}
+                subtitle={`$${data.mtd.dailyAvg ?? 0}/day avg`}
               />
               <StatCard
                 label="Completed"
-                value={data.mtd.completedCount}
+                value={data.mtd.completedCount ?? 0}
                 color="#22c55e"
-                subtitle={`of ${data.mtd.bookedCount} booked`}
+                subtitle={`of ${data.mtd.bookedCount ?? 0} booked`}
               />
             </div>
           ) : (

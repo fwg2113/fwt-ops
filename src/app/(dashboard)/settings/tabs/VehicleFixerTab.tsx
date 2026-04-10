@@ -43,6 +43,11 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: stri
   missing_vehicle: { label: 'Missing Vehicle', color: '#10b981', icon: 'M12 6v6m0 0v6m0-6h6m-6 0H6' },
 };
 
+// All possible class keys grouped by type for the editor
+const FRONT_KEYS = ['FRONT2', 'FRONT2_Q'];
+const BODY_KEYS = ['STD_CAB', 'CREW_CAB', '57_CAR', '911_CAR', '57_SUV', '911_SUV', 'FULL_SUV_VAN', 'MD3_HALF', 'MD3_FULL', 'LUCID_AIR'];
+const FEE_KEYS = ['ADD_FEE_25', 'ADD_FEE_50', 'ADD_FEE_75', 'ADD_FEE_100'];
+
 const CONFIDENCE_LABELS: Record<string, { label: string; color: string }> = {
   high: { label: 'High Confidence', color: '#22c55e' },
   medium: { label: 'Medium', color: '#f59e0b' },
@@ -73,6 +78,22 @@ export default function VehicleFixerTab() {
   const [filter, setFilter] = useState<'all' | 'high' | 'needs_review'>('all');
   const [showApplied, setShowApplied] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
+  // Per-fix editing state: fixId -> custom class keys array
+  const [editing, setEditing] = useState<Record<string, string[]>>({});
+
+  function startEditing(fix: ProposedFix) {
+    setEditing(prev => ({ ...prev, [fix.id]: [...fix.proposedClassKeys] }));
+  }
+  function stopEditing(fixId: string) {
+    setEditing(prev => { const n = { ...prev }; delete n[fixId]; return n; });
+  }
+  function toggleEditKey(fixId: string, key: string) {
+    setEditing(prev => {
+      const current = prev[fixId] || [];
+      const next = current.includes(key) ? current.filter(k => k !== key) : [...current, key];
+      return { ...prev, [fixId]: next };
+    });
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -89,11 +110,17 @@ export default function VehicleFixerTab() {
   async function handleAction(fixId: string, action: 'apply' | 'dismiss') {
     setApplying(fixId);
     try {
+      const payload: Record<string, unknown> = { fixId, action };
+      // If user edited the class keys, send the custom override
+      if (action === 'apply' && editing[fixId]) {
+        payload.customClassKeys = editing[fixId];
+      }
       await fetch('/api/auto/settings/vehicle-fixes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fixId, action }),
+        body: JSON.stringify(payload),
       });
+      stopEditing(fixId);
       await loadData();
     } catch { /* silent */ }
     setApplying(null);
@@ -213,10 +240,12 @@ export default function VehicleFixerTab() {
             </div>
 
             {fixes.map((fix, i) => {
+              const isEditing = !!editing[fix.id];
+              const effectiveProposed = isEditing ? editing[fix.id] : fix.proposedClassKeys;
               const currentSet = new Set(fix.currentClassKeys);
-              const proposedSet = new Set(fix.proposedClassKeys);
+              const proposedSet = new Set(effectiveProposed);
               const removed = fix.currentClassKeys.filter(ck => !proposedSet.has(ck));
-              const added = fix.proposedClassKeys.filter(ck => !currentSet.has(ck));
+              const added = effectiveProposed.filter(ck => !currentSet.has(ck));
               const unchanged = fix.currentClassKeys.filter(ck => proposedSet.has(ck));
               const conf = CONFIDENCE_LABELS[fix.confidence] || { label: fix.confidence, color: '#888' };
 
@@ -224,6 +253,7 @@ export default function VehicleFixerTab() {
                 <div key={fix.id} style={{
                   padding: SPACING.md,
                   borderBottom: i < fixes.length - 1 ? `1px solid ${COLORS.border}` : 'none',
+                  background: isEditing ? 'rgba(59,130,246,0.04)' : 'transparent',
                 }}>
                   {/* Header row */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.md, marginBottom: SPACING.sm }}>
@@ -242,13 +272,33 @@ export default function VehicleFixerTab() {
                       }}>{conf.label}</span>
                     </div>
                     <div style={{ display: 'flex', gap: SPACING.xs, flexShrink: 0 }}>
-                      <button onClick={() => handleAction(fix.id, 'apply')} disabled={applying === fix.id}
+                      {!isEditing && (
+                        <button onClick={() => startEditing(fix)}
+                          style={{
+                            padding: '4px 10px', borderRadius: RADIUS.sm, border: `1px solid ${COLORS.borderInput}`,
+                            background: 'transparent', color: '#3b82f6', fontSize: '12px', fontWeight: 600,
+                            cursor: 'pointer',
+                          }}>
+                          Edit
+                        </button>
+                      )}
+                      {isEditing && (
+                        <button onClick={() => stopEditing(fix.id)}
+                          style={{
+                            padding: '4px 10px', borderRadius: RADIUS.sm, border: `1px solid ${COLORS.borderInput}`,
+                            background: 'transparent', color: COLORS.textMuted, fontSize: '12px', fontWeight: 600,
+                            cursor: 'pointer',
+                          }}>
+                          Cancel
+                        </button>
+                      )}
+                      <button onClick={() => handleAction(fix.id, 'apply')} disabled={applying === fix.id || (isEditing && editing[fix.id].length === 0)}
                         style={{
                           padding: '4px 12px', borderRadius: RADIUS.sm, border: 'none', cursor: 'pointer',
                           background: '#22c55e', color: '#fff', fontSize: '12px', fontWeight: 700,
                           opacity: applying === fix.id ? 0.5 : 1,
                         }}>
-                        {applying === fix.id ? '...' : 'Apply'}
+                        {applying === fix.id ? '...' : isEditing ? 'Apply Custom' : 'Apply'}
                       </button>
                       <button onClick={() => handleAction(fix.id, 'dismiss')} disabled={applying === fix.id}
                         style={{
@@ -266,31 +316,94 @@ export default function VehicleFixerTab() {
                     {fix.issue}
                   </div>
 
-                  {/* Class key diff */}
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: SPACING.md,
-                    padding: `${SPACING.sm}px ${SPACING.md}px`,
-                    background: COLORS.inputBg, borderRadius: RADIUS.sm,
-                    fontSize: FONT.sizeXs,
-                  }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ color: COLORS.textMuted, marginBottom: 4, fontWeight: 600 }}>Current</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {unchanged.map(ck => <ClassKeyPill key={ck} ck={ck} />)}
-                        {removed.map(ck => <ClassKeyPill key={ck} ck={ck} isRemoved />)}
+                  {/* Class key diff (static mode) */}
+                  {!isEditing && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: SPACING.md,
+                      padding: `${SPACING.sm}px ${SPACING.md}px`,
+                      background: COLORS.inputBg, borderRadius: RADIUS.sm,
+                      fontSize: FONT.sizeXs,
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ color: COLORS.textMuted, marginBottom: 4, fontWeight: 600 }}>Current</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {unchanged.map(ck => <ClassKeyPill key={ck} ck={ck} />)}
+                          {removed.map(ck => <ClassKeyPill key={ck} ck={ck} isRemoved />)}
+                        </div>
+                      </div>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                      </svg>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ color: COLORS.textMuted, marginBottom: 4, fontWeight: 600 }}>Proposed</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {unchanged.map(ck => <ClassKeyPill key={ck} ck={ck} />)}
+                          {added.map(ck => <ClassKeyPill key={ck} ck={ck} isNew />)}
+                        </div>
                       </div>
                     </div>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={COLORS.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                      <path d="M5 12h14M12 5l7 7-7 7"/>
-                    </svg>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ color: COLORS.textMuted, marginBottom: 4, fontWeight: 600 }}>Proposed</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {unchanged.map(ck => <ClassKeyPill key={ck} ck={ck} />)}
-                        {added.map(ck => <ClassKeyPill key={ck} ck={ck} isNew />)}
+                  )}
+
+                  {/* Class key editor (edit mode) */}
+                  {isEditing && (
+                    <div style={{
+                      padding: SPACING.md, background: COLORS.inputBg, borderRadius: RADIUS.sm,
+                      border: `1px solid #3b82f640`,
+                    }}>
+                      <div style={{ color: COLORS.textMuted, fontSize: FONT.sizeXs, fontWeight: 600, marginBottom: SPACING.sm }}>
+                        Select class keys for this vehicle:
+                      </div>
+                      {/* Front door type */}
+                      <div style={{ marginBottom: SPACING.sm }}>
+                        <div style={{ fontSize: '0.65rem', color: COLORS.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Front Doors</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {FRONT_KEYS.map(ck => (
+                            <button key={ck} onClick={() => toggleEditKey(fix.id, ck)} style={{
+                              padding: '3px 10px', borderRadius: RADIUS.sm, cursor: 'pointer',
+                              fontSize: '0.7rem', fontWeight: 700, fontFamily: 'monospace',
+                              background: editing[fix.id].includes(ck) ? 'rgba(34,197,94,0.2)' : 'transparent',
+                              border: `1px solid ${editing[fix.id].includes(ck) ? '#22c55e' : COLORS.borderInput}`,
+                              color: editing[fix.id].includes(ck) ? '#22c55e' : COLORS.textMuted,
+                            }}>{ck}</button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Body class */}
+                      <div style={{ marginBottom: SPACING.sm }}>
+                        <div style={{ fontSize: '0.65rem', color: COLORS.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Body Class</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {BODY_KEYS.map(ck => (
+                            <button key={ck} onClick={() => toggleEditKey(fix.id, ck)} style={{
+                              padding: '3px 10px', borderRadius: RADIUS.sm, cursor: 'pointer',
+                              fontSize: '0.7rem', fontWeight: 700, fontFamily: 'monospace',
+                              background: editing[fix.id].includes(ck) ? 'rgba(59,130,246,0.2)' : 'transparent',
+                              border: `1px solid ${editing[fix.id].includes(ck) ? '#3b82f6' : COLORS.borderInput}`,
+                              color: editing[fix.id].includes(ck) ? '#3b82f6' : COLORS.textMuted,
+                            }}>{ck}</button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Add fees */}
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: COLORS.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Surcharges</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {FEE_KEYS.map(ck => (
+                            <button key={ck} onClick={() => toggleEditKey(fix.id, ck)} style={{
+                              padding: '3px 10px', borderRadius: RADIUS.sm, cursor: 'pointer',
+                              fontSize: '0.7rem', fontWeight: 700, fontFamily: 'monospace',
+                              background: editing[fix.id].includes(ck) ? 'rgba(139,92,246,0.2)' : 'transparent',
+                              border: `1px solid ${editing[fix.id].includes(ck) ? '#a78bfa' : COLORS.borderInput}`,
+                              color: editing[fix.id].includes(ck) ? '#a78bfa' : COLORS.textMuted,
+                            }}>{ck}</button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Selected summary */}
+                      <div style={{ marginTop: SPACING.sm, fontSize: FONT.sizeXs, color: COLORS.textPrimary }}>
+                        Will set to: <strong>{editing[fix.id].length > 0 ? editing[fix.id].join(' | ') : '(none selected)'}</strong>
                       </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Impact */}
                   <div style={{ fontSize: '0.7rem', color: cat.color, marginTop: SPACING.xs, fontWeight: 500 }}>

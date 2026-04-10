@@ -313,10 +313,15 @@ export const POST = withShopAuth(async ({ req }) => {
   if (!fix) return NextResponse.json({ error: 'Fix not found' }, { status: 404 });
 
   if (action === 'apply') {
+    // Use custom class_keys if provided (owner override), otherwise use proposed
+    const finalClassKeys = Array.isArray(body.customClassKeys) && body.customClassKeys.length > 0
+      ? body.customClassKeys
+      : fix.proposedClassKeys;
+
     // Update the vehicle's class_keys
     const { error } = await supabase
       .from('auto_vehicles')
-      .update({ class_keys: fix.proposedClassKeys })
+      .update({ class_keys: finalClassKeys })
       .eq('id', fix.vehicleId);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
