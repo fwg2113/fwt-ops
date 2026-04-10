@@ -28,11 +28,12 @@ import AutoTintBookingTab from './tabs/AutoTintBookingTab';
 import ServicesTab from './tabs/ServicesTab';
 import FilmsTab from './tabs/FilmsTab';
 import VehiclesTab from './tabs/VehiclesTab';
+import VehicleFixerTab from './tabs/VehicleFixerTab';
 
 type TabKey =
   | 'shop-info' | 'brands' | 'modules' | 'appearance' | 'team'
   | 'schedule' | 'closed-dates' | 'notifications' | 'alert-sounds' | 'checkout' | 'action-buttons' | 'payment' | 'discounts' | 'calls'
-  | 'auto-tint-booking' | 'auto-tint-services' | 'auto-tint-films' | 'auto-tint-vehicles';
+  | 'auto-tint-booking' | 'auto-tint-services' | 'auto-tint-films' | 'auto-tint-vehicles' | 'auto-tint-vehicle-fixer';
 
 interface NavSection {
   title: string;
@@ -97,6 +98,7 @@ export default function SettingsPage() {
         { key: 'auto-tint-services', label: 'Services' },
         { key: 'auto-tint-films', label: 'Films & Pricing' },
         { key: 'auto-tint-vehicles', label: 'Vehicles' },
+        { key: 'auto-tint-vehicle-fixer', label: 'Vehicle DB Audit' },
       ],
     },
   ], []);
@@ -324,6 +326,9 @@ export default function SettingsPage() {
               )}
               {activeTab === 'auto-tint-vehicles' && (
                 <VehiclesTab />
+              )}
+              {activeTab === 'auto-tint-vehicle-fixer' && (
+                <VehicleFixerTab />
               )}
             </>
           )}
