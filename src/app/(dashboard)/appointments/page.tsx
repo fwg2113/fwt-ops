@@ -833,7 +833,9 @@ function AppointmentsPageInner() {
                   {/* Order badge */}
                   <div style={{
                     position: 'absolute', top: -8, left: 12,
-                    background: '#f59e0b', color: '#000', fontSize: '0.65rem', fontWeight: 800,
+                    background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
+                    border: '1px solid rgba(245,158,11,0.3)',
+                    fontSize: '0.65rem', fontWeight: 800,
                     padding: '2px 8px', borderRadius: 10,
                   }}>
                     #{idx + 1} {typeLabel}
