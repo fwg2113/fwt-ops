@@ -29,7 +29,7 @@ interface Props {
 const DEFAULT_SLOTS = [
   '09:00','09:30','10:00','10:30','11:00','11:30',
   '12:00','12:30','13:00','13:30','14:00','14:30',
-  '15:00','15:30','16:00',
+  '15:00','15:30','16:00','16:30','17:00','17:30','18:00',
 ];
 
 function formatTimeDisplay(time: string): string {
@@ -48,6 +48,7 @@ export default function HeadsUpModal({ appointments, selectedDate, onClose, onRe
   const [sentMessage, setSentMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [offers, setOffers] = useState<OfferStatus[]>([]);
+  const [bypassTimeLimits, setBypassTimeLimits] = useState(false);
 
   // Fetch existing offer statuses
   const fetchStatus = useCallback(async () => {
@@ -85,6 +86,7 @@ export default function HeadsUpModal({ appointments, selectedDate, onClose, onRe
   }, []);
 
   function isSlotExpired(time: string, noticeMin: number): boolean {
+    if (bypassTimeLimits) return false;
     const slotDate = new Date(`${selectedDate}T${time}:00`);
     const cutoff = new Date(slotDate.getTime() - noticeMin * 60 * 1000);
     return now > cutoff;
@@ -291,8 +293,8 @@ export default function HeadsUpModal({ appointments, selectedDate, onClose, onRe
                     {tab === 'individual' ? `Times to offer ${selectedApt?.customer_name.split(' ')[0]}` : 'Pool times (first come, first served)'}
                   </div>
 
-                  {/* Quick fill buttons */}
-                  <div style={{ display: 'flex', gap: 6, marginBottom: SPACING.md, flexWrap: 'wrap' }}>
+                  {/* Quick fill buttons + bypass toggle */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: SPACING.md, flexWrap: 'wrap', alignItems: 'center' }}>
                     {[
                       { label: 'Next 3 hrs', mode: 'next3' as const },
                       { label: 'Afternoon', mode: 'afternoon' as const },
@@ -315,6 +317,12 @@ export default function HeadsUpModal({ appointments, selectedDate, onClose, onRe
                         Clear
                       </button>
                     )}
+                    <div style={{ flex: 1 }} />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={bypassTimeLimits} onChange={e => setBypassTimeLimits(e.target.checked)}
+                        style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                      <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>Override time limits</span>
+                    </label>
                   </div>
 
                   {/* Time grid */}
