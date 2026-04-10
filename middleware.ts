@@ -31,6 +31,7 @@ const PUBLIC_ROUTES = [
   '/api/auth/station-login', // station login
   '/api/auto/time-clock', // time clock (PIN-authenticated)
   '/api/auth/setup-owner', // one-time owner setup
+  '/api/auth/station-logout', // station mode cookie clear
   '/api/voice/', // Twilio voice webhooks (incoming calls, status, transfers)
   '/api/cron/', // Vercel cron jobs
   '/api/google/callback', // Google OAuth callback

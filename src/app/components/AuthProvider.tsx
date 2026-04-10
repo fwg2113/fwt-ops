@@ -42,6 +42,40 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Check for station-mode first. Station login stores user details in
+    // sessionStorage (set by /station page after PIN auth). If present, skip
+    // the Supabase Auth flow entirely — station users don't have Supabase
+    // sessions, they have an HMAC cookie that the middleware + withShopAuth
+    // verify server-side.
+    const stationToken = typeof window !== 'undefined' && sessionStorage.getItem('station_token');
+    if (stationToken) {
+      const stationName = sessionStorage.getItem('station_user_name') || 'Station';
+      const stationTeamMemberId = sessionStorage.getItem('station_team_member_id') || '';
+      const stationRole = sessionStorage.getItem('station_role') || 'installer';
+      // Load full profile from the station-login response stored in sessionStorage
+      // The rolePermissions come from the server (station-login/route.ts verified
+      // the PIN and returned the team_roles.permissions join). We store them in
+      // sessionStorage alongside the token so we don't need another API call.
+      let rolePermissions: Record<string, boolean> = {};
+      const storedPerms = sessionStorage.getItem('station_role_permissions');
+      if (storedPerms) {
+        try { rolePermissions = JSON.parse(storedPerms); } catch { /* use empty */ }
+      }
+      setUser({
+        id: `station:${stationTeamMemberId}`,
+        email: '',
+        shopId: 1,
+        role: stationRole,
+        name: stationName,
+        teamMemberId: stationTeamMemberId,
+        loginMode: 'station',
+        rolePermissions,
+        viewPreferences: {},
+      });
+      setLoading(false);
+      return; // Don't subscribe to Supabase Auth changes for station mode
+    }
+
     const supabase = createSupabaseBrowser();
 
     // Get initial session
@@ -124,6 +158,21 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }
 
   async function signOut() {
+    // Clear station-mode storage if present
+    if (typeof window !== 'undefined' && sessionStorage.getItem('station_token')) {
+      sessionStorage.removeItem('station_token');
+      sessionStorage.removeItem('station_user_name');
+      sessionStorage.removeItem('station_team_member_id');
+      sessionStorage.removeItem('station_role');
+      sessionStorage.removeItem('station_role_permissions');
+      sessionStorage.removeItem('station_module_permissions');
+      // Clear the HttpOnly cookie by hitting a logout endpoint
+      await fetch('/api/auth/station-logout', { method: 'POST' }).catch(() => {});
+      setUser(null);
+      setSession(null);
+      window.location.href = '/station';
+      return;
+    }
     const supabase = createSupabaseBrowser();
     await supabase.auth.signOut();
     setUser(null);

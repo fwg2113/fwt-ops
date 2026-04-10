@@ -41,11 +41,13 @@ export default function StationLoginPage() {
         return;
       }
 
-      const { token, user_name, team_member_id, role } = await res.json();
-      sessionStorage.setItem('station_token', token);
-      sessionStorage.setItem('station_user_name', user_name);
-      sessionStorage.setItem('station_team_member_id', team_member_id);
-      sessionStorage.setItem('station_role', role);
+      const data = await res.json();
+      sessionStorage.setItem('station_token', data.token);
+      sessionStorage.setItem('station_user_name', data.name);
+      sessionStorage.setItem('station_team_member_id', data.teamMemberId);
+      sessionStorage.setItem('station_role', data.role);
+      sessionStorage.setItem('station_role_permissions', JSON.stringify(data.rolePermissions || {}));
+      sessionStorage.setItem('station_module_permissions', JSON.stringify(data.modulePermissions || []));
       router.push('/');
     } catch {
       setError('Connection error. Please try again.');
