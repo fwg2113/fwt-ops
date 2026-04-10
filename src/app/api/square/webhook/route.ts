@@ -6,10 +6,53 @@
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
 import { createQuoteForAppointment } from '@/app/lib/invoice-utils';
 import { notifyNewBooking } from '@/app/lib/notifications';
 import { syncBookingToCalendar } from '@/app/lib/google-calendar';
+
+// ----------------------------------------------------------------------------
+// Square Webhook Signature Verification
+// ----------------------------------------------------------------------------
+// Square signs every webhook with HMAC-SHA256 over (notification_url + body),
+// keyed by the signature key from the webhook subscription. Without this
+// check, anyone can POST a fake `payment.completed` event and confirm a
+// pending booking without paying.
+//
+// Set SQUARE_WEBHOOK_SIGNATURE_KEY in env from:
+//   Square Developer Dashboard → your app → Webhooks → Subscriptions → Signature Key
+// ----------------------------------------------------------------------------
+function verifySquareSignature(
+  body: string,
+  signatureHeader: string | null,
+  notificationUrl: string,
+): boolean {
+  const key = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
+  if (!key) {
+    // Fail-closed: if the secret isn't configured, reject everything.
+    // This is intentional — better to drop legit webhooks (the verify
+    // endpoint is the primary confirm path on redirect anyway) than to
+    // accept forged ones.
+    console.error('Square webhook: SQUARE_WEBHOOK_SIGNATURE_KEY not set, rejecting');
+    return false;
+  }
+  if (!signatureHeader) return false;
+
+  const hmac = crypto.createHmac('sha256', key);
+  hmac.update(notificationUrl + body);
+  const expected = hmac.digest('base64');
+
+  // Constant-time comparison to avoid timing attacks
+  try {
+    const sigBuf = Buffer.from(signatureHeader, 'base64');
+    const expBuf = Buffer.from(expected, 'base64');
+    if (sigBuf.length !== expBuf.length) return false;
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  } catch {
+    return false;
+  }
+}
 
 // Handle remote invoice payments (customer paid via Square Payment Link)
 async function handleInvoicePayment(payment: any): Promise<boolean> {
@@ -118,6 +161,24 @@ async function handleInvoicePayment(payment: any): Promise<boolean> {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text();
+
+    // Verify HMAC signature before parsing or trusting any field of the body.
+    // Square sends `x-square-hmacsha256-signature` keyed over (URL + body).
+    // The notification_url MUST match exactly what's registered in the Square
+    // Developer Dashboard for the webhook subscription.
+    const signatureHeader = request.headers.get('x-square-hmacsha256-signature');
+    const protoHeader = request.headers.get('x-forwarded-proto') || 'https';
+    const hostHeader = request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
+    const notificationUrl = `${protoHeader}://${hostHeader}${request.nextUrl.pathname}`;
+
+    if (!verifySquareSignature(body, signatureHeader, notificationUrl)) {
+      console.error('Square webhook: signature verification failed', {
+        hasSignature: !!signatureHeader,
+        notificationUrl,
+      });
+      return NextResponse.json({ error: 'invalid signature' }, { status: 401 });
+    }
+
     const event = JSON.parse(body);
 
     // Handle payment.completed event

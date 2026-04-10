@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
+import { verifyTwilioRequest } from '@/app/lib/twilio-verify';
 
 // POST /api/voice/complete
 // Twilio webhook: Dial action -- called when Dial ends (no answer, hangup, or transfer)
+//
+// SECURITY: verifies X-Twilio-Signature. Audit C5.
 export async function POST(request: NextRequest) {
   try {
+    const verified = await verifyTwilioRequest(request);
+    if (verified instanceof NextResponse) return verified;
+    const form = verified;
     const url = new URL(request.url);
     const callSid = url.searchParams.get('callSid');
-
-    const form = await request.formData();
     const dialCallStatus = form.get('DialCallStatus') as string;
     const dialCallDuration = form.get('DialCallDuration') as string;
 

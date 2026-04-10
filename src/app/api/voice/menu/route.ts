@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
+import { verifyTwilioRequest } from '@/app/lib/twilio-verify';
 
 // IVR menu categories
 const CATEGORY_MAP: Record<string, { key: string; label: string }> = {
@@ -36,8 +37,11 @@ function isAvailableNow(schedule: Record<string, { start: string; end: string } 
 
 // POST /api/voice/menu
 // Twilio webhook: handles digit selection from IVR menu
+// SECURITY: verifies X-Twilio-Signature. Audit C5.
 export async function POST(request: NextRequest) {
-  const form = await request.formData();
+  const verified = await verifyTwilioRequest(request);
+  if (verified instanceof NextResponse) return verified;
+  const form = verified;
   const digits = form.get('Digits') as string;
   const url = new URL(request.url);
   const callSid = url.searchParams.get('callSid') || (form.get('CallSid') as string);

@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyTwilioRequest } from '@/app/lib/twilio-verify';
 
 // POST /api/voice/outbound
 // TwiML App Voice URL: handles outbound calls from browser/SIP
+//
+// SECURITY: verifies X-Twilio-Signature. Without it, anyone can POST `To=+234...`
+// and trigger international toll fraud calls billed to your account. Audit C4/C5.
 export async function POST(request: NextRequest) {
-  const form = await request.formData();
+  const verified = await verifyTwilioRequest(request);
+  if (verified instanceof NextResponse) return verified;
+  const form = verified;
   const to = form.get('To') as string;
   const twilioNumber = process.env.TWILIO_PHONE_NUMBER || '';
 

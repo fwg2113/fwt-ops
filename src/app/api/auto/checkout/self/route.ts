@@ -126,13 +126,40 @@ export async function GET() {
 
 // ============================================================================
 // POST /api/auto/checkout/self
-// Creates an invoice on-demand for a self-checkout customer
+// Creates an invoice on-demand for a self-checkout customer.
+//
+// SECURITY (audit H3): The customer must prove they own the booking by
+// providing the last 4 digits of the phone number on file. Without this,
+// any internet attacker who knows a booking ID can mint an invoice for it
+// and read the customer's full name + vehicle + price via /invoice/[token].
+// The GET endpoint exposes booking IDs (with masked phones) so the bookingId
+// is not secret — phoneLast4 is the auth gate.
 // ============================================================================
 export async function POST(request: NextRequest) {
   try {
-    const { bookingId } = await request.json();
+    const { bookingId, phoneLast4 } = await request.json();
     if (!bookingId) {
       return NextResponse.json({ error: 'bookingId required' }, { status: 400 });
+    }
+    if (!phoneLast4 || typeof phoneLast4 !== 'string' || !/^\d{4}$/.test(phoneLast4)) {
+      return NextResponse.json({ error: 'Last 4 digits of phone required' }, { status: 400 });
+    }
+
+    // Verify the bookingId belongs to a phone whose last 4 match
+    const { data: booking } = await supabaseAdmin
+      .from('auto_bookings')
+      .select('id, customer_phone')
+      .eq('id', bookingId)
+      .single();
+
+    if (!booking) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+    }
+
+    const digits = (booking.customer_phone || '').replace(/\D/g, '');
+    if (digits.length < 4 || digits.slice(-4) !== phoneLast4) {
+      // Don't reveal whether the booking exists vs the phone is wrong
+      return NextResponse.json({ error: 'Verification failed' }, { status: 403 });
     }
 
     const result = await createInvoiceFromBooking(bookingId, 'self_checkout');

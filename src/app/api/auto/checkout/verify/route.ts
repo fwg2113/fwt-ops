@@ -3,11 +3,19 @@ import { supabaseAdmin } from '@/app/lib/supabase-server';
 import { createQuoteForAppointment } from '@/app/lib/invoice-utils';
 import { notifyNewBooking } from '@/app/lib/notifications';
 import { syncBookingToCalendar } from '@/app/lib/google-calendar';
+import { createTenantSquareClient } from '@/app/lib/square';
 
 // GET /api/auto/checkout/verify?session_id=xxx
-// Confirms a booking after Square payment. If the webhook hasn't run yet,
-// this endpoint does the confirmation directly -- payment already succeeded
-// by the time the customer reaches the confirmation page.
+// Confirms a booking after Square payment.
+//
+// SECURITY (audit C7): Previously this endpoint confirmed bookings purely on
+// the presence of a session_id in the database, with no actual verification
+// that the customer paid. Combined with weak Math.random() session keys, an
+// attacker who guessed a session_id could mark a pending booking as paid
+// without ever paying. Now, before confirming, we query Square's Orders API
+// to verify the order's state == 'COMPLETED'. The signed webhook is the
+// primary confirm path; this endpoint is a redundant fallback for when
+// Square redirects the customer back before the webhook arrives.
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get('session_id');
 
@@ -15,6 +23,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'session_id required' }, { status: 400 });
   }
 
+  // session_id is the Square order_id (post-2026-04-09 fix). Look up the
+  // booking by it. The webhook uses the same key, so this lookup matches
+  // whichever path created/confirmed the booking.
   const { data: booking } = await supabaseAdmin
     .from('auto_bookings')
     .select('*')
@@ -55,8 +66,40 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ confirmed: true, bookingId: booking.booking_id, details: bookingDetails });
   }
 
-  // Payment succeeded but webhook hasn't confirmed yet -- do it now
+  // Payment may have succeeded but webhook hasn't fired yet — but we MUST
+  // verify directly with Square that the order is paid before confirming.
+  // Without this check, an attacker who guesses or observes a session_id
+  // could mark the pending booking as paid without ever paying.
   if (booking.status === 'pending_payment') {
+    // Fetch the shop's Square access token to query the order
+    const { data: shopRow } = await supabaseAdmin
+      .from('shop_config')
+      .select('square_access_token, square_connected')
+      .eq('id', booking.shop_id || 1)
+      .single();
+
+    if (!shopRow?.square_connected || !shopRow.square_access_token) {
+      console.error('Verify: Square not connected, cannot verify order', { sessionId });
+      return NextResponse.json({ confirmed: false, reason: 'Square not connected' });
+    }
+
+    try {
+      const tenantSquare = createTenantSquareClient(shopRow.square_access_token);
+      // session_id IS the Square order_id (post-2026-04-09 fix)
+      const orderResp: any = await tenantSquare.orders.get({ orderId: sessionId });
+      const order = orderResp.order || orderResp.data?.order || orderResp.data;
+      const orderState = order?.state;
+      // Square order states: OPEN, COMPLETED, CANCELED, DRAFT
+      // A paid order via payment link transitions to COMPLETED.
+      if (orderState !== 'COMPLETED') {
+        console.log('Verify: order not yet completed', { sessionId, orderState });
+        return NextResponse.json({ confirmed: false, reason: 'Payment not yet confirmed' });
+      }
+    } catch (err) {
+      console.error('Verify: Square order lookup failed', err);
+      return NextResponse.json({ confirmed: false, reason: 'Could not verify with Square' });
+    }
+
     // Generate real booking ID
     const { data: bookingIdResult } = await supabaseAdmin.rpc('generate_auto_booking_id');
     const bookingId = bookingIdResult || `${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-000`;

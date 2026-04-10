@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
+import { verifyTwilioRequest } from '@/app/lib/twilio-verify';
 
 // POST /api/voice/status
 // Twilio webhook: child call status (SIP/Client endpoints in Dial)
 // Tracks who answered the call
+//
+// SECURITY: verifies X-Twilio-Signature. Audit C5.
 export async function POST(request: NextRequest) {
-  const form = await request.formData();
+  const verified = await verifyTwilioRequest(request);
+  if (verified instanceof NextResponse) return verified;
+  const form = verified;
   const callStatus = form.get('CallStatus') as string;
   const parentCallSid = form.get('ParentCallSid') as string;
   const childCallSid = form.get('CallSid') as string;

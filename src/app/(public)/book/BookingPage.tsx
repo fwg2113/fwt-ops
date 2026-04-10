@@ -64,7 +64,7 @@ export default function BookingPage() {
     return true;
   })();
 
-  // Handle booking — routes through Stripe Checkout for deposits, direct for GC/no-deposit
+  // Handle booking — routes through Square Checkout for deposits, direct for GC/no-deposit
   const handleBook = useCallback(async () => {
     if (!canBook || !config || !bs.selectedVehicle) return;
     setBooking(true);
@@ -101,7 +101,7 @@ export default function BookingPage() {
     };
 
     try {
-      // Check if this booking needs Stripe payment (deposit required and no GC bypass)
+      // Check if this booking needs a deposit payment (required and no GC bypass)
       const needsPayment = config.shopConfig.require_deposit
         && bs.priceSummary.depositAmount > 0
         && (bs.state.gcValidation?.chargeDeposit !== false);
@@ -116,7 +116,7 @@ export default function BookingPage() {
 
         const data = await res.json();
         if (data.url) {
-          // Redirect to Stripe Checkout
+          // Redirect to Square Checkout
           window.location.href = data.url;
           return; // Don't setBooking(false) — page is navigating away
         } else if (data.skipPayment) {

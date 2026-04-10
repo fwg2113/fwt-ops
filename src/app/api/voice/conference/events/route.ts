@@ -2,17 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
 import { createCall, holdParticipant, hangupCall } from '@/app/lib/twilio-voice';
 import { sendSms } from '@/app/lib/messaging';
+import { verifyTwilioRequest } from '@/app/lib/twilio-verify';
 
 // POST /api/voice/conference/events
 // Twilio webhook: conference participant join/leave/end events
 // Drives the warm transfer flow.
+//
+// SECURITY: verifies X-Twilio-Signature. Audit C5.
 export async function POST(request: NextRequest) {
   try {
+    const verified = await verifyTwilioRequest(request);
+    if (verified instanceof NextResponse) return verified;
     const url = new URL(request.url);
     // Get the parent call SID from query params (set when conference was created)
     const confName = url.searchParams.get('conf') || '';
 
-    const form = await request.formData();
+    const form = verified;
     const event = form.get('StatusCallbackEvent') as string;
     const conferenceSid = form.get('ConferenceSid') as string;
     const participantCallSid = form.get('CallSid') as string; // The specific participant's call SID

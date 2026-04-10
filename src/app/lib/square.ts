@@ -31,7 +31,11 @@ export const SQUARE_APP_ID = isSandbox
 
 export const SQUARE_OAUTH_SECRET = process.env.SQUARE_OAUTH_SECRET!;
 
-// Helper: generate a unique idempotency key for Square API calls
+// Helper: generate a unique idempotency key for Square API calls.
+// Uses crypto.randomUUID() (cryptographically secure) to make the key
+// unguessable. Previously used Date.now() + Math.random() which gave only
+// ~40 bits of entropy and was brute-forceable. Audit C7/L5.
+import { randomUUID } from 'crypto';
 export function idempotencyKey(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return randomUUID();
 }

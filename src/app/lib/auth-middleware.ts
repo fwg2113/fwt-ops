@@ -38,6 +38,25 @@ type PublicHandler = (ctx: PublicContext) => Promise<NextResponse>;
  *   export const GET = withShopAuth(async ({ shopId, userId, req }) => { ... })
  *   export const POST = withShopAuth(async ({ shopId, userId, req }) => { ... })
  */
+// SECURITY: Explicit allowlist of routes that may run with the unauthenticated
+// "shop 1 default" fallback. These are customer-facing flows where the caller
+// is a customer browser without a session — but the route still uses withShopAuth
+// because it needs shopId scoping for queries.
+//
+// Anything NOT in this allowlist must reach withShopAuth with a real authenticated
+// user, or it gets 401. This prevents an accidental middleware whitelist mistake
+// from inheriting owner access (root cause of the 2026-04-09 audit findings).
+const PUBLIC_FALLBACK_ALLOWLIST: readonly string[] = [
+  '/api/auto/leads',          // customer lead booking flow (GET/PATCH from /book/lead/[token])
+  '/api/auto/inquiries',      // vehicle inquiry submission from booking page
+  '/api/auto/checkout/self',  // self-checkout QR landing flow
+  '/api/auto/checkout/verify',// post-Square-payment redirect verification
+];
+
+function isPublicFallbackAllowed(pathname: string): boolean {
+  return PUBLIC_FALLBACK_ALLOWLIST.some(allowed => pathname.startsWith(allowed));
+}
+
 export function withShopAuth(handler: AuthenticatedHandler) {
   return async (req: NextRequest): Promise<NextResponse> => {
     try {
@@ -73,9 +92,14 @@ export function withShopAuth(handler: AuthenticatedHandler) {
       }
 
       if (!user) {
-        // No auth at all -- return 401
-        // Temporary fallback for transition period: default to shop 1
-        // TODO: Remove this fallback once all team members have accounts
+        // SECURITY: only the allowlisted customer-facing routes get the shop-1
+        // fallback. Everything else returns 401. Without this restriction, ANY
+        // route accidentally added to the middleware PUBLIC_ROUTES whitelist
+        // would inherit owner-level access — the exact root cause of the
+        // 2026-04-09 documents-route exposure.
+        if (!isPublicFallbackAllowed(req.nextUrl.pathname)) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
         return handler({
           shopId: 1,
           userId: 'system',

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
+import { verifyTwilioRequest } from '@/app/lib/twilio-verify';
 
 /**
  * Handle outbound calls from SIP softphone app (Oiga/Linphone).
@@ -10,10 +11,16 @@ import { supabaseAdmin } from '@/app/lib/supabase-server';
  * With answerOnBridge="true", Twilio delays the 200 OK until the callee answers,
  * which causes the SIP client's NAT mapping to expire. The ACK never arrives
  * back at Twilio, triggering Error 32022 and dropping the call after ~32 seconds.
+ *
+ * SECURITY: Verifies X-Twilio-Signature on every request. Without this,
+ * any attacker can POST `To=sip:+234...@...` and trigger international toll
+ * fraud calls billed to your Twilio account. Audit C4.
  */
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
+    const verified = await verifyTwilioRequest(request);
+    if (verified instanceof NextResponse) return verified;
+    const formData = verified;
     const callSid = formData.get('CallSid') as string;
     const to = formData.get('To') as string; // e.g. sip:+15551234567@fwt.sip.twilio.com
 

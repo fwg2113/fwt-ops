@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
+import { verifyTwilioRequest } from '@/app/lib/twilio-verify';
 
 // POST /api/voice/twiml
 // TwiML App Voice URL: handles outbound calls from browser client.
 // When the dashboard PhoneWidget initiates a call via Twilio Device.connect(),
 // Twilio hits this URL to get TwiML for how to handle the call.
+//
+// SECURITY: This route MUST verify the X-Twilio-Signature header. Without it,
+// any internet attacker can POST `To=+234...` and cause Twilio to dial premium-
+// rate international numbers billed to your account (toll fraud). Audit C4.
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.text();
-    const params = new URLSearchParams(body);
+    const verified = await verifyTwilioRequest(request);
+    if (verified instanceof NextResponse) return verified;
+    const params = verified;
     const to = params.get('To');
     const callSid = params.get('CallSid');
     const twilioNumber = process.env.TWILIO_PHONE_NUMBER;

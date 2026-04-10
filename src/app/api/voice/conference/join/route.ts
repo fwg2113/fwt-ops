@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyTwilioRequest } from '@/app/lib/twilio-verify';
 
 // POST /api/voice/conference/join
 // Returns TwiML to join a named conference (used in warm transfers)
+//
+// SECURITY: verifies X-Twilio-Signature. Audit C5.
 export async function POST(request: NextRequest) {
+  const verified = await verifyTwilioRequest(request);
+  if (verified instanceof NextResponse) return verified;
   const url = new URL(request.url);
   const conf = url.searchParams.get('conf') || 'default';
   const role = url.searchParams.get('role') || 'agent';

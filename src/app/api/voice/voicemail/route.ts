@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
+import { verifyTwilioRequest } from '@/app/lib/twilio-verify';
 
 // POST /api/voice/voicemail
 // Twilio webhook: voicemail recording completed
+//
+// SECURITY: verifies X-Twilio-Signature. Without this, attackers could
+// poison the calls table with arbitrary RecordingUrl content. Audit C5/M9.
 export async function POST(request: NextRequest) {
-  const form = await request.formData();
+  const verified = await verifyTwilioRequest(request);
+  if (verified instanceof NextResponse) return verified;
+  const form = verified;
   const recordingUrl = form.get('RecordingUrl') as string;
   const recordingDuration = form.get('RecordingDuration') as string;
 

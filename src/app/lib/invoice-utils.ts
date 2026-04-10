@@ -57,10 +57,15 @@ export async function createDocumentFromBooking(
     return { error: 'Appointment not found' };
   }
 
-  // Check if document already exists for this booking
+  // Check if document already exists for this booking.
+  // Read starting_total too — it's the immutable upsell baseline (locked at
+  // quote creation). We must NOT recompute it from booking.subtotal here,
+  // because by counter-checkout time the booking has been edited up to the
+  // upsold value and the original is gone. The quote document is the source
+  // of truth for "what the customer originally agreed to."
   const { data: existingDoc } = await supabaseAdmin
     .from('documents')
-    .select('id, public_token, doc_number')
+    .select('id, public_token, doc_number, starting_total')
     .eq('booking_id', bookingId)
     .eq('shop_id', shopId)
     .single();
@@ -106,8 +111,19 @@ export async function createDocumentFromBooking(
         nextDocNumber = rpcDocNumber || existingDoc.doc_number;
       }
 
-      const startingTotal = booking.starting_total_override ?? booking.subtotal;
-      const upsellAmount = Math.max(0, booking.subtotal - startingTotal);
+      // Upsell baseline = the document's existing starting_total (locked at
+      // quote creation). NEVER overwrite with booking.subtotal — by this point,
+      // the EditAppointmentModal may have already updated booking.subtotal to
+      // the upsold value, which would destroy the original baseline and zero
+      // out the upsell for commission math.
+      // Owner-set starting_total_override on the booking takes precedence
+      // (manual override for edge cases). Falls back to existing doc value,
+      // then to current subtotal as a last resort for legacy docs that never
+      // had starting_total set.
+      const lockedStartingTotal = booking.starting_total_override
+        ?? existingDoc.starting_total
+        ?? booking.subtotal;
+      const upsellAmount = Math.max(0, (Number(booking.subtotal) || 0) - Number(lockedStartingTotal || 0));
       // Recompute balance_due from the booking's authoritative components
       // (subtotal − discount − deposit) instead of trusting booking.balance_due.
       const recomputedBalance = Math.max(0, (Number(booking.subtotal) || 0)
@@ -120,7 +136,10 @@ export async function createDocumentFromBooking(
           doc_number: nextDocNumber,
           checkout_type: checkoutType,
           subtotal: booking.subtotal,
-          starting_total: startingTotal,
+          // Only write starting_total if it's currently null (legacy back-fill);
+          // otherwise leave the immutable original alone. This is the core fix
+          // for the upsell snapshot bug — see project_upsell_tracking_commissions.md.
+          ...(existingDoc.starting_total == null ? { starting_total: lockedStartingTotal } : {}),
           upsell_amount: upsellAmount,
           discount_amount: booking.discount_amount,
           deposit_paid: booking.deposit_paid,
@@ -266,6 +285,41 @@ export async function createDocumentFromBooking(
     if (lineError) {
       console.error('Line items insert error:', lineError);
       // Document was created but line items failed — log but don't fail
+    }
+  }
+
+  // If a deposit was paid at booking time, create a corresponding
+  // document_payments row so the audit trail is complete. Without this,
+  // documents.total_paid is correct on display but SUM(document_payments)
+  // is short by the deposit amount — meaning bank reconciliation, payment-
+  // method reports, and any downstream audit can't reconstruct where the
+  // money came from. This applies to live customers, not just historic.
+  const depositAmt = Number(booking.deposit_paid) || 0;
+  if (depositAmt > 0) {
+    const depositPaymentRow: Record<string, unknown> = {
+      document_id: created.id,
+      shop_id: shopId,
+      amount: depositAmt,
+      payment_method: 'credit_card',
+      processor: booking.booking_source === 'online' ? 'square' : 'manual',
+      reference_id: booking.stripe_checkout_session_id || `deposit_${booking.booking_id}`,
+      status: 'confirmed',
+      notes: 'Booking deposit (auto-recorded at invoice creation)',
+    };
+    // Backdate historic deposits to the appointment date so the payment row
+    // appears in the correct historic month, not "today."
+    if (historicCreatedAt) {
+      depositPaymentRow.created_at = historicCreatedAt;
+    }
+
+    const { error: depositErr } = await supabaseAdmin
+      .from('document_payments')
+      .insert(depositPaymentRow);
+
+    if (depositErr) {
+      console.error('Deposit payment row insert error:', depositErr);
+      // Don't fail the doc creation — the deposit IS still reflected in
+      // documents.total_paid, just the audit row is missing.
     }
   }
 

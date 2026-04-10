@@ -4,25 +4,33 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/app/lib/supabase-server';
+import { withShopAuth } from '@/app/lib/auth-middleware';
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+// Internal handler — wrapped with withShopAuth below.
+// SECURITY: previously this route was unauthenticated and used supabaseAdmin
+// directly with no shop scoping. Combined with the /api/documents/ middleware
+// whitelist mistake, anyone on the internet could POST a fake payment to any
+// document, mark it as paid, and auto-post fake revenue to the bookkeeping
+// ledger. Fixed 2026-04-09 (audit C3).
+async function handlePost(
+  documentId: string,
+  body: { amount?: number | string; payment_method?: string; processor?: string; notes?: string },
+  shopId: number,
 ) {
   try {
-    const { id: documentId } = await params;
-    const body = await request.json();
     const { amount, payment_method, processor, notes } = body;
 
-    if (!amount || amount <= 0) {
+    const amountNum = Number(amount);
+    if (!amountNum || amountNum <= 0 || Number.isNaN(amountNum)) {
       return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 });
     }
 
-    // Verify document exists
+    // Verify document exists AND belongs to the authenticated shop
     const { data: doc } = await supabaseAdmin
       .from('documents')
       .select('id, shop_id, balance_due, total_paid, status, import_source, created_at')
       .eq('id', documentId)
+      .eq('shop_id', shopId)
       .single();
 
     if (!doc) {
@@ -35,7 +43,7 @@ export async function POST(
       .insert({
         document_id: documentId,
         shop_id: doc.shop_id || 1,
-        amount: parseFloat(amount),
+        amount: amountNum,
         payment_method: payment_method || 'cash',
         processor: processor || 'manual',
         status: 'confirmed',
@@ -49,8 +57,8 @@ export async function POST(
     }
 
     // Update document totals
-    const newTotalPaid = (doc.total_paid || 0) + parseFloat(amount);
-    const newBalanceDue = Math.max(0, (doc.balance_due || 0) - parseFloat(amount));
+    const newTotalPaid = (doc.total_paid || 0) + amountNum;
+    const newBalanceDue = Math.max(0, (doc.balance_due || 0) - amountNum);
     const newStatus = newBalanceDue <= 0.01 ? 'paid' : (newTotalPaid > 0 ? 'partial' : doc.status);
 
     // For historic backfill rows, backdate paid_at to the document's
@@ -143,7 +151,7 @@ export async function POST(
           brand: 'default',
           direction: 'IN',
           event_type: 'SALE',
-          amount: parseFloat(amount),
+          amount: amountNum,
           account: processor || 'Manual',
           category: 'Auto Tint Revenue',
           vendor_or_customer: fullDoc?.customer_name || null,
@@ -168,15 +176,45 @@ export async function POST(
   }
 }
 
+// Public-facing wrapper: requires authenticated user via withShopAuth.
+// The shop scoping is enforced inside handlePost via .eq('shop_id', shopId).
+export const POST = withShopAuth(async ({ shopId, req }) => {
+  // Extract documentId from the URL pathname (not provided via params here
+  // because withShopAuth wraps the handler and doesn't pass the dynamic segment).
+  const segments = req.nextUrl.pathname.split('/');
+  // .../api/documents/[id]/payments → segments[3]='documents', segments[4]=id
+  const documentId = segments[segments.indexOf('documents') + 1];
+  if (!documentId) {
+    return NextResponse.json({ error: 'Document ID required' }, { status: 400 });
+  }
+  const body = await req.json().catch(() => ({}));
+  return handlePost(documentId, body, shopId);
+});
+
 // ============================================================================
 // DELETE /api/documents/[id]/payments — Void all payments for a document
+// SECURITY: scoped to authenticated shop. Verifies the document belongs to
+// the caller's shop before deleting any payment rows.
 // ============================================================================
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withShopAuth(async ({ shopId, req }) => {
   try {
-    const { id: documentId } = await params;
+    const segments = req.nextUrl.pathname.split('/');
+    const documentId = segments[segments.indexOf('documents') + 1];
+    if (!documentId) {
+      return NextResponse.json({ error: 'Document ID required' }, { status: 400 });
+    }
+
+    // Verify the document belongs to this shop before deleting payments.
+    const { data: doc } = await supabaseAdmin
+      .from('documents')
+      .select('id')
+      .eq('id', documentId)
+      .eq('shop_id', shopId)
+      .single();
+
+    if (!doc) {
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
 
     const { error } = await supabaseAdmin
       .from('document_payments')
@@ -184,7 +222,7 @@ export async function DELETE(
       .eq('document_id', documentId);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to void payments' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
@@ -192,4 +230,4 @@ export async function DELETE(
     console.error('Payment void error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});

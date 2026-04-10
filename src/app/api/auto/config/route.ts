@@ -72,8 +72,33 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load configuration' }, { status: 500 });
     }
 
+    // SECURITY: Strip ALL sensitive fields from shop_config before returning
+    // to the public booking page. This is an unauthenticated endpoint — anything
+    // returned here is visible to anyone who curls /api/auto/config.
+    // Without this strip, the route leaked OAuth access tokens for Square,
+    // Google Calendar, and Twilio auth credentials. Confirmed via security
+    // audit 2026-04-09.
+    const safeConfig = { ...shopConfigRes.data } as Record<string, unknown>;
+    const sensitiveFields = [
+      // Square OAuth (B2 platform credentials → tenant merchant access)
+      'square_access_token', 'square_refresh_token', 'square_merchant_id',
+      'square_token_expires_at',
+      // Google Calendar OAuth (calendar read/write)
+      'google_calendar_access_token', 'google_calendar_refresh_token',
+      'google_calendar_token_expiry',
+      // Twilio (SMS + voice billed to shop's account)
+      'twilio_auth_token', 'twilio_account_sid', 'twilio_api_key', 'twilio_api_secret',
+      // Stripe (legacy / SaaS subscription billing)
+      'stripe_secret_key', 'stripe_restricted_key', 'stripe_webhook_secret',
+      // Other potential secrets — defensive
+      'plaid_secret', 'plaid_access_token', 'resend_api_key',
+    ];
+    for (const field of sensitiveFields) {
+      delete safeConfig[field];
+    }
+
     return NextResponse.json({
-      shopConfig: shopConfigRes.data,
+      shopConfig: safeConfig,
       films: filmsRes.data || [],
       filmShades: filmShadesRes.data || [],
       filmBrands: filmBrandsRes.data || [],

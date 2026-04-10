@@ -24,6 +24,70 @@ export async function POST(request: NextRequest) {
       existingDocumentId, // If a quote document already exists (e.g., from FLQA lead), skip creating a new one
     } = body;
 
+    // SECURITY (audit H1/H2): basic sanity check on the total math.
+    // Stop-gap until full server-side price recompute is in place.
+    const sub = Number(subtotal) || 0;
+    const disc = Number(discountAmount) || 0;
+    const dep = Number(depositPaid) || 0;
+    const bal = Number(balanceDue) || 0;
+
+    // Reject obviously bogus values
+    if (sub < 0 || disc < 0 || dep < 0 || bal < 0 || sub > 100000) {
+      console.error('Booking rejected: invalid amounts', { sub, disc, dep, bal });
+      return NextResponse.json({ error: 'Invalid booking amounts' }, { status: 400 });
+    }
+    // Math must reconcile within $1 (NFW fees + percent rounding)
+    const expectedTotal = sub - disc;
+    const reportedTotal = dep + bal;
+    if (Math.abs(expectedTotal - reportedTotal) > 1.01) {
+      console.error('Booking rejected: total mismatch', { sub, disc, dep, bal });
+      return NextResponse.json({ error: 'Booking total mismatch — please refresh and try again' }, { status: 400 });
+    }
+    // Discount may not exceed subtotal
+    if (disc > sub) {
+      console.error('Booking rejected: discount > subtotal', { sub, disc });
+      return NextResponse.json({ error: 'Invalid discount amount' }, { status: 400 });
+    }
+    // Any non-trivial discount MUST be backed by a discountCode (gift cert,
+    // promo). Without this rule, an attacker can POST a $999 subtotal with
+    // a $999 discount and book a free appointment — the math reconciles to 0
+    // but no actual GC was used. Real GC validation happens further down.
+    if (disc > 0 && !discountCode) {
+      console.error('Booking rejected: discount with no code', { disc });
+      return NextResponse.json({ error: 'Discount code required for any discount' }, { status: 400 });
+    }
+    // Discount-via-code: re-validate the GC server-side so the client can't
+    // claim a $999 GC for a code that's actually worth $50.
+    if (disc > 0 && discountCode) {
+      const codeUpper = String(discountCode).toUpperCase().trim();
+      const { data: gc } = await supabaseAdmin
+        .from('auto_gift_certificates')
+        .select('id, amount, discount_type, discount_value, redeemed, expires_at')
+        .ilike('gc_code', codeUpper)
+        .single();
+      if (!gc) {
+        return NextResponse.json({ error: 'Invalid discount code' }, { status: 400 });
+      }
+      if (gc.redeemed) {
+        return NextResponse.json({ error: 'Discount code already used' }, { status: 400 });
+      }
+      if (gc.expires_at && new Date(gc.expires_at) < new Date()) {
+        return NextResponse.json({ error: 'Discount code expired' }, { status: 400 });
+      }
+      // Compute the maximum allowed discount based on the GC type
+      let maxDiscount = 0;
+      if (gc.discount_type === 'dollar') {
+        maxDiscount = Math.min(Number(gc.amount) || 0, sub);
+      } else if (gc.discount_type === 'percent') {
+        maxDiscount = sub * ((Number(gc.discount_value) || 0) / 100);
+      }
+      // Allow $1 tolerance for rounding
+      if (disc > maxDiscount + 1.01) {
+        console.error('Booking rejected: discount > max for code', { disc, maxDiscount, code: codeUpper });
+        return NextResponse.json({ error: 'Discount amount exceeds code value' }, { status: 400 });
+      }
+    }
+
     // Upsert customer by phone
     let customerId: string | null = null;
     if (phone) {
@@ -121,10 +185,31 @@ export async function POST(request: NextRequest) {
         .update({ document_id: existingDocumentId })
         .eq('id', booking.id);
 
-      // Update the document status to approved and link the booking
+      // Lock the upsell baseline at booking time. The price the customer
+      // ACTUALLY agreed to in this booking (subtotal) becomes the immutable
+      // starting_total — any future upsell at counter checkout is measured
+      // against this. We only set it if it isn't already locked (preserving
+      // any earlier value from quote creation, in case of re-booking).
+      const { data: existingDocRow } = await supabaseAdmin
+        .from('documents')
+        .select('starting_total')
+        .eq('id', existingDocumentId)
+        .single();
+
+      const docUpdate: Record<string, unknown> = {
+        status: 'approved',
+        booking_id: booking.id,
+        // Sync subtotal so the doc reflects the customer's actual chosen price
+        // (in options_mode they may pick a different option than the lead default).
+        subtotal: subtotal || 0,
+      };
+      if (existingDocRow?.starting_total == null) {
+        docUpdate.starting_total = subtotal || 0;
+      }
+
       await supabaseAdmin
         .from('documents')
-        .update({ status: 'approved', booking_id: booking.id })
+        .update(docUpdate)
         .eq('id', existingDocumentId);
     } else {
 

@@ -11,12 +11,21 @@ const PUBLIC_ROUTES = [
   '/checkout',
   '/flat-glass',
   '/api/auto/config',
-  '/api/auto/checkout',
-  '/api/auto/leads',
+  '/api/auto/checkout',          // /api/auto/checkout/{verify,self,counter}
+  '/api/auto/leads',              // GET/POST/PATCH on /api/auto/leads + /api/auto/leads/[token]
   '/api/auto/book',
+  '/api/auto/check-availability', // booking page date availability check
+  '/api/auto/inquiry',            // booking page vehicle inquiry form
+  '/api/auto/validate-gc',        // booking page gift certificate code validation
+  '/api/square/checkout',         // booking page deposit payment session creation
   '/api/square/webhook',
   '/api/square/oauth/callback',
-  '/api/documents/', // public token access
+  // NOTE: /api/documents/ was previously here but it inadvertently exposed the
+  // entire documents API tree (read invoices, rewrite line items, fake payments)
+  // because the routes use withShopAuth and would fall back to shop-1 owner.
+  // The legitimately public document access path is /api/invoice/[token] and
+  // /invoice/[token] (page) — both use the document's 128-bit public_token,
+  // not /api/documents/. Removed 2026-04-09.
   '/station', // station-based PIN login
   '/api/auth/verify-pin', // PIN verification (used by station + time clock)
   '/api/auth/station-login', // station login
