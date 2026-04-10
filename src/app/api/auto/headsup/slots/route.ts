@@ -56,17 +56,27 @@ export async function GET(request: NextRequest) {
       return nowMinutes > h * 60 + m;
     }
 
+    const HOLD_TTL_MS = 90 * 1000; // 90 seconds
+    const nowMs = Date.now();
+
     // Build slot list
     let slots: { time: string; display: string; status: string }[] = [];
 
     if (offer.mode === 'pool' && offer.headsup_pools) {
       const poolSlots = offer.headsup_pools.slots || [];
-      slots = poolSlots.map((s: { time: string; claimed_by: string | null }) => {
+      slots = poolSlots.map((s: { time: string; claimed_by: string | null; held_by?: string | null; held_at?: string | null }) => {
         let status = 'available';
         if (s.claimed_by && s.claimed_by !== 'null') {
           status = s.claimed_by === offer.booking_id ? 'yours' : 'taken';
         } else if (isSlotPast(s.time)) {
           status = 'expired';
+        } else if (s.held_by && s.held_by !== 'null') {
+          // Check if hold is still valid (90s TTL)
+          const heldAt = s.held_at ? new Date(s.held_at).getTime() : 0;
+          const holdValid = (nowMs - heldAt) < HOLD_TTL_MS;
+          if (holdValid) {
+            status = s.held_by === offer.booking_id ? 'your_hold' : 'held';
+          }
         }
         return {
           time: s.time,
@@ -76,9 +86,15 @@ export async function GET(request: NextRequest) {
       });
     } else {
       const offeredSlots = offer.offered_slots || [];
-      slots = offeredSlots.map((s: { time: string; status: string }) => {
+      slots = offeredSlots.map((s: { time: string; status: string; held?: string; held_at?: string | null }) => {
         let status = s.status;
-        if (status === 'available' && isSlotPast(s.time)) status = 'expired';
+        if (status === 'available' && isSlotPast(s.time)) {
+          status = 'expired';
+        } else if (status === 'available' && s.held === 'true') {
+          const heldAt = s.held_at ? new Date(s.held_at).getTime() : 0;
+          const holdValid = (nowMs - heldAt) < HOLD_TTL_MS;
+          if (holdValid) status = 'your_hold'; // individual mode = only this customer
+        }
         return {
           time: s.time,
           display: formatTimeDisplay(s.time),

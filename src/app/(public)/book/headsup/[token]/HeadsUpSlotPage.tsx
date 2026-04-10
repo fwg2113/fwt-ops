@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 interface SlotData {
   time: string;
   display: string;
-  status: 'available' | 'taken' | 'expired' | 'yours' | 'claimed';
+  status: 'available' | 'taken' | 'expired' | 'yours' | 'claimed' | 'held' | 'your_hold';
 }
 
 interface PageData {
@@ -38,6 +38,9 @@ export default function HeadsUpSlotPage() {
   const [rescheduling, setRescheduling] = useState(false);
   const [newTimeRequested, setNewTimeRequested] = useState(false);
   const [requestingNewTime, setRequestingNewTime] = useState(false);
+  const [holdingSlot, setHoldingSlot] = useState(false);
+  const [holdExpiry, setHoldExpiry] = useState<number | null>(null); // timestamp when hold expires
+  const [holdCountdown, setHoldCountdown] = useState(0);
 
   const fetchSlots = useCallback(async () => {
     try {
@@ -67,6 +70,60 @@ export default function HeadsUpSlotPage() {
     const interval = setInterval(fetchSlots, 10000);
     return () => clearInterval(interval);
   }, [fetchSlots, claimed, rescheduled, error]);
+
+  // Hold countdown timer
+  useEffect(() => {
+    if (!holdExpiry) { setHoldCountdown(0); return; }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((holdExpiry - Date.now()) / 1000));
+      setHoldCountdown(remaining);
+      if (remaining <= 0) {
+        setHoldExpiry(null);
+        setSelectedTime(null);
+        fetchSlots(); // refresh to release the hold visually
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [holdExpiry, fetchSlots]);
+
+  async function handleSelectSlot(time: string) {
+    if (holdingSlot) return;
+    // Deselect if tapping same slot
+    if (selectedTime === time) {
+      setSelectedTime(null);
+      setHoldExpiry(null);
+      setClaimError(null);
+      return;
+    }
+    setHoldingSlot(true);
+    setClaimError(null);
+    try {
+      const res = await fetch('/api/auto/headsup/hold', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, time }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setSelectedTime(time);
+        setHoldExpiry(Date.now() + 90 * 1000); // 90 second hold
+      } else {
+        const msgs: Record<string, string> = {
+          slot_taken: 'That slot was just claimed.',
+          slot_held: 'Someone else is selecting that slot right now.',
+          slot_expired: 'That time has passed.',
+        };
+        setClaimError(msgs[result.error] || 'Unable to select. Try another time.');
+        fetchSlots();
+      }
+    } catch {
+      setClaimError('Something went wrong. Try again.');
+    } finally {
+      setHoldingSlot(false);
+    }
+  }
 
   async function handleClaim() {
     if (!selectedTime) return;
@@ -147,22 +204,35 @@ export default function HeadsUpSlotPage() {
   const subStyle: React.CSSProperties = {
     fontSize: '0.9rem', color: '#6b7280',
   };
-  const slotCardStyle = (status: string, isSelected: boolean): React.CSSProperties => ({
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '16px 20px', borderRadius: 12, marginBottom: 10,
-    cursor: status === 'available' ? 'pointer' : 'default',
-    background: isSelected ? '#dc2626' : status === 'available' ? '#fff' : '#f3f4f6',
-    border: isSelected ? '2px solid #dc2626' : status === 'available' ? '2px solid #e5e7eb' : '2px solid #f3f4f6',
-    opacity: status === 'available' || isSelected ? 1 : 0.5,
-    transition: 'all 0.15s',
-  });
+  const slotCardStyle = (status: string, isSelected: boolean): React.CSSProperties => {
+    const canSelect = status === 'available' || status === 'your_hold';
+    const isHeld = status === 'held';
+    return {
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '16px 20px', borderRadius: 12, marginBottom: 10,
+      cursor: canSelect ? 'pointer' : 'default',
+      background: isSelected ? '#dc2626' : isHeld ? '#fef3c7' : canSelect ? '#fff' : '#f3f4f6',
+      border: isSelected ? '2px solid #dc2626' : isHeld ? '2px solid #f59e0b' : canSelect ? '2px solid #e5e7eb' : '2px solid #f3f4f6',
+      opacity: canSelect || isSelected || isHeld ? 1 : 0.5,
+      transition: 'all 0.15s',
+    };
+  };
   const slotTimeStyle = (isSelected: boolean): React.CSSProperties => ({
     fontSize: '1.2rem', fontWeight: 700,
     color: isSelected ? '#fff' : '#1a1a1a',
   });
+  const slotStatusLabel = (status: string, isSelected: boolean): string => {
+    if (isSelected) return holdCountdown > 0 ? `Selected -- ${holdCountdown}s` : 'Selected';
+    if (status === 'available') return 'Available';
+    if (status === 'your_hold') return holdCountdown > 0 ? `Selected -- ${holdCountdown}s` : 'Selected';
+    if (status === 'held') return 'Being selected...';
+    if (status === 'taken') return 'Taken';
+    if (status === 'yours') return 'Yours';
+    return 'Expired';
+  };
   const slotStatusStyle = (status: string, isSelected: boolean): React.CSSProperties => ({
     fontSize: '0.75rem', fontWeight: 600,
-    color: isSelected ? 'rgba(255,255,255,0.8)' : status === 'taken' ? '#ef4444' : status === 'expired' ? '#9ca3af' : '#22c55e',
+    color: isSelected ? 'rgba(255,255,255,0.8)' : status === 'taken' ? '#ef4444' : status === 'held' ? '#f59e0b' : status === 'expired' ? '#9ca3af' : '#22c55e',
     textTransform: 'uppercase',
   });
   const confirmBtnStyle: React.CSSProperties = {
@@ -259,7 +329,7 @@ export default function HeadsUpSlotPage() {
   }
 
   // -- SLOT PICKER (main state) --
-  const availableSlots = data.slots.filter(s => s.status === 'available');
+  const availableSlots = data.slots.filter(s => s.status === 'available' || s.status === 'your_hold' || s.status === 'held');
 
   return (
     <div style={pageStyle}>
@@ -295,21 +365,17 @@ export default function HeadsUpSlotPage() {
       ) : (
         <div>
           {data.slots.map(slot => {
-            const isSelected = selectedTime === slot.time && slot.status === 'available';
+            const isSelected = selectedTime === slot.time;
+            const canTap = slot.status === 'available' || slot.status === 'your_hold';
             return (
               <div
                 key={slot.time}
-                onClick={() => {
-                  if (slot.status === 'available') {
-                    setSelectedTime(prev => prev === slot.time ? null : slot.time);
-                    setClaimError(null);
-                  }
-                }}
+                onClick={() => canTap ? handleSelectSlot(slot.time) : undefined}
                 style={slotCardStyle(slot.status, isSelected)}
               >
                 <span style={slotTimeStyle(isSelected)}>{slot.display}</span>
                 <span style={slotStatusStyle(slot.status, isSelected)}>
-                  {isSelected ? 'Selected' : slot.status === 'available' ? 'Available' : slot.status === 'taken' ? 'Taken' : 'Expired'}
+                  {slotStatusLabel(slot.status, isSelected)}
                 </span>
               </div>
             );
@@ -331,7 +397,9 @@ export default function HeadsUpSlotPage() {
           disabled={!selectedTime || claiming}
           style={confirmBtnStyle}
         >
-          {claiming ? 'Confirming...' : selectedTime ? 'Confirm Time' : 'Select a time above'}
+          {claiming ? 'Confirming...' : selectedTime
+            ? (holdCountdown > 0 ? `Confirm Time (${holdCountdown}s)` : 'Confirm Time')
+            : 'Select a time above'}
         </button>
       )}
 
