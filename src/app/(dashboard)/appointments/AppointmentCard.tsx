@@ -39,6 +39,7 @@ interface Appointment {
   assigned_team_member_names: string[];
   document_id: string | null;
   window_status: string | null;
+  headsup_notified_at: string | null;
 }
 
 export const MODULE_LABELS: Record<string, string> = {

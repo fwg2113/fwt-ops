@@ -1,0 +1,311 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { useParams } from 'next/navigation';
+
+interface SlotData {
+  time: string;
+  display: string;
+  status: 'available' | 'taken' | 'expired' | 'yours' | 'claimed';
+}
+
+interface PageData {
+  shopName: string;
+  shopPhone: string;
+  customerFirstName: string;
+  vehicle: string | null;
+  appointmentDate: string;
+  appointmentDateDisplay: string;
+  noticeMinutes: number;
+  offerStatus: string;
+  claimedTime: string | null;
+  slots: SlotData[];
+}
+
+export default function HeadsUpSlotPage() {
+  const params = useParams();
+  const token = params.token as string;
+
+  const [data, setData] = useState<PageData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [claimed, setClaimed] = useState(false);
+  const [claimedDisplay, setClaimedDisplay] = useState('');
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [rescheduled, setRescheduled] = useState(false);
+  const [rescheduling, setRescheduling] = useState(false);
+
+  const fetchSlots = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/auto/headsup/slots?token=${token}`);
+      if (!res.ok) { setError('This link is no longer valid.'); return; }
+      const d = await res.json();
+      setData(d);
+      if (d.offerStatus === 'claimed' && d.claimedTime) {
+        setClaimed(true);
+        setClaimedDisplay(d.claimedTime);
+      }
+      if (d.offerStatus === 'reschedule_requested') {
+        setRescheduled(true);
+      }
+    } catch {
+      setError('Unable to load. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { fetchSlots(); }, [fetchSlots]);
+
+  // Poll every 10 seconds for real-time slot updates
+  useEffect(() => {
+    if (claimed || rescheduled || error) return;
+    const interval = setInterval(fetchSlots, 10000);
+    return () => clearInterval(interval);
+  }, [fetchSlots, claimed, rescheduled, error]);
+
+  async function handleClaim() {
+    if (!selectedTime) return;
+    setClaiming(true);
+    setClaimError(null);
+    try {
+      const res = await fetch('/api/auto/headsup/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, time: selectedTime }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        const slot = data?.slots.find(s => s.time === selectedTime);
+        setClaimed(true);
+        setClaimedDisplay(slot?.display || selectedTime);
+      } else {
+        const msgs: Record<string, string> = {
+          slot_taken: 'Someone just grabbed that slot. Pick another one.',
+          slot_expired: 'That time has passed the notice window.',
+          already_claimed: 'You already picked a time.',
+        };
+        setClaimError(msgs[result.error] || 'Unable to claim. Please try again.');
+        fetchSlots(); // refresh to show updated statuses
+      }
+    } catch {
+      setClaimError('Something went wrong. Please try again.');
+    } finally {
+      setClaiming(false);
+    }
+  }
+
+  async function handleReschedule() {
+    setRescheduling(true);
+    try {
+      const res = await fetch('/api/auto/headsup/reschedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const result = await res.json();
+      if (result.success) setRescheduled(true);
+    } catch { /* silent */ }
+    setRescheduling(false);
+  }
+
+  // -- STYLES (mobile-first, clean, large touch targets) --
+  const pageStyle: React.CSSProperties = {
+    maxWidth: 480, margin: '0 auto', padding: '24px 16px',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    color: '#1a1a1a', minHeight: '100vh',
+    background: '#fafafa',
+  };
+  const headerStyle: React.CSSProperties = {
+    textAlign: 'center', marginBottom: 24,
+  };
+  const shopNameStyle: React.CSSProperties = {
+    fontSize: '0.8rem', fontWeight: 600, color: '#6b7280',
+    textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8,
+  };
+  const greetingStyle: React.CSSProperties = {
+    fontSize: '1.5rem', fontWeight: 800, color: '#1a1a1a', margin: '0 0 4px',
+  };
+  const subStyle: React.CSSProperties = {
+    fontSize: '0.9rem', color: '#6b7280',
+  };
+  const slotCardStyle = (status: string, isSelected: boolean): React.CSSProperties => ({
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '16px 20px', borderRadius: 12, marginBottom: 10,
+    cursor: status === 'available' ? 'pointer' : 'default',
+    background: isSelected ? '#dc2626' : status === 'available' ? '#fff' : '#f3f4f6',
+    border: isSelected ? '2px solid #dc2626' : status === 'available' ? '2px solid #e5e7eb' : '2px solid #f3f4f6',
+    opacity: status === 'available' || isSelected ? 1 : 0.5,
+    transition: 'all 0.15s',
+  });
+  const slotTimeStyle = (isSelected: boolean): React.CSSProperties => ({
+    fontSize: '1.2rem', fontWeight: 700,
+    color: isSelected ? '#fff' : '#1a1a1a',
+  });
+  const slotStatusStyle = (status: string, isSelected: boolean): React.CSSProperties => ({
+    fontSize: '0.75rem', fontWeight: 600,
+    color: isSelected ? 'rgba(255,255,255,0.8)' : status === 'taken' ? '#ef4444' : status === 'expired' ? '#9ca3af' : '#22c55e',
+    textTransform: 'uppercase',
+  });
+  const confirmBtnStyle: React.CSSProperties = {
+    width: '100%', padding: '16px', borderRadius: 12,
+    background: selectedTime ? '#dc2626' : '#d1d5db',
+    color: '#fff', fontSize: '1rem', fontWeight: 700,
+    border: 'none', cursor: selectedTime ? 'pointer' : 'not-allowed',
+    marginTop: 16, transition: 'background 0.15s',
+  };
+  const rescheduleStyle: React.CSSProperties = {
+    textAlign: 'center', marginTop: 24, paddingTop: 24,
+    borderTop: '1px solid #e5e7eb',
+  };
+  const centerCardStyle: React.CSSProperties = {
+    textAlign: 'center', padding: '48px 24px',
+    background: '#fff', borderRadius: 16, border: '1px solid #e5e7eb',
+  };
+
+  // -- LOADING --
+  if (loading) {
+    return (
+      <div style={pageStyle}>
+        <div style={{ ...centerCardStyle, color: '#6b7280' }}>Loading...</div>
+      </div>
+    );
+  }
+
+  // -- ERROR --
+  if (error || !data) {
+    return (
+      <div style={pageStyle}>
+        <div style={centerCardStyle}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 16px', display: 'block' }}>
+            <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+          <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1a1a1a', marginBottom: 8 }}>{error || 'Something went wrong'}</div>
+          <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>Please contact the shop if you need assistance.</div>
+        </div>
+      </div>
+    );
+  }
+
+  // -- CLAIMED (success state) --
+  if (claimed) {
+    return (
+      <div style={pageStyle}>
+        <div style={centerCardStyle}>
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 16px', display: 'block' }}>
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1a1a1a', marginBottom: 8 }}>You're all set!</div>
+          <div style={{ fontSize: '1.1rem', color: '#374151', marginBottom: 4 }}>
+            Your appointment is at <strong>{claimedDisplay}</strong> today.
+          </div>
+          <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: 24 }}>Please arrive 5 minutes early.</div>
+          {data.shopPhone && (
+            <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+              Questions? Call or text: <a href={`tel:${data.shopPhone}`} style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}>{data.shopPhone}</a>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // -- RESCHEDULED --
+  if (rescheduled) {
+    return (
+      <div style={pageStyle}>
+        <div style={centerCardStyle}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 16px', display: 'block' }}>
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#1a1a1a', marginBottom: 8 }}>No problem!</div>
+          <div style={{ fontSize: '0.95rem', color: '#6b7280' }}>We've let the team know you need to reschedule. Someone will reach out.</div>
+        </div>
+      </div>
+    );
+  }
+
+  // -- SLOT PICKER (main state) --
+  const availableSlots = data.slots.filter(s => s.status === 'available');
+
+  return (
+    <div style={pageStyle}>
+      {/* Header */}
+      <div style={headerStyle}>
+        <div style={shopNameStyle}>{data.shopName}</div>
+        <h1 style={greetingStyle}>Hi {data.customerFirstName}!</h1>
+        <div style={subStyle}>Pick your time for today</div>
+        {data.vehicle && <div style={{ fontSize: '0.85rem', color: '#374151', fontWeight: 600, marginTop: 8 }}>{data.vehicle}</div>}
+        <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: 2 }}>{data.appointmentDateDisplay}</div>
+      </div>
+
+      {/* Slots */}
+      {availableSlots.length === 0 ? (
+        <div style={{ ...centerCardStyle, marginBottom: 16 }}>
+          <div style={{ fontSize: '1rem', fontWeight: 600, color: '#6b7280' }}>All time slots have been taken or expired.</div>
+          <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: 8 }}>Tap below to request a reschedule.</div>
+        </div>
+      ) : (
+        <div>
+          {data.slots.map(slot => {
+            const isSelected = selectedTime === slot.time && slot.status === 'available';
+            return (
+              <div
+                key={slot.time}
+                onClick={() => {
+                  if (slot.status === 'available') {
+                    setSelectedTime(prev => prev === slot.time ? null : slot.time);
+                    setClaimError(null);
+                  }
+                }}
+                style={slotCardStyle(slot.status, isSelected)}
+              >
+                <span style={slotTimeStyle(isSelected)}>{slot.display}</span>
+                <span style={slotStatusStyle(slot.status, isSelected)}>
+                  {isSelected ? 'Selected' : slot.status === 'available' ? 'Available' : slot.status === 'taken' ? 'Taken' : 'Expired'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Claim error */}
+      {claimError && (
+        <div style={{ padding: '12px 16px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: '0.85rem', fontWeight: 600, marginTop: 8 }}>
+          {claimError}
+        </div>
+      )}
+
+      {/* Confirm button */}
+      {availableSlots.length > 0 && (
+        <button
+          onClick={handleClaim}
+          disabled={!selectedTime || claiming}
+          style={confirmBtnStyle}
+        >
+          {claiming ? 'Confirming...' : selectedTime ? 'Confirm Time' : 'Select a time above'}
+        </button>
+      )}
+
+      {/* Reschedule */}
+      <div style={rescheduleStyle}>
+        <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: 8 }}>Need to reschedule instead?</div>
+        <button
+          onClick={handleReschedule}
+          disabled={rescheduling}
+          style={{
+            padding: '10px 24px', borderRadius: 8,
+            background: 'transparent', border: '1px solid #d1d5db',
+            color: '#6b7280', fontSize: '0.85rem', fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          {rescheduling ? 'Submitting...' : 'I need to reschedule'}
+        </button>
+      </div>
+    </div>
+  );
+}

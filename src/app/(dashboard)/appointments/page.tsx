@@ -17,6 +17,7 @@ import MessageModal from './MessageModal';
 import InvoiceChoiceModal from './InvoiceChoiceModal';
 import { type ActionButtonConfig, DEFAULT_BUTTONS_CONFIG } from './ConfigurableActions';
 import CreateAppointmentModal from './CreateAppointmentModal';
+import HeadsUpModal from './HeadsUpModal';
 import NewBookingToastStack, { type NewBookingToastData } from './NewBookingToast';
 
 interface DaySummary {
@@ -68,6 +69,9 @@ function AppointmentsPageInner() {
   const [messageTarget, setMessageTarget] = useState<{ apt: Appointment; templateKey: string | null } | null>(null);
   const [invoiceChoiceTarget, setInvoiceChoiceTarget] = useState<Appointment | null>(null);
   const [invoiceAnchorRect, setInvoiceAnchorRect] = useState<DOMRect | null>(null);
+
+  // Heads-up command center
+  const [showHeadsUp, setShowHeadsUp] = useState(false);
 
   // Assignment gate modals
   const [assignGateTarget, setAssignGateTarget] = useState<Appointment | null>(null); // "assign before check-in" prompt
@@ -474,8 +478,7 @@ function AppointmentsPageInner() {
         break;
 
       case 'headsup_send':
-        // TODO: Wire to heads-up communication — sends SMS with tokenized time slot link
-        console.log('Send heads-up to:', apt.customer_name, apt.customer_phone);
+        setShowHeadsUp(true);
         break;
     }
   }
@@ -568,6 +571,23 @@ function AppointmentsPageInner() {
               fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, flexShrink: 0,
             }}>
               Today
+            </button>
+          )}
+
+          {/* Heads Up button -- visible when there are headsup appointments */}
+          {appointments.some(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60') && (
+            <button onClick={() => setShowHeadsUp(true)} style={{
+              background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
+              border: '1px solid rgba(245,158,11,0.3)', borderRadius: RADIUS.md,
+              padding: isMobile ? '12px 16px' : '8px 16px', cursor: 'pointer',
+              fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.11 2 2 0 0 1 4.11 2h3"/>
+                <polyline points="16 2 22 2 22 8"/><line x1="22" y1="2" x2="16" y2="8"/>
+              </svg>
+              Heads Up ({appointments.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60').length})
             </button>
           )}
         </div>
@@ -820,6 +840,16 @@ function AppointmentsPageInner() {
           appointment={editingAppointment}
           onSave={handleEditSave}
           onClose={() => setEditingAppointment(null)}
+        />
+      )}
+
+      {/* Heads-Up Command Center */}
+      {showHeadsUp && (
+        <HeadsUpModal
+          appointments={appointments.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60')}
+          selectedDate={selectedDate}
+          onClose={() => setShowHeadsUp(false)}
+          onRefresh={fetchAppointments}
         />
       )}
 
