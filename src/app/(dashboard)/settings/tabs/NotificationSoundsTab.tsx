@@ -11,6 +11,7 @@ interface NotifSettings {
   email_sound_key: string;
   payment_sound_key: string;
   call_sound_key: string;
+  booking_sound_key: string;
   start_hour: number;
   end_hour: number;
   message_repeat_interval: number;
@@ -31,6 +32,7 @@ const DEFAULT_SETTINGS: NotifSettings = {
   email_sound_key: 'bell',
   payment_sound_key: 'cascade',
   call_sound_key: 'doorbell',
+  booking_sound_key: 'xylophone',
   start_hour: 9,
   end_hour: 17,
   message_repeat_interval: 60,
@@ -110,6 +112,7 @@ export default function NotificationSoundsTab() {
       if (settings.email_sound_key === customKey) updates.email_sound_key = 'bell';
       if (settings.payment_sound_key === customKey) updates.payment_sound_key = 'cascade';
       if (settings.call_sound_key === customKey) updates.call_sound_key = 'doorbell';
+      if (settings.booking_sound_key === customKey) updates.booking_sound_key = 'xylophone';
       if (Object.keys(updates).length > 0) setSettings(prev => ({ ...prev, ...updates }));
     }
   }
@@ -210,6 +213,13 @@ export default function NotificationSoundsTab() {
               <div style={{ color: '#22c55e', fontSize: FONT.sizeSm, fontWeight: 700, marginBottom: 4 }}>Payment Alert Sound</div>
               <div style={{ color: COLORS.textMuted, fontSize: FONT.sizeXs, marginBottom: 10 }}>Plays once when a new payment is received</div>
               {renderSoundGrid('payment_sound_key', '#22c55e')}
+            </div>
+
+            {/* New Booking Alert Sound */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ color: '#3b82f6', fontSize: FONT.sizeSm, fontWeight: 700, marginBottom: 4 }}>New Booking Alert Sound</div>
+              <div style={{ color: COLORS.textMuted, fontSize: FONT.sizeXs, marginBottom: 10 }}>Plays once when a new appointment is booked (online or by team) and the toast appears on the appointments page</div>
+              {renderSoundGrid('booking_sound_key', '#3b82f6')}
             </div>
 
             {/* Custom Sounds */}

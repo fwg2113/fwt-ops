@@ -7,6 +7,7 @@ import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme'
 import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 import { useAuth } from '@/app/components/AuthProvider';
 import { createSupabaseBrowser } from '@/app/lib/supabase-browser';
+import { playSound } from '@/app/lib/notificationSounds';
 import type { Appointment } from './AppointmentCard';
 import { MODULE_LABELS } from './AppointmentCard';
 import EditAppointmentModal from './EditAppointmentModal';
@@ -91,6 +92,13 @@ function AppointmentsPageInner() {
   // Ref to fetchAppointments so the realtime callback can re-fetch without
   // creating a subscription dependency loop.
   const fetchAppointmentsRef = useRef<() => void>(() => {});
+  // Notification sound settings — fetched once on mount, refreshed on the
+  // sound key + custom URL when the user changes them in Settings.
+  const bookingSoundRef = useRef<{ key: string; customUrl: string | null; soundEnabled: boolean }>({
+    key: 'xylophone',
+    customUrl: null,
+    soundEnabled: true,
+  });
 
   // Fetch appointments
   const fetchAppointments = useCallback(async () => {
@@ -159,6 +167,35 @@ function AppointmentsPageInner() {
     fetchAppointmentsRef.current = fetchAppointments;
   }, [fetchAppointments]);
 
+  // Load the booking-alert sound setting once on mount. We don't poll —
+  // changes from the Settings tab are picked up the next time the page mounts,
+  // which is fine for the alert tier.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBookingSound() {
+      try {
+        const [notifRes, soundsRes] = await Promise.all([
+          fetch('/api/settings/notifications').then(r => r.json()),
+          fetch('/api/settings/notification-sounds').then(r => r.json()),
+        ]);
+        if (cancelled) return;
+        const key = notifRes?.booking_sound_key || 'xylophone';
+        const soundEnabled = notifRes?.sound_enabled !== false;
+        let customUrl: string | null = null;
+        if (key.startsWith('custom:')) {
+          const id = key.slice('custom:'.length);
+          const found = (soundsRes?.sounds || []).find((s: { id: string; dataUrl: string }) => s.id === id);
+          customUrl = found?.dataUrl || null;
+        }
+        bookingSoundRef.current = { key, customUrl, soundEnabled };
+      } catch {
+        // Silent — fall back to default
+      }
+    }
+    loadBookingSound();
+    return () => { cancelled = true; };
+  }, []);
+
   // ============================================================================
   // REALTIME — listen for new bookings (insert OR pending→booked update from
   // the Square confirmation flow) and refresh the timeline + show a toast.
@@ -222,6 +259,14 @@ function AppointmentsPageInner() {
       setNewBookingToasts((prev) => {
         // Dedupe by id (in case both INSERT and UPDATE fire for the same row)
         if (prev.some((t) => t.id === toast.id)) return prev;
+        // Play the booking alert sound (only on the first time the toast is added,
+        // not on duplicate events). Best-effort — browser may suppress audio if
+        // the user hasn't interacted with the page yet, in which case nothing
+        // happens and the visual toast still works.
+        const cfg = bookingSoundRef.current;
+        if (cfg.soundEnabled) {
+          try { playSound(cfg.key, cfg.customUrl || undefined); } catch { /* ignore */ }
+        }
         return [toast, ...prev];
       });
     }
