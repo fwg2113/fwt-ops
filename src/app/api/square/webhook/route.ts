@@ -181,10 +181,20 @@ export async function POST(request: NextRequest) {
 
     const event = JSON.parse(body);
 
-    // Handle payment.completed event
-    if (event.type === 'payment.completed') {
+    // Square does not emit `payment.completed`. The real events are:
+    //   payment.created — fires when a payment is first recorded (may already
+    //     be COMPLETED for payment-link flows that capture immediately)
+    //   payment.updated — fires when a payment transitions to COMPLETED or
+    //     to other statuses (FAILED, CANCELED, etc.)
+    // We subscribe to both and only act when payment.status is COMPLETED.
+    if (event.type === 'payment.created' || event.type === 'payment.updated') {
       const payment = event.data?.object?.payment;
       if (!payment) return NextResponse.json({ received: true });
+
+      // Only confirm bookings when the payment is actually captured.
+      if (payment.status !== 'COMPLETED') {
+        return NextResponse.json({ received: true, skipped: 'not-completed' });
+      }
 
       const orderId = payment.order_id;
       if (!orderId) return NextResponse.json({ received: true });
