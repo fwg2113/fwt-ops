@@ -38,6 +38,7 @@ interface Appointment {
   assigned_team_member_ids: string[];
   assigned_team_member_names: string[];
   document_id: string | null;
+  window_status: string | null;
 }
 
 export const MODULE_LABELS: Record<string, string> = {
@@ -188,9 +189,18 @@ export default function AppointmentCard({ appointment: apt, onEdit, onStatusChan
         }}>
           <div style={{
             fontSize: FONT.sizeBase, fontWeight: FONT.weightSemibold,
-            color: COLORS.textPrimary,
+            color: COLORS.textPrimary, display: 'flex', alignItems: 'center', gap: 6,
           }}>
             {apt.vehicle_year} {apt.vehicle_make} {apt.vehicle_model}
+            {apt.window_status === 'previously' && (
+              <span style={{
+                fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.05em',
+                color: '#f59e0b', background: 'rgba(245,158,11,0.15)',
+                border: '1px solid rgba(245,158,11,0.35)',
+                padding: '1px 6px', borderRadius: RADIUS.sm,
+                whiteSpace: 'nowrap', lineHeight: '1.4',
+              }}>PT</span>
+            )}
           </div>
           {showModuleBadge && (
             <span style={{

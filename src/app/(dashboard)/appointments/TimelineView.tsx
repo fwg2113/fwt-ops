@@ -1262,6 +1262,15 @@ export default function TimelineView({
                         : `${apt.vehicle_year} ${apt.vehicle_make} ${apt.vehicle_model}`
                       }
                     </span>
+                    {apt.window_status === 'previously' && !isTiny && (
+                      <span style={{
+                        fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.05em',
+                        color: '#f59e0b', background: 'rgba(245,158,11,0.15)',
+                        border: '1px solid rgba(245,158,11,0.35)',
+                        padding: '0px 4px', borderRadius: 3,
+                        whiteSpace: 'nowrap', lineHeight: '1.4', flexShrink: 0,
+                      }}>PT</span>
+                    )}
                     {!isTiny && apt.linked_group_id && (
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', gap: 2,
