@@ -58,6 +58,11 @@ export default function CallSettingsTab() {
   const [recordings, setRecordings] = useState<GreetingRecording[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Phone menu kill switch — when false, inbound calls skip the IVR and
+  // ring the dashboard browser client directly.
+  const [voiceMenuEnabled, setVoiceMenuEnabled] = useState(true);
+  const [savingMenuToggle, setSavingMenuToggle] = useState(false);
+
   // Add phone
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
@@ -83,16 +88,44 @@ export default function CallSettingsTab() {
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [phonesRes, recordingsRes] = await Promise.all([
+    const [phonesRes, recordingsRes, menuRes] = await Promise.all([
       fetch('/api/voice/call-settings').then(r => r.json()),
       fetch('/api/voice/greeting/recordings').then(r => r.json()),
+      fetch('/api/voice/menu-toggle').then(r => r.json()).catch(() => ({})),
     ]);
     setTeamPhones(phonesRes.settings || []);
     setRecordings(recordingsRes.recordings || []);
+    setVoiceMenuEnabled(menuRes?.voice_menu_enabled !== false);
     setLoading(false);
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Toggle the phone menu kill switch
+  async function toggleVoiceMenu() {
+    const next = !voiceMenuEnabled;
+    setSavingMenuToggle(true);
+    // Optimistic update
+    setVoiceMenuEnabled(next);
+    try {
+      const res = await fetch('/api/voice/menu-toggle', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voice_menu_enabled: next }),
+      });
+      if (!res.ok) {
+        // Revert on failure
+        setVoiceMenuEnabled(!next);
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Failed to update phone menu setting');
+      }
+    } catch {
+      setVoiceMenuEnabled(!next);
+      alert('Failed to update phone menu setting');
+    } finally {
+      setSavingMenuToggle(false);
+    }
+  }
 
   // --- Team Phone CRUD ---
   async function handleAddPhone() {
@@ -405,6 +438,78 @@ export default function CallSettingsTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: SPACING.xl }}>
+
+      {/* Phone Menu Kill Switch */}
+      <DashboardCard title="Phone Menu (IVR)">
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: SPACING.md,
+          flexDirection: isMobile ? 'column' : 'row',
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontSize: FONT.sizeSm,
+              fontWeight: 600,
+              color: COLORS.textPrimary,
+              marginBottom: 4,
+            }}>
+              {voiceMenuEnabled ? 'Phone menu is ON' : 'Phone menu is OFF (calls ring direct)'}
+            </div>
+            <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, lineHeight: 1.5 }}>
+              When ON, callers hear the IVR greeting and pick a category by pressing 1-6.
+              When OFF, every inbound call skips the menu and rings the dashboard browser
+              directly. Use OFF for Google Voice / third-party verification calls that
+              cannot press keys, or any time you want the phone to ring straight through.
+            </div>
+          </div>
+          <button
+            onClick={toggleVoiceMenu}
+            disabled={savingMenuToggle || loading}
+            style={{
+              width: 56,
+              height: 30,
+              borderRadius: 15,
+              border: 'none',
+              cursor: savingMenuToggle || loading ? 'not-allowed' : 'pointer',
+              background: voiceMenuEnabled ? '#22c55e' : '#ef4444',
+              position: 'relative',
+              transition: 'background 0.2s',
+              flexShrink: 0,
+              opacity: savingMenuToggle ? 0.6 : 1,
+            }}
+            aria-label={voiceMenuEnabled ? 'Disable phone menu' : 'Enable phone menu'}
+          >
+            <div style={{
+              width: 24,
+              height: 24,
+              borderRadius: '50%',
+              background: '#fff',
+              position: 'absolute',
+              top: 3,
+              left: voiceMenuEnabled ? 29 : 3,
+              transition: 'left 0.2s',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            }} />
+          </button>
+        </div>
+        {!voiceMenuEnabled && (
+          <div style={{
+            marginTop: SPACING.md,
+            padding: `${SPACING.sm}px ${SPACING.md}px`,
+            background: 'rgba(239,68,68,0.1)',
+            border: '1px solid rgba(239,68,68,0.3)',
+            borderRadius: RADIUS.sm,
+            fontSize: FONT.sizeXs,
+            color: '#ef4444',
+            fontWeight: 600,
+          }}>
+            Heads up: while OFF, customers will not hear the IVR menu and will be routed
+            straight to the dashboard. Remember to turn this back ON after verification.
+          </div>
+        )}
+      </DashboardCard>
 
       {/* Team Phone Routing */}
       <DashboardCard title="Team Phone Routing">

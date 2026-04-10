@@ -44,6 +44,35 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // PHONE MENU KILL SWITCH
+  // When shop_config.voice_menu_enabled is FALSE, skip the IVR entirely and
+  // ring the dashboard browser client directly. Used for Google Voice and
+  // other third-party verification calls that can't press keys, or any time
+  // the owner wants direct ringthrough without the menu.
+  const { data: cfg } = await supabaseAdmin
+    .from('shop_config')
+    .select('voice_menu_enabled')
+    .eq('id', 1)
+    .single();
+
+  if (cfg?.voice_menu_enabled === false) {
+    const origin = (process.env.NEXT_PUBLIC_SITE_URL || 'https://ops.frederickwindowtinting.com').trim();
+    const statusUrl = `${origin}/api/voice/status`;
+    const completeUrl = `${origin}/api/voice/complete?callSid=${callSid}&amp;category=bypass`;
+    const dialCallerId = from || to || '';
+    const bypassTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial callerId="${dialCallerId}" timeout="40" action="${completeUrl}" method="POST">
+    <Client statusCallback="${statusUrl}" statusCallbackEvent="initiated ringing answered completed" statusCallbackMethod="POST">
+      <Identity>fwt-dashboard</Identity>
+      <Parameter name="categoryKey" value="bypass" />
+      <Parameter name="categoryLabel" value="Direct (menu off)" />
+    </Client>
+  </Dial>
+</Response>`;
+    return new NextResponse(bypassTwiml, { headers: { 'Content-Type': 'text/xml' } });
+  }
+
   // Fetch active greeting
   const { data: greeting } = await supabaseAdmin
     .from('greeting_recordings')
