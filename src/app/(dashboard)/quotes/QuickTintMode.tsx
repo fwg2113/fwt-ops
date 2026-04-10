@@ -430,7 +430,8 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
       });
       const data = await res.json();
       if (data.success) setBookingSuccess(true);
-    } catch { /* silent */ }
+      else console.error('Book failed:', data.error || data);
+    } catch (err) { console.error('Book exception:', err); }
     setBookingDirect(false);
   }
 
