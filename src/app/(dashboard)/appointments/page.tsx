@@ -6,6 +6,7 @@ import { PageHeader, DashboardCard, Button } from '@/app/components/dashboard';
 import { COLORS, SPACING, FONT, RADIUS } from '@/app/components/dashboard/theme';
 import { useIsMobile, useIsTablet } from '@/app/hooks/useIsMobile';
 import { useAuth } from '@/app/components/AuthProvider';
+import { createSupabaseBrowser } from '@/app/lib/supabase-browser';
 import type { Appointment } from './AppointmentCard';
 import { MODULE_LABELS } from './AppointmentCard';
 import EditAppointmentModal from './EditAppointmentModal';
@@ -15,6 +16,7 @@ import MessageModal from './MessageModal';
 import InvoiceChoiceModal from './InvoiceChoiceModal';
 import { type ActionButtonConfig, DEFAULT_BUTTONS_CONFIG } from './ConfigurableActions';
 import CreateAppointmentModal from './CreateAppointmentModal';
+import NewBookingToastStack, { type NewBookingToastData } from './NewBookingToast';
 
 interface DaySummary {
   total: number;
@@ -78,6 +80,18 @@ function AppointmentsPageInner() {
   const [moduleColorMap, setModuleColorMap] = useState<Record<string, string>>({});
   const [moduleLabelMap, setModuleLabelMap] = useState<Record<string, string>>({});
 
+  // New-booking toast state. Each toast is persistent until the user clicks
+  // Acknowledge or X. The team needs to actually see and confirm new bookings,
+  // so auto-dismiss is intentionally NOT implemented.
+  const [newBookingToasts, setNewBookingToasts] = useState<NewBookingToastData[]>([]);
+  // Ref-mirror so the realtime callback always sees the latest selectedDate
+  // without having to re-subscribe whenever the date changes.
+  const selectedDateRef = useRef(selectedDate);
+  useEffect(() => { selectedDateRef.current = selectedDate; }, [selectedDate]);
+  // Ref to fetchAppointments so the realtime callback can re-fetch without
+  // creating a subscription dependency loop.
+  const fetchAppointmentsRef = useRef<() => void>(() => {});
+
   // Fetch appointments
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
@@ -138,6 +152,88 @@ function AppointmentsPageInner() {
   useEffect(() => {
     fetchAppointments();
   }, [fetchAppointments]);
+
+  // Keep the realtime callback's view of fetchAppointments fresh so it always
+  // re-fetches against the currently-selected date.
+  useEffect(() => {
+    fetchAppointmentsRef.current = fetchAppointments;
+  }, [fetchAppointments]);
+
+  // ============================================================================
+  // REALTIME — listen for new bookings (insert OR pending→booked update from
+  // the Square confirmation flow) and refresh the timeline + show a toast.
+  // The team needs the appointment to land WITHOUT manual refresh.
+  // ============================================================================
+  useEffect(() => {
+    const supabase = createSupabaseBrowser();
+    const channel = supabase
+      .channel('auto-bookings-realtime')
+      // Brand new bookings (internal create, online with no deposit, etc.)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'auto_bookings' },
+        (payload) => {
+          handleRealtimeBooking(payload.new as Record<string, unknown>);
+        }
+      )
+      // Pending → booked transition (Square deposit confirmation flow). The
+      // INSERT happens at /api/square/checkout time with status='pending_payment'
+      // and the booking is invisible to the timeline; the UPDATE that flips it
+      // to 'booked' is the moment the team should see it.
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'auto_bookings' },
+        (payload) => {
+          const oldRow = payload.old as Record<string, unknown>;
+          const newRow = payload.new as Record<string, unknown>;
+          // Only fire if status transitioned INTO 'booked' from anything else.
+          if (oldRow?.status !== 'booked' && newRow?.status === 'booked') {
+            handleRealtimeBooking(newRow);
+          }
+        }
+      )
+      .subscribe();
+
+    function handleRealtimeBooking(row: Record<string, unknown>) {
+      // Only react to bookings on the currently-displayed date.
+      const apptDate = String(row.appointment_date || '');
+      if (apptDate !== selectedDateRef.current) return;
+
+      // Re-fetch the timeline so the new card shows up.
+      fetchAppointmentsRef.current();
+
+      // Build the toast payload from the row.
+      const toast: NewBookingToastData = {
+        id: String(row.id),
+        customerName: String(row.customer_name || ''),
+        vehicleYear: (row.vehicle_year as number) || null,
+        vehicleMake: (row.vehicle_make as string) || null,
+        vehicleModel: (row.vehicle_model as string) || null,
+        appointmentDate: apptDate,
+        appointmentTime: (row.appointment_time as string) || null,
+        appointmentType: (row.appointment_type as string) || null,
+        servicesJson: Array.isArray(row.services_json) ? (row.services_json as NewBookingToastData['servicesJson']) : [],
+        subtotal: Number(row.subtotal) || 0,
+        depositPaid: Number(row.deposit_paid) || 0,
+        balanceDue: Number(row.balance_due) || 0,
+        bookingSource: (row.booking_source as string) || null,
+      };
+
+      setNewBookingToasts((prev) => {
+        // Dedupe by id (in case both INSERT and UPDATE fire for the same row)
+        if (prev.some((t) => t.id === toast.id)) return prev;
+        return [toast, ...prev];
+      });
+    }
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []); // subscribe once on mount; selectedDate is read via ref
+
+  function dismissToast(id: string) {
+    setNewBookingToasts((prev) => prev.filter((t) => t.id !== id));
+  }
 
   // Optimistic update
   function updateLocalAppointment(id: string, updates: Record<string, unknown>) {
@@ -322,6 +418,9 @@ function AppointmentsPageInner() {
 
   return (
     <div>
+      {/* Real-time new-booking toast stack — fixed-position top-right overlay */}
+      <NewBookingToastStack toasts={newBookingToasts} onDismiss={dismissToast} />
+
       {/* Sticky header on mobile so user can always access nav/filters */}
       <div style={isMobile ? {
         position: 'sticky', top: 0, zIndex: 20,
