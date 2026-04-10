@@ -98,6 +98,9 @@ export default function CounterCheckoutPage() {
   const [isPaid, setIsPaid] = useState(false);
   const [tipAmount, setTipAmount] = useState('');
   const [discountNote, setDiscountNote] = useState('');
+  // Manual discount at counter (cashier-entered dollar or percent)
+  const [manualDiscountValue, setManualDiscountValue] = useState('');
+  const [manualDiscountMode, setManualDiscountMode] = useState<'dollar' | 'percent'>('dollar');
   const [terminalDeviceId, setTerminalDeviceId] = useState<string | null>(null);
 
   // Checkout add-ons
@@ -315,10 +318,15 @@ export default function CounterCheckoutPage() {
   };
   const { total: discountTotal, amountById: discountAmountById } = computeStackedDiscounts();
 
-  // Adjusted balance: original balance - checkout discounts + warranty
-  let adjustedBalance = Math.max(0, inv.balance_due - discountTotal + warrantyAmount);
+  // Manual discount amount (cashier-entered at counter)
+  const manualDiscountAmount = manualDiscountMode === 'dollar'
+    ? (parseFloat(manualDiscountValue) || 0)
+    : Math.round((inv.balance_due * ((parseFloat(manualDiscountValue) || 0) / 100)) * 100) / 100;
+
+  // Adjusted balance: original balance - checkout discounts - manual discount + warranty
+  let adjustedBalance = Math.max(0, inv.balance_due - discountTotal - manualDiscountAmount + warrantyAmount);
   // Round to nearest dollar if enabled (no coin change)
-  if (shopConfig?.cash_discount_round && discountTotal > 0) {
+  if (shopConfig?.cash_discount_round && (discountTotal > 0 || manualDiscountAmount > 0)) {
     adjustedBalance = Math.round(adjustedBalance);
   }
   const balanceDue = adjustedBalance;
@@ -376,6 +384,19 @@ export default function CounterCheckoutPage() {
         include_warranty: d.include_warranty,
         amount: discountAmountById.get(d.id) || 0,
       }));
+
+    // Include manual discount in the applied_discounts array if present
+    if (manualDiscountAmount > 0) {
+      appliedDiscounts.push({
+        discount_type_id: 0,
+        name: 'Custom Discount',
+        discount_type: manualDiscountMode === 'dollar' ? 'dollar' : 'percent',
+        discount_value: parseFloat(manualDiscountValue) || 0,
+        applies_to: 'balance_due',
+        include_warranty: false,
+        amount: manualDiscountAmount,
+      });
+    }
 
     const appliedWarranty = selectedWarrantyOption ? (() => {
       const opt = warrantyOptions.find(o => o.id === selectedWarrantyOption);
@@ -953,6 +974,54 @@ export default function CounterCheckoutPage() {
           <div style={{ padding: SPACING.md, borderRadius: RADIUS.md, background: `${COLORS.warning}10`, border: `1px solid ${COLORS.warning}30`, display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={COLORS.warning} strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             <span style={{ fontSize: FONT.sizeXs, color: COLORS.warning }}>Signature required before payment</span>
+          </div>
+        )}
+
+        {/* Custom Discount */}
+        {!isPaid && (
+          <div style={{ background: COLORS.cardBg, borderRadius: RADIUS.md, padding: SPACING.lg, border: `1px solid ${COLORS.border}` }}>
+            <div style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold, color: COLORS.textPrimary, marginBottom: SPACING.md }}>
+              Custom Discount
+            </div>
+            <div style={{ display: 'flex', gap: SPACING.sm, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <input
+                  value={manualDiscountValue}
+                  onChange={e => setManualDiscountValue(e.target.value)}
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  style={{ width: '100%', background: COLORS.inputBg, color: COLORS.textPrimary, border: `1px solid ${COLORS.borderInput}`, borderRadius: RADIUS.sm, padding: isMobile ? '10px 12px' : '8px 10px', fontSize: FONT.sizeSm, outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', borderRadius: RADIUS.sm, overflow: 'hidden', border: `1px solid ${COLORS.borderInput}` }}>
+                <button
+                  type="button"
+                  onClick={() => setManualDiscountMode('dollar')}
+                  style={{
+                    padding: isMobile ? '10px 14px' : '8px 12px', border: 'none', cursor: 'pointer',
+                    fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold,
+                    background: manualDiscountMode === 'dollar' ? COLORS.borderAccentSolid : COLORS.inputBg,
+                    color: manualDiscountMode === 'dollar' ? '#fff' : COLORS.textMuted,
+                  }}
+                >$</button>
+                <button
+                  type="button"
+                  onClick={() => setManualDiscountMode('percent')}
+                  style={{
+                    padding: isMobile ? '10px 14px' : '8px 12px', border: 'none', cursor: 'pointer',
+                    fontSize: FONT.sizeSm, fontWeight: FONT.weightSemibold,
+                    background: manualDiscountMode === 'percent' ? COLORS.borderAccentSolid : COLORS.inputBg,
+                    color: manualDiscountMode === 'percent' ? '#fff' : COLORS.textMuted,
+                  }}
+                >%</button>
+              </div>
+            </div>
+            {manualDiscountAmount > 0 && (
+              <div style={{ marginTop: SPACING.sm, fontSize: FONT.sizeXs, color: COLORS.success, fontWeight: FONT.weightSemibold }}>
+                -{formatCurrency(manualDiscountAmount)} off
+              </div>
+            )}
           </div>
         )}
 
