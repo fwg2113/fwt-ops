@@ -377,52 +377,50 @@ export default function HeadsUpSlotPage() {
         <div>
           {data.slots.map(slot => {
             const isSelected = selectedTime === slot.time;
-            const canTap = slot.status === 'available' || slot.status === 'your_hold';
+
+            // Compute effective status + countdown seconds
+            let seconds = 0;
+            let effectiveStatus = slot.status;
+            if (isSelected || slot.status === 'your_hold') {
+              seconds = holdCountdown;
+              effectiveStatus = isSelected ? 'your_hold' : slot.status;
+            } else if (slot.status === 'held' && slot.holdSecondsLeft) {
+              const elapsed = Math.floor((Date.now() - fetchedAt) / 1000);
+              seconds = Math.max(0, slot.holdSecondsLeft - elapsed);
+              void tickCounter;
+              if (seconds <= 0) effectiveStatus = 'available';
+            }
+
+            const canTap = effectiveStatus === 'available' || effectiveStatus === 'your_hold';
+            const effectiveSlot = { ...slot, status: effectiveStatus as SlotData['status'] };
+
             return (
               <div
                 key={slot.time}
                 onClick={() => canTap ? handleSelectSlot(slot.time) : undefined}
-                style={slotCardStyle(slot.status, isSelected)}
+                style={slotCardStyle(effectiveStatus, isSelected)}
               >
                 <span style={slotTimeStyle(isSelected)}>{slot.display}</span>
-                {(() => {
-                  // Show circle countdown for holds (own or others)
-                  // For own hold: use client-side holdCountdown (ticks every second)
-                  // For others' holds: interpolate from server holdSecondsLeft minus elapsed since fetch
-                  let seconds = 0;
-                  if (isSelected || slot.status === 'your_hold') {
-                    seconds = holdCountdown;
-                  } else if (slot.status === 'held' && slot.holdSecondsLeft) {
-                    const elapsed = Math.floor((Date.now() - fetchedAt) / 1000);
-                    seconds = Math.max(0, slot.holdSecondsLeft - elapsed);
-                    void tickCounter; // reference to trigger re-render
-                  }
-                  if (seconds > 0 && (isSelected || slot.status === 'held' || slot.status === 'your_hold')) {
-                    const isOwn = isSelected || slot.status === 'your_hold';
-                    return (
-                      <div style={{
-                        width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: isOwn ? 'rgba(255,255,255,0.2)' : 'rgba(245,158,11,0.15)',
-                        border: `2px solid ${isOwn ? 'rgba(255,255,255,0.5)' : '#f59e0b'}`,
-                      }}>
-                        <span style={{
-                          fontSize: '1rem', fontWeight: 800,
-                          color: isOwn ? '#fff' : '#f59e0b',
-                          lineHeight: 1,
-                        }}>
-                          {seconds}
-                        </span>
-                      </div>
-                    );
-                  }
-                  // Regular text status
-                  return (
-                    <span style={slotStatusStyle(slot.status, isSelected)}>
-                      {slotStatusLabel(slot, isSelected)}
+                {seconds > 0 && (isSelected || effectiveStatus === 'held' || effectiveStatus === 'your_hold') ? (
+                  <div style={{
+                    width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: isSelected ? 'rgba(255,255,255,0.2)' : 'rgba(245,158,11,0.15)',
+                    border: `2px solid ${isSelected ? 'rgba(255,255,255,0.5)' : '#f59e0b'}`,
+                  }}>
+                    <span style={{
+                      fontSize: '1rem', fontWeight: 800,
+                      color: isSelected ? '#fff' : '#f59e0b',
+                      lineHeight: 1,
+                    }}>
+                      {seconds}
                     </span>
-                  );
-                })()}
+                  </div>
+                ) : (
+                  <span style={slotStatusStyle(effectiveStatus, isSelected)}>
+                    {slotStatusLabel(effectiveSlot, isSelected)}
+                  </span>
+                )}
               </div>
             );
           })}
