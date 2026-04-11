@@ -844,9 +844,9 @@ function AppointmentsPageInner() {
                   {/* Notified badge */}
                   {notified && (
                     <div style={{
-                      position: 'absolute', top: -8, right: 12,
-                      background: '#22c55e', color: '#fff', fontSize: '0.6rem', fontWeight: 700,
-                      padding: '2px 8px', borderRadius: 10,
+                      position: 'absolute', bottom: -8, right: 12,
+                      background: '#22c55e', color: '#fff', fontSize: '0.65rem', fontWeight: 700,
+                      padding: '2px 10px', borderRadius: 10,
                     }}>
                       Sent
                     </div>
