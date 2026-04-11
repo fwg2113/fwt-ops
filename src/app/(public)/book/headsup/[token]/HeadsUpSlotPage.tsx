@@ -405,6 +405,9 @@ export default function HeadsUpSlotPage() {
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
                   }}>
+                    {isSelected && (
+                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fff' }}>Held for</span>
+                    )}
                     {!isSelected && effectiveStatus === 'held' && (
                       <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f59e0b' }}>Released in</span>
                     )}
