@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       if (!isToday) return false; // future date slots never expired
       const [h, m] = time.split(':').map(Number);
       // Slot expires when current time is within 30 min of the slot time
-      return nowMinutes > (h * 60 + m) - 30;
+      return nowMinutes > h * 60 + m;
     }
 
     const HOLD_TTL_MS = 90 * 1000; // 90 seconds

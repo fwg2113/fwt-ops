@@ -26,7 +26,7 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
     }
 
-    if (!booking.appointment_type.startsWith('headsup')) {
+    if (booking.appointment_type !== 'flex_wait') {
       return NextResponse.json({ error: 'Not a heads-up appointment' }, { status: 400 });
     }
 
@@ -39,7 +39,7 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
 
     // Generate token
     const token = crypto.randomBytes(16).toString('hex');
-    const noticeMinutes = booking.appointment_type === 'headsup_60' ? 60 : 30;
+    const noticeMinutes = 30;
 
     // Build offered_slots
     const offeredSlots = slots.map((time: string) => ({ time, status: 'available' }));

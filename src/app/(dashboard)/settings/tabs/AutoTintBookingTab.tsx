@@ -33,8 +33,7 @@ export default function AutoTintBookingTab({ data, onSave, onRefresh }: Props) {
   // Appointment types
   const [enableDropoff, setEnableDropoff] = useState(Boolean(config.enable_dropoff));
   const [enableWaiting, setEnableWaiting] = useState(Boolean(config.enable_waiting));
-  const [enableHeadsup30, setEnableHeadsup30] = useState(Boolean(config.enable_headsup_30));
-  const [enableHeadsup60, setEnableHeadsup60] = useState(Boolean(config.enable_headsup_60));
+  const [enableFlexWait, setEnableFlexWait] = useState(Boolean(config.enable_flex_wait));
   const [enableGC, setEnableGC] = useState(Boolean(config.enable_gift_certificates));
 
   // GC / Promo Contact Settings
@@ -53,7 +52,7 @@ export default function AutoTintBookingTab({ data, onSave, onRefresh }: Props) {
       price_ack_enabled: priceAckEnabled, price_ack_text: priceAckText || null,
       max_days_out: parseInt(maxDaysOut) || 45, booking_cutoff_hours: parseInt(bookingCutoff) || 8,
       enable_dropoff: enableDropoff, enable_waiting: enableWaiting,
-      enable_headsup_30: enableHeadsup30, enable_headsup_60: enableHeadsup60,
+      enable_flex_wait: enableFlexWait,
       enable_gift_certificates: enableGC,
       gc_help_text: gcHelpText || null,
       gc_call_enabled: gcCallEnabled, gc_call_number: gcCallNumber || null,
@@ -123,8 +122,7 @@ export default function AutoTintBookingTab({ data, onSave, onRefresh }: Props) {
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
           <Toggle label="Drop-Off" checked={enableDropoff} onChange={setEnableDropoff} />
           <Toggle label="Waiting" checked={enableWaiting} onChange={setEnableWaiting} />
-          <Toggle label="Flex-Wait (30 min)" checked={enableHeadsup30} onChange={setEnableHeadsup30} />
-          <Toggle label="Flex-Wait (60 min)" checked={enableHeadsup60} onChange={setEnableHeadsup60} />
+          <Toggle label="Flex-Wait" checked={enableFlexWait} onChange={setEnableFlexWait} />
           <Toggle label="Gift Certificates" checked={enableGC} onChange={setEnableGC} />
         </div>
       </DashboardCard>

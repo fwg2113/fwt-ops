@@ -252,7 +252,7 @@ export default function HeadsUpModal({ appointments, selectedDate, onClose, onRe
                         </div>
                         <div style={{ fontSize: FONT.sizeXs, color: COLORS.textSecondary }}>
                           {apt.vehicle_year} {apt.vehicle_make} {apt.vehicle_model}
-                          {' -- '}{apt.appointment_type === 'headsup_60' ? '60-min' : '30-min'}
+                          {' -- '}Flex-Wait
                         </div>
                       </div>
                       {/* Status badge */}
@@ -368,9 +368,7 @@ export default function HeadsUpModal({ appointments, selectedDate, onClose, onRe
                   {/* Time grid */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: SPACING.lg }}>
                     {DEFAULT_SLOTS.map(time => {
-                      const noticeMin = tab === 'individual' && selectedApt
-                        ? (selectedApt.appointment_type === 'headsup_60' ? 60 : 30)
-                        : 30; // pool uses minimum notice
+                      const noticeMin = 0; // flex_wait has no fixed notice
                       const expired = isSlotExpired(time, noticeMin);
                       const selected = selectedSlots.has(time);
                       return (

@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
         if (!appt.customer_phone || !appt.appointment_time) { results.skipped++; continue; }
 
         // Skip heads-up appointments (they don't have fixed times)
-        if (appt.appointment_type === 'headsup_30' || appt.appointment_type === 'headsup_60') {
+        if (appt.appointment_type === 'flex_wait') {
           results.skipped++;
           continue;
         }

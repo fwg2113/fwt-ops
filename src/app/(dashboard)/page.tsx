@@ -58,15 +58,13 @@ interface DashboardData {
 const TYPE_COLORS: Record<string, string> = {
   dropoff: '#3b82f6',
   waiting: '#ef4444',
-  headsup_30: '#f59e0b',
-  headsup_60: '#f59e0b',
+  flex_wait: '#f59e0b',
 };
 
 const TYPE_LABELS: Record<string, string> = {
   dropoff: 'Drop-Off',
   waiting: 'Waiting',
-  headsup_30: '30m HU',
-  headsup_60: '60m HU',
+  flex_wait: 'FW',
 };
 
 function formatTime(time: string | null): string {

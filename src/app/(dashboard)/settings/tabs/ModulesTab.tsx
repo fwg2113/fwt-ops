@@ -14,8 +14,7 @@ interface ShopModule {
   has_own_schedule: boolean;
   enable_dropoff: boolean;
   enable_waiting: boolean;
-  enable_headsup_30: boolean;
-  enable_headsup_60: boolean;
+  enable_flex_wait: boolean;
   enable_warranty: boolean;
   booking_page_title: string | null;
   booking_page_subtitle: string | null;
@@ -142,8 +141,7 @@ export default function ModulesTab({ data, onSave, onRefresh }: Props) {
     setAdvancedDraft({
       enable_dropoff: mod.enable_dropoff,
       enable_waiting: mod.enable_waiting,
-      enable_headsup_30: mod.enable_headsup_30,
-      enable_headsup_60: mod.enable_headsup_60,
+      enable_flex_wait: mod.enable_flex_wait,
       enable_warranty: mod.enable_warranty,
       override_deposit: mod.override_deposit,
       deposit_amount: mod.deposit_amount ?? '',
@@ -165,8 +163,7 @@ export default function ModulesTab({ data, onSave, onRefresh }: Props) {
     const payload: Record<string, unknown> = {
       enable_dropoff: advancedDraft.enable_dropoff,
       enable_waiting: advancedDraft.enable_waiting,
-      enable_headsup_30: advancedDraft.enable_headsup_30,
-      enable_headsup_60: advancedDraft.enable_headsup_60,
+      enable_flex_wait: advancedDraft.enable_flex_wait,
       enable_warranty: advancedDraft.enable_warranty,
       override_deposit: advancedDraft.override_deposit,
       require_deposit: advancedDraft.require_deposit,
@@ -428,8 +425,7 @@ export default function ModulesTab({ data, onSave, onRefresh }: Props) {
             {([
               { key: 'enable_dropoff', label: 'Drop-off' },
               { key: 'enable_waiting', label: 'Waiting' },
-              { key: 'enable_headsup_30', label: 'Flex-Wait (30 min)' },
-              { key: 'enable_headsup_60', label: 'Flex-Wait (60 min)' },
+              { key: 'enable_flex_wait', label: 'Flex-Wait' },
               { key: 'enable_warranty', label: 'Warranty' },
             ] as const).map(item => (
               <label key={item.key} style={{

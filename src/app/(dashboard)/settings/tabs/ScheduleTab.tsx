@@ -25,7 +25,7 @@ export default function ScheduleTab({ data, onSave, onAdd, onDelete, onRefresh }
   const [localSchedule, setLocalSchedule] = useState(schedule);
 
   // Appointment type colors
-  const defaultTypeColors: Record<string, string> = { dropoff: '#3b82f6', waiting: '#ef4444', headsup_30: '#f59e0b', headsup_60: '#f59e0b' };
+  const defaultTypeColors: Record<string, string> = { dropoff: '#3b82f6', waiting: '#ef4444', flex_wait: '#f59e0b' };
   const [typeColors, setTypeColors] = useState<Record<string, string>>(() => {
     const saved = config.appointment_type_colors as Record<string, string> | null;
     return { ...defaultTypeColors, ...saved };
@@ -129,8 +129,7 @@ export default function ScheduleTab({ data, onSave, onAdd, onDelete, onRefresh }
           {[
             { key: 'dropoff', label: 'Drop-Off' },
             { key: 'waiting', label: 'Waiting' },
-            { key: 'headsup_30', label: 'Flex-Wait (30m)' },
-            { key: 'headsup_60', label: 'Flex-Wait (60m)' },
+            { key: 'flex_wait', label: 'Flex-Wait' },
           ].map(type => (
             <div key={type.key} style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
               <input

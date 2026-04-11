@@ -57,7 +57,7 @@ export const GET = withShopAuth(async ({ shopId }) => {
     const activeToday = todayAppointments.filter(a => a.status !== 'cancelled');
     const dropoffsToday = activeToday.filter(a => a.appointment_type === 'dropoff').length;
     const waitingToday = activeToday.filter(a => a.appointment_type === 'waiting').length;
-    const headsupToday = activeToday.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60').length;
+    const headsupToday = activeToday.filter(a => a.appointment_type === 'flex_wait').length;
     const checkedInToday = activeToday.filter(a => a.status === 'in_progress' || a.status === 'completed' || a.status === 'invoiced').length;
     const todayRevenue = activeToday.reduce((sum, a) => sum + Number(a.subtotal || 0), 0);
 

@@ -155,7 +155,7 @@ export const GET = withShopAuth(async ({ shopId, req }) => {
     const unpaid = booked.filter(a => a.status !== 'invoiced');
     const dropoffs = unpaid.filter(a => a.appointment_type === 'dropoff').length;
     const waiting = unpaid.filter(a => a.appointment_type === 'waiting').length;
-    const headsups = unpaid.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60').length;
+    const headsups = unpaid.filter(a => a.appointment_type === 'flex_wait').length;
     const totalRevenue = booked.reduce((sum, a) => {
       // Paid rows: count what was actually collected (already includes deposit
       // because of the total_paid fix in createDocumentFromBooking).

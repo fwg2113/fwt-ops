@@ -33,15 +33,13 @@ const TIME_GUTTER_WIDTH = 64;
 const TYPE_COLORS: Record<string, string> = {
   dropoff: '#3b82f6',
   waiting: '#ef4444',
-  headsup_30: '#f59e0b',
-  headsup_60: '#f59e0b',
+  flex_wait: '#f59e0b',
 };
 
 const TYPE_LABELS: Record<string, string> = {
   dropoff: 'Drop-Off',
   waiting: 'Waiting',
-  headsup_30: 'FW 30',
-  headsup_60: 'FW 60',
+  flex_wait: 'Flex-Wait',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -469,7 +467,7 @@ export default function TimelineView({
                   }}
                 >
                   <TAction label="Edit" compact={false} onClick={() => onEdit(apt)} />
-                  {(apt.appointment_type === 'headsup_30' || apt.appointment_type === 'headsup_60') && (
+                  {apt.appointment_type === 'flex_wait' && (
                     <TAction
                       label="Send Flex-Wait"
                       compact={false}

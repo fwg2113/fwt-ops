@@ -145,8 +145,7 @@ export async function getUserEmail(accessToken: string): Promise<string | null> 
 const APPOINTMENT_TYPE_COLORS: Record<string, string> = {
   dropoff: '7',     // peacock (blue)
   waiting: '6',     // tangerine (orange)
-  headsup_30: '5',  // banana (yellow)
-  headsup_60: '5',  // banana (yellow)
+  flex_wait: '5',  // banana (yellow)
 };
 
 export async function createCalendarEvent(
@@ -187,11 +186,10 @@ export async function createCalendarEvent(
   endDate.setMinutes(endDate.getMinutes() + duration);
   const endDt = endDate.toISOString().replace('Z', '').split('.')[0];
 
-  const isHeadsUp = data.appointmentType === 'headsup_30' || data.appointmentType === 'headsup_60';
+  const isHeadsUp = data.appointmentType === 'flex_wait';
   const typeLabel = data.appointmentType === 'dropoff' ? 'Drop-Off'
     : data.appointmentType === 'waiting' ? 'Waiting'
-    : data.appointmentType === 'headsup_30' ? 'Flex-Wait (30 min)'
-    : data.appointmentType === 'headsup_60' ? 'Flex-Wait (60 min)'
+    : data.appointmentType === 'flex_wait' ? 'Flex-Wait'
     : data.appointmentType || '';
 
   const summary = `${data.customerName} - ${data.vehicleStr}`;

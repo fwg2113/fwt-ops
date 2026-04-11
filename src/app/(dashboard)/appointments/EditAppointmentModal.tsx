@@ -198,8 +198,7 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
     const types: { value: string; label: string }[] = [];
     if (config.shopConfig.enable_dropoff) types.push({ value: 'dropoff', label: 'Drop-off' });
     if (config.shopConfig.enable_waiting) types.push({ value: 'waiting', label: 'Waiting' });
-    if (config.shopConfig.enable_headsup_30) types.push({ value: 'headsup_30', label: 'Flex-Wait (30 min)' });
-    if (config.shopConfig.enable_headsup_60) types.push({ value: 'headsup_60', label: 'Flex-Wait (60 min)' });
+    if (config.shopConfig.enable_flex_wait) types.push({ value: 'flex_wait', label: 'Flex-Wait' });
     return types;
   }, [config]);
 
@@ -478,7 +477,7 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
       if (newDate && newDate !== appointment.appointment_date) {
         updates.appointment_date = newDate;
       }
-      const isHeadsUp = newApptType === 'headsup_30' || newApptType === 'headsup_60';
+      const isHeadsUp = newApptType === 'flex_wait';
       updates.appointment_time = isHeadsUp ? null : (newTime || null);
       updates.appointment_type = newApptType;
     }
@@ -698,7 +697,7 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
               </div>
               <div>
                 <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 4 }}>Time</div>
-                {newApptType === 'headsup_30' || newApptType === 'headsup_60' ? (
+                {newApptType === 'flex_wait' ? (
                   <div style={{ padding: '8px 12px', fontSize: FONT.sizeSm, color: COLORS.textMuted, background: COLORS.inputBg, borderRadius: RADIUS.sm, border: `1px solid ${COLORS.borderInput}` }}>
                     Flex-Wait (no time)
                   </div>

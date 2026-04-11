@@ -62,7 +62,7 @@ export const POST = withShopAuth(async ({ shopId, req }) => {
 
     for (const booking of bookings) {
       const token = crypto.randomBytes(16).toString('hex');
-      const noticeMinutes = booking.appointment_type === 'headsup_60' ? 60 : 30;
+      const noticeMinutes = 30;
 
       // Insert offer
       await supabase.from('headsup_offers').insert({

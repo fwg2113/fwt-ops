@@ -11,13 +11,12 @@ import { MODULE_LABELS, MODULE_COLORS } from './AppointmentCard'
 // Supports any service module and optional linking to an existing group.
 // ============================================================================
 
-type AppointmentType = 'dropoff' | 'waiting' | 'headsup_30' | 'headsup_60'
+type AppointmentType = 'dropoff' | 'waiting' | 'flex_wait'
 
 const APPOINTMENT_TYPE_OPTIONS: { value: AppointmentType; label: string }[] = [
   { value: 'dropoff', label: 'Drop-Off' },
   { value: 'waiting', label: 'Waiting' },
-  { value: 'headsup_30', label: 'Flex-Wait (30 min)' },
-  { value: 'headsup_60', label: 'Flex-Wait (60 min)' },
+  { value: 'flex_wait', label: 'Flex-Wait' },
 ]
 
 interface CreateAppointmentModalProps {

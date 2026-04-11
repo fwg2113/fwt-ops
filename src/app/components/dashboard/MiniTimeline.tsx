@@ -53,15 +53,13 @@ const TIME_GUTTER_WIDTH = 48;
 const TYPE_COLORS: Record<string, string> = {
   dropoff: '#3b82f6',
   waiting: '#ef4444',
-  headsup_30: '#f59e0b',
-  headsup_60: '#f59e0b',
+  flex_wait: '#f59e0b',
 };
 
 const TYPE_LABELS: Record<string, string> = {
   dropoff: 'Drop-Off',
   waiting: 'Waiting',
-  headsup_30: 'HU 30m',
-  headsup_60: 'HU 60m',
+  flex_wait: 'FW',
 };
 
 function timeToMinutes(time: string | null): number {

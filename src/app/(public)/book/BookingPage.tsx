@@ -55,7 +55,7 @@ export default function BookingPage() {
     if (hasWindshield && bs.state.windshieldReplaced === 'yes' && !bs.state.windshield72hrAck) return false;
     if (!bs.state.selectedDate) return false;
     // Heads-up appointments don't need a time slot, just a date
-    const isHeadsUp = bs.state.appointmentType === 'headsup_30' || bs.state.appointmentType === 'headsup_60';
+    const isHeadsUp = bs.state.appointmentType === 'flex_wait';
     if (!isHeadsUp && !bs.state.selectedTime) return false;
     if (!bs.state.firstName || !bs.state.lastName || !bs.state.phone || !bs.state.email) return false;
     // Validate phone: at least 10 digits

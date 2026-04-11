@@ -114,8 +114,7 @@ export function BookAppointmentModal({
     const types: { value: string; label: string }[] = [];
     if (config.shopConfig.enable_dropoff) types.push({ value: 'dropoff', label: 'Drop-off' });
     if (config.shopConfig.enable_waiting) types.push({ value: 'waiting', label: 'Waiting' });
-    if (config.shopConfig.enable_headsup_30) types.push({ value: 'headsup_30', label: 'Flex-Wait (30 min)' });
-    if (config.shopConfig.enable_headsup_60) types.push({ value: 'headsup_60', label: 'Flex-Wait (60 min)' });
+    if (config.shopConfig.enable_flex_wait) types.push({ value: 'flex_wait', label: 'Flex-Wait' });
     return types;
   }, [config]);
 
@@ -138,7 +137,7 @@ export function BookAppointmentModal({
     if (!selectedDate || !selectedTime || !customerFirst) return;
     setSubmitting(true);
     try {
-      const isHeadsUp = appointmentType === 'headsup_30' || appointmentType === 'headsup_60';
+      const isHeadsUp = appointmentType === 'flex_wait';
       const res = await fetch('/api/auto/book', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -299,12 +298,11 @@ export function SendToCustomerModal({
     const types: { value: string; label: string }[] = [];
     if (config.shopConfig.enable_dropoff) types.push({ value: 'dropoff', label: 'Drop-off' });
     if (config.shopConfig.enable_waiting) types.push({ value: 'waiting', label: 'Waiting' });
-    if (config.shopConfig.enable_headsup_30) types.push({ value: 'headsup_30', label: 'Flex-Wait (30 min)' });
-    if (config.shopConfig.enable_headsup_60) types.push({ value: 'headsup_60', label: 'Flex-Wait (60 min)' });
+    if (config.shopConfig.enable_flex_wait) types.push({ value: 'flex_wait', label: 'Flex-Wait' });
     return types;
   }, [config]);
 
-  const isHeadsUp = appointmentType === 'headsup_30' || appointmentType === 'headsup_60';
+  const isHeadsUp = appointmentType === 'flex_wait';
   const today = new Date().toISOString().split('T')[0];
 
   const timeSlots = useMemo(() => {

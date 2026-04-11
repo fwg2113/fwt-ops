@@ -279,7 +279,7 @@ function AppointmentsPageInner() {
       if (seenBookedIdsRef.current.has(id)) {
         const aptType = String(row.appointment_type || '');
         const aptTime = row.appointment_time;
-        if ((aptType === 'headsup_30' || aptType === 'headsup_60') && aptTime) {
+        if ((aptType === 'flex_wait') && aptTime) {
           // Customer claimed a slot -- refetch to move card from queue to timeline
           fetchAppointmentsRef.current();
         }
@@ -508,10 +508,10 @@ function AppointmentsPageInner() {
 
   // Split: heads-up appointments without a time go in the queue, everything else on the timeline
   const headsupQueue = activeAppointments
-    .filter(a => (a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60') && !a.appointment_time)
+    .filter(a => (a.appointment_type === 'flex_wait') && !a.appointment_time)
     .sort((a, b) => new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime()); // oldest first (left)
   const timelineAppointments = activeAppointments
-    .filter(a => !((a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60') && !a.appointment_time));
+    .filter(a => !((a.appointment_type === 'flex_wait') && !a.appointment_time));
 
   return (
     <div>
@@ -583,7 +583,7 @@ function AppointmentsPageInner() {
           )}
 
           {/* Flex-Wait button -- visible when there are headsup appointments */}
-          {appointments.some(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60') && (
+          {appointments.some(a => a.appointment_type === 'flex_wait') && (
             <button onClick={() => setShowHeadsUp(true)} style={{
               background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
               border: '1px solid rgba(245,158,11,0.3)', borderRadius: RADIUS.md,
@@ -595,7 +595,7 @@ function AppointmentsPageInner() {
                 <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.11 2 2 0 0 1 4.11 2h3"/>
                 <polyline points="16 2 22 2 22 8"/><line x1="22" y1="2" x2="16" y2="8"/>
               </svg>
-              Flex-Wait ({appointments.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60').length})
+              Flex-Wait ({appointments.filter(a => a.appointment_type === 'flex_wait').length})
             </button>
           )}
         </div>
@@ -803,7 +803,7 @@ function AppointmentsPageInner() {
             paddingTop: 10, paddingBottom: SPACING.md,
           }}>
             {headsupQueue.map((apt, idx) => {
-              const typeLabel = apt.appointment_type === 'headsup_60' ? '60-min' : '30-min';
+              const typeLabel = 'Flex-Wait';
               const modColor = moduleColorMap?.[apt.module || 'auto_tint'] || '#3b82f6';
               const services = (() => {
                 if (!apt.services_json || !Array.isArray(apt.services_json)) return '';
@@ -958,7 +958,7 @@ function AppointmentsPageInner() {
       {/* Flex-Wait Command Center */}
       {showHeadsUp && (
         <HeadsUpModal
-          appointments={appointments.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60')}
+          appointments={appointments.filter(a => a.appointment_type === 'flex_wait')}
           selectedDate={selectedDate}
           onClose={() => setShowHeadsUp(false)}
           onRefresh={fetchAppointments}

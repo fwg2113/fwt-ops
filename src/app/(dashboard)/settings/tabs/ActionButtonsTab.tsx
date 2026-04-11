@@ -84,7 +84,7 @@ export default function ActionButtonsTab({ data, onSave, onRefresh }: Props) {
       allTypes: !btn.showWhen || !btn.showWhen.appointment_type_in,
       dropoff: typeIn.includes('dropoff'),
       waiting: typeIn.includes('waiting'),
-      headsup: typeIn.includes('headsup_30') || typeIn.includes('headsup_60'),
+      headsup: typeIn.includes('flex_wait'),
     };
   }
 
@@ -97,7 +97,7 @@ export default function ActionButtonsTab({ data, onSave, onRefresh }: Props) {
         return { ...b, showWhen: value ? (b.showWhen?.appointment_type_in ? { appointment_type_in: b.showWhen.appointment_type_in } : null) : { ...b.showWhen, status_in: ['booked', 'in_progress'] } };
       }
       if (field === 'allTypes') {
-        return { ...b, showWhen: value ? (b.showWhen?.status_in ? { status_in: b.showWhen.status_in } : null) : { ...b.showWhen, appointment_type_in: ['dropoff', 'waiting', 'headsup_30', 'headsup_60'] } };
+        return { ...b, showWhen: value ? (b.showWhen?.status_in ? { status_in: b.showWhen.status_in } : null) : { ...b.showWhen, appointment_type_in: ['dropoff', 'waiting', 'flex_wait'] } };
       }
 
       // Status toggles
@@ -115,14 +115,14 @@ export default function ActionButtonsTab({ data, onSave, onRefresh }: Props) {
 
       // Type toggles
       if (field === 'headsup') {
-        const current = b.showWhen?.appointment_type_in || ['dropoff', 'waiting', 'headsup_30', 'headsup_60'];
+        const current = b.showWhen?.appointment_type_in || ['dropoff', 'waiting', 'flex_wait'];
         const next = value
-          ? [...current.filter(t => t !== 'headsup_30' && t !== 'headsup_60'), 'headsup_30', 'headsup_60']
-          : current.filter(t => t !== 'headsup_30' && t !== 'headsup_60');
+          ? [...current.filter(t => t !== 'flex_wait'), 'flex_wait']
+          : current.filter(t => t !== 'flex_wait');
         return { ...b, showWhen: { ...b.showWhen, appointment_type_in: next } };
       }
       if (['dropoff', 'waiting'].includes(field)) {
-        const current = b.showWhen?.appointment_type_in || ['dropoff', 'waiting', 'headsup_30', 'headsup_60'];
+        const current = b.showWhen?.appointment_type_in || ['dropoff', 'waiting', 'flex_wait'];
         const next = value ? [...current, field] : current.filter(t => t !== field);
         return { ...b, showWhen: { ...b.showWhen, appointment_type_in: next } };
       }

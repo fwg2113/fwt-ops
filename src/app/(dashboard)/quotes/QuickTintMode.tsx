@@ -349,8 +349,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
     const types: { value: string; label: string }[] = [];
     if (config.shopConfig.enable_dropoff) types.push({ value: 'dropoff', label: 'Drop-off' });
     if (config.shopConfig.enable_waiting) types.push({ value: 'waiting', label: 'Waiting' });
-    if (config.shopConfig.enable_headsup_30) types.push({ value: 'headsup_30', label: 'Flex-Wait (30 min)' });
-    if (config.shopConfig.enable_headsup_60) types.push({ value: 'headsup_60', label: 'Flex-Wait (60 min)' });
+    if (config.shopConfig.enable_flex_wait) types.push({ value: 'flex_wait', label: 'Flex-Wait' });
     if (config.shopConfig.enable_warranty) types.push({ value: 'warranty', label: 'Warranty' });
     return types;
   }, [config]);
@@ -397,7 +396,7 @@ export default function QuickTintMode({ onExit, initialCustomerName, initialCust
     if ((!vehicle && !isWarranty) || !selectedDate || !selectedTime || !customerName) return;
     setBookingDirect(true);
     try {
-      const isHeadsUp = appointmentType === 'headsup_30' || appointmentType === 'headsup_60';
+      const isHeadsUp = appointmentType === 'flex_wait';
       const nameParts = customerName.trim().split(' ');
       const res = await fetch('/api/auto/book', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

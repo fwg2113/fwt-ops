@@ -32,8 +32,8 @@ const CONTENT: Record<Exclude<AppointmentType, 'dropoff' | 'warranty'>, {
     ],
     summary: 'I understand this is an on-site waiting appointment and I will remain at the shop for the duration of the service.',
   },
-  headsup_30: {
-    title: 'Flex-Wait Appointment -- 30 Minute Notice',
+  flex_wait: {
+    title: 'Flex-Wait Appointment',
     sections: [
       {
         heading: 'How It Works',
@@ -49,32 +49,10 @@ const CONTENT: Record<Exclude<AppointmentType, 'dropoff' | 'warranty'>, {
       },
       {
         heading: 'Ideal For',
-        body: 'This option works best if you are available and flexible during business hours on your selected date. You will receive at least 30 minutes notice before any offered time slot, giving you plenty of time to head over.',
+        body: 'This option works best if you are available and flexible during business hours on your selected date. You will receive a text with enough notice to head over when we are ready.',
       },
     ],
-    summary: 'I understand that I will not receive a fixed appointment time. On my selected date, I will receive a text with a link to choose from available time slots. I will have at least 30 minutes before any offered time.',
-  },
-  headsup_60: {
-    title: 'Flex-Wait Appointment -- 60 Minute Notice',
-    sections: [
-      {
-        heading: 'How It Works',
-        body: 'Instead of a fixed appointment time, you select a date and we add you to our priority queue. When a bay opens up, we will text you a link with available time slots. You pick the one that works best -- first come, first served.',
-      },
-      {
-        heading: 'No Unnecessary Waiting',
-        body: 'If you arrive at the time you selected, your vehicle is pulled right in and work begins immediately. You will still wait for the duration of your service, but you will not be sitting around due to schedule overlaps or delays from earlier appointments. Your wait is only for your own job.',
-      },
-      {
-        heading: 'Selecting Your Time',
-        body: 'When you receive our text, tap the link to see available times. Select the slot that works for you and confirm. Once confirmed, head to the shop at that time and your vehicle will be pulled right in.',
-      },
-      {
-        heading: 'Ideal For',
-        body: 'This option works best if you need a bit more lead time to get to the shop. You will have at least a full hour from the time we reach out, making it easy to wrap up what you are doing and head over.',
-      },
-    ],
-    summary: 'I understand that I will not receive a fixed appointment time. On my selected date, I will receive a text with a link to choose from available time slots. I will have at least 60 minutes before any offered time.',
+    summary: 'I understand that I will not receive a fixed appointment time. On my selected date, I will receive a text with a link to choose from available time slots.',
   },
 };
 

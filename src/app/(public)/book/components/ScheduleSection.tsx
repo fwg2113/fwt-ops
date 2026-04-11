@@ -18,12 +18,11 @@ interface Props {
 const TYPE_PILLS: { key: AppointmentType; label: string; configKey: string }[] = [
   { key: 'dropoff', label: 'Drop-Off', configKey: 'enable_dropoff' },
   { key: 'waiting', label: 'Waiting', configKey: 'enable_waiting' },
-  { key: 'headsup_30', label: 'Flex-Wait (30 min)', configKey: 'enable_headsup_30' },
-  { key: 'headsup_60', label: 'Flex-Wait (60 min)', configKey: 'enable_headsup_60' },
+  { key: 'flex_wait', label: 'Flex-Wait', configKey: 'enable_flex_wait' },
 ];
 
 // Types that require modal acknowledgment before selection
-const MODAL_TYPES: AppointmentType[] = ['waiting', 'headsup_30', 'headsup_60'];
+const MODAL_TYPES: AppointmentType[] = ['waiting', 'flex_wait'];
 
 export default function ScheduleSection({
   config, appointmentType, selectedDate, selectedTime,
@@ -38,7 +37,7 @@ export default function ScheduleSection({
   const [checkingDate, setCheckingDate] = useState(false);
   const [pendingType, setPendingType] = useState<AppointmentType | null>(null);
 
-  const isHeadsUp = appointmentType === 'headsup_30' || appointmentType === 'headsup_60';
+  const isHeadsUp = appointmentType === 'flex_wait';
 
   // Which types are enabled in shop_config
   const enabledTypes = useMemo(() => {
@@ -118,7 +117,7 @@ export default function ScheduleSection({
     if (pendingType) {
       onTypeChange(pendingType);
       // Heads-up types auto-set a placeholder time since they don't pick one
-      if (pendingType === 'headsup_30' || pendingType === 'headsup_60') {
+      if (pendingType === 'flex_wait') {
         onTimeChange('Flex-Wait');
       }
     }
@@ -143,9 +142,7 @@ export default function ScheduleSection({
       if (!selectedDate) return 'Pick a date — we will reach out to you that day when we are ready.';
       if (checkingDate) return 'Checking availability...';
       if (!availability?.available) return availability?.reason || 'This date is not available.';
-      return appointmentType === 'headsup_30'
-        ? 'You will receive a text with at least 30 minutes notice on this date.'
-        : 'You will receive a text with at least 60 minutes notice on this date.';
+      return 'You will receive a text with enough notice on this date when we are ready for your vehicle.';
     }
 
     if (!selectedDate) return 'Pick a date to see available times.';
@@ -193,11 +190,7 @@ export default function ScheduleSection({
               <path d="M6 10l3 3 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
             <div style={{ fontSize: '0.9rem', lineHeight: 1.5, color: '#166534' }}>
-              {appointmentType === 'headsup_30' ? (
-                <>You will be contacted via text with at least <strong>30 minutes</strong> notice when we are ready for your vehicle. No specific appointment time is needed — just pick your preferred date below.</>
-              ) : (
-                <>You will be contacted via text with at least <strong>60 minutes</strong> notice when we are ready for your vehicle. No specific appointment time is needed — just pick your preferred date below.</>
-              )}
+              You will be contacted via text with enough notice when we are ready for your vehicle. No specific appointment time is needed — just pick your preferred date below.
             </div>
           </div>
         </div>

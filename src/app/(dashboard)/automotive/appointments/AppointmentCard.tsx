@@ -49,16 +49,14 @@ const STATUS_VARIANTS: Record<string, 'success' | 'warning' | 'danger' | 'info' 
 const TYPE_COLORS: Record<string, string> = {
   dropoff: '#3b82f6',
   waiting: '#ef4444',
-  headsup_30: '#f59e0b',
-  headsup_60: '#f59e0b',
+  flex_wait: '#f59e0b',
   warranty: '#8b5cf6',
 };
 
 const TYPE_LABELS: Record<string, string> = {
   dropoff: 'Drop-Off',
   waiting: 'Waiting',
-  headsup_30: 'Flex-Wait (30 min)',
-  headsup_60: 'Flex-Wait (60 min)',
+  flex_wait: 'Flex-Wait',
   warranty: 'Warranty',
 };
 

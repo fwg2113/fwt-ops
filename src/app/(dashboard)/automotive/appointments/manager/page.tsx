@@ -295,7 +295,7 @@ export default function AppointmentManagerPage() {
   const addonServices = config.services.filter(s => s.is_addon && s.service_type === 'tint');
   const removalServices = config.services.filter(s => s.service_type === 'removal');
   const dropoffSlots = config.dropoffSlots;
-  const isHeadsUp = appointmentType === 'headsup_30' || appointmentType === 'headsup_60';
+  const isHeadsUp = appointmentType === 'flex_wait';
 
   return (
     <div>
@@ -562,8 +562,8 @@ export default function AppointmentManagerPage() {
             </svg>
           }>
             <div style={{ display: 'flex', gap: SPACING.sm, marginBottom: SPACING.lg }}>
-              {(['dropoff', 'waiting', 'headsup_30', 'headsup_60'] as AppointmentType[]).map(type => {
-                const labels: Record<string, string> = { dropoff: 'Drop-Off', waiting: 'Waiting', headsup_30: 'Flex-Wait (30 min)', headsup_60: 'Flex-Wait (60 min)' };
+              {(['dropoff', 'waiting', 'flex_wait'] as AppointmentType[]).map(type => {
+                const labels: Record<string, string> = { dropoff: 'Drop-Off', waiting: 'Waiting', flex_wait: 'Flex-Wait' };
                 return (
                   <button key={type} onClick={() => { setAppointmentType(type); setAppointmentTime(''); }}
                     style={{
@@ -597,7 +597,7 @@ export default function AppointmentManagerPage() {
             </div>
             {isHeadsUp && (
               <div style={{ fontSize: FONT.sizeSm, color: COLORS.success, marginTop: SPACING.sm }}>
-                No time slot needed. Customer will be contacted with minimum {appointmentType === 'headsup_30' ? '30' : '60'} minute notice.
+                No fixed time. Customer will receive a text with available slots.
               </div>
             )}
           </DashboardCard>

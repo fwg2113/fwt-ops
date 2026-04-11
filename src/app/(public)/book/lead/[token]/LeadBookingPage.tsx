@@ -56,12 +56,11 @@ interface LeadData {
 const TYPE_PILLS: { key: AppointmentType; label: string; configKey: string }[] = [
   { key: 'dropoff', label: 'Drop-Off', configKey: 'enable_dropoff' },
   { key: 'waiting', label: 'Waiting', configKey: 'enable_waiting' },
-  { key: 'headsup_30', label: 'Flex-Wait (30 min)', configKey: 'enable_headsup_30' },
-  { key: 'headsup_60', label: 'Flex-Wait (60 min)', configKey: 'enable_headsup_60' },
+  { key: 'flex_wait', label: 'Flex-Wait', configKey: 'enable_flex_wait' },
 ];
 
 // Types that require modal acknowledgment before selection
-const MODAL_TYPES: AppointmentType[] = ['waiting', 'headsup_30', 'headsup_60'];
+const MODAL_TYPES: AppointmentType[] = ['waiting', 'flex_wait'];
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -239,7 +238,7 @@ export default function LeadBookingPage() {
     });
   }, [config]);
 
-  const isHeadsUp = appointmentType === 'headsup_30' || appointmentType === 'headsup_60';
+  const isHeadsUp = appointmentType === 'flex_wait';
 
   // --- Date bounds ---
   const dateBounds = useMemo(() => {
@@ -307,7 +306,7 @@ export default function LeadBookingPage() {
     if (pendingType) {
       setAppointmentType(pendingType);
       setSelectedTime('');
-      if (pendingType === 'headsup_30' || pendingType === 'headsup_60') {
+      if (pendingType === 'flex_wait') {
         setSelectedTime('Flex-Wait');
       }
     }
@@ -1038,10 +1037,7 @@ export default function LeadBookingPage() {
               )}
               {!selectedTime && isHeadsUp && (
                 <div style={{ fontSize: '0.9rem', color: '#166534', lineHeight: 1.5 }}>
-                  {appointmentType === 'headsup_30'
-                    ? <>You will be contacted via text with at least <strong>30 minutes</strong> notice when we are ready for your vehicle.</>
-                    : <>You will be contacted via text with at least <strong>60 minutes</strong> notice when we are ready for your vehicle.</>
-                  }
+                  You will be contacted via text with enough notice when we are ready for your vehicle.
                 </div>
               )}
               <div style={{ fontSize: '0.85rem', color: '#166534', marginTop: 8, opacity: 0.8 }}>
@@ -1097,10 +1093,7 @@ export default function LeadBookingPage() {
             background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8,
           }}>
             <div style={{ fontSize: '0.9rem', lineHeight: 1.5, color: '#166534' }}>
-              {appointmentType === 'headsup_30'
-                ? <>You will be contacted via text with at least <strong>30 minutes</strong> notice when we are ready for your vehicle.</>
-                : <>You will be contacted via text with at least <strong>60 minutes</strong> notice when we are ready for your vehicle.</>
-              }
+              You will be contacted via text with enough notice when we are ready for your vehicle.
               {' '}No specific appointment time is needed -- just pick your preferred date below.
             </div>
           </div>
@@ -1132,9 +1125,7 @@ export default function LeadBookingPage() {
           {!selectedDate ? 'Pick a date to see available times.' :
            checkingDate ? 'Checking availability...' :
            !availability?.available ? (availability?.reason || 'This date is not available.') :
-           isHeadsUp ? (appointmentType === 'headsup_30'
-             ? 'You will receive a text with at least 30 minutes notice on this date.'
-             : 'You will receive a text with at least 60 minutes notice on this date.') :
+           isHeadsUp ? 'You will receive a text with enough notice on this date when we are ready for your vehicle.' :
            appointmentType === 'dropoff' ? (
              availability.dropoffRemaining <= 0 ? 'No drop-off slots available for this date.' :
              'Choose a drop-off time: Your vehicle will be done by close of business.'
