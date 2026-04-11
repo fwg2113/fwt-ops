@@ -386,7 +386,7 @@ export default function HeadsUpSlotPage() {
               effectiveStatus = isSelected ? 'your_hold' : slot.status;
             } else if (slot.status === 'held' && slot.holdSecondsLeft) {
               const elapsed = Math.floor((Date.now() - fetchedAt) / 1000);
-              seconds = Math.max(0, slot.holdSecondsLeft - elapsed);
+              seconds = Math.max(0, slot.holdSecondsLeft - elapsed - 1); // -1 to account for network/processing lag
               void tickCounter;
               if (seconds <= 0) effectiveStatus = 'available';
             }
