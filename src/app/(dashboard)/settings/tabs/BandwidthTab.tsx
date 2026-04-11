@@ -33,10 +33,15 @@ interface TeamMember {
 
 export default function BandwidthTab({ data, onSave, onRefresh }: Props) {
   const isMobile = useIsMobile();
-  const shopConfig = data?.shop_config as Record<string, unknown> | undefined;
-  const services = ((data?.auto_services || []) as ServiceRow[]).filter(s => s.enabled);
-  const teamMembers = ((data?.team_members || []) as Array<{ id: string; name: string; module_permissions: string[] }>)
-    .filter(m => m.module_permissions?.includes('auto_tint'));
+  const shopConfig = data?.shopConfig as Record<string, unknown> | undefined;
+  const services = ((data?.services || []) as ServiceRow[]).filter(s => s.enabled);
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string; module_permissions: string[] }>>([]);
+
+  useEffect(() => {
+    fetch('/api/auto/team').then(r => r.json()).then(d => {
+      setTeamMembers((d.members || []).filter((m: { module_permissions: string[] }) => m.module_permissions?.includes('auto_tint')));
+    }).catch(() => {});
+  }, []);
 
   const enabled = Boolean(shopConfig?.bandwidth_engine_enabled);
   const confirmationTime = (shopConfig?.bandwidth_confirmation_time as string) || '06:00';
