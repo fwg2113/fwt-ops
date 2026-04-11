@@ -17,6 +17,8 @@ export interface TemplateContext {
   appointment_time: string;
   review_link: string;
   headsup_link: string;
+  headsup_time: string;
+  directions_link: string;
 }
 
 /**
@@ -84,5 +86,7 @@ export function buildTemplateContext(
     appointment_time: timeDisplay,
     review_link: shopConfig.review_link || '',
     headsup_link: '',
+    headsup_time: '',
+    directions_link: '',
   };
 }
