@@ -563,7 +563,7 @@ export default function AppointmentManagerPage() {
           }>
             <div style={{ display: 'flex', gap: SPACING.sm, marginBottom: SPACING.lg }}>
               {(['dropoff', 'waiting', 'headsup_30', 'headsup_60'] as AppointmentType[]).map(type => {
-                const labels: Record<string, string> = { dropoff: 'Drop-Off', waiting: 'Waiting', headsup_30: '30m Heads-Up', headsup_60: '60m Heads-Up' };
+                const labels: Record<string, string> = { dropoff: 'Drop-Off', waiting: 'Waiting', headsup_30: 'Flex-Wait (30 min)', headsup_60: 'Flex-Wait (60 min)' };
                 return (
                   <button key={type} onClick={() => { setAppointmentType(type); setAppointmentTime(''); }}
                     style={{

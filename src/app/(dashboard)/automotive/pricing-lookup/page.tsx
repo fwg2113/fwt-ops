@@ -743,8 +743,8 @@ function BookAppointmentModal({ config, vehicle, year, make, model, selectedServ
     const types: { value: string; label: string }[] = [];
     if (config.shopConfig.enable_dropoff) types.push({ value: 'dropoff', label: 'Drop-off' });
     if (config.shopConfig.enable_waiting) types.push({ value: 'waiting', label: 'Waiting' });
-    if (config.shopConfig.enable_headsup_30) types.push({ value: 'headsup_30', label: 'Heads-Up (30 min)' });
-    if (config.shopConfig.enable_headsup_60) types.push({ value: 'headsup_60', label: 'Heads-Up (60 min)' });
+    if (config.shopConfig.enable_headsup_30) types.push({ value: 'headsup_30', label: 'Flex-Wait (30 min)' });
+    if (config.shopConfig.enable_headsup_60) types.push({ value: 'headsup_60', label: 'Flex-Wait (60 min)' });
     return types;
   }, [config]);
 

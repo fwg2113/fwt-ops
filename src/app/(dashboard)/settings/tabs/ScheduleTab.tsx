@@ -67,7 +67,7 @@ export default function ScheduleTab({ data, onSave, onAdd, onDelete, onRefresh }
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: FONT.sizeSm }}>
             <thead>
               <tr>
-                {['Day', 'Enabled', 'Open', 'Close', 'Max Drop-Off', 'Max Waiting', 'Max Heads-Up', ''].map(h => (
+                {['Day', 'Enabled', 'Open', 'Close', 'Max Drop-Off', 'Max Waiting', 'Max Flex-Wait', ''].map(h => (
                   <th key={h} style={{
                     padding: `${SPACING.sm}px ${SPACING.md}px`, textAlign: 'left',
                     fontSize: FONT.sizeXs, fontWeight: FONT.weightSemibold, textTransform: 'uppercase',
@@ -129,8 +129,8 @@ export default function ScheduleTab({ data, onSave, onAdd, onDelete, onRefresh }
           {[
             { key: 'dropoff', label: 'Drop-Off' },
             { key: 'waiting', label: 'Waiting' },
-            { key: 'headsup_30', label: 'Heads-Up (30m)' },
-            { key: 'headsup_60', label: 'Heads-Up (60m)' },
+            { key: 'headsup_30', label: 'Flex-Wait (30m)' },
+            { key: 'headsup_60', label: 'Flex-Wait (60m)' },
           ].map(type => (
             <div key={type.key} style={{ display: 'flex', alignItems: 'center', gap: SPACING.sm }}>
               <input

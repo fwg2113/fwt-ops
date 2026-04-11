@@ -126,7 +126,7 @@ export default function ConfigurableActions({ appointment, buttonsConfig, action
 // ============================================================================
 export const DEFAULT_BUTTONS_CONFIG: ActionButtonConfig[] = [
   { key: 'edit', enabled: true, label: 'Edit', clickedLabel: 'Edit', defaultColor: '#6b7280', clickedColor: '#6b7280', behavior: 'edit_modal', statusTarget: null, messageTemplate: null, showWhen: null },
-  { key: 'headsup', enabled: true, label: 'Send Heads-Up', clickedLabel: 'Sent', defaultColor: '#f59e0b', clickedColor: '#22c55e', behavior: 'headsup_send', statusTarget: null, messageTemplate: null, showWhen: { appointment_type_in: ['headsup_30', 'headsup_60'] } },
+  { key: 'headsup', enabled: true, label: 'Send Flex-Wait', clickedLabel: 'Sent', defaultColor: '#f59e0b', clickedColor: '#22c55e', behavior: 'headsup_send', statusTarget: null, messageTemplate: null, showWhen: { appointment_type_in: ['headsup_30', 'headsup_60'] } },
   { key: 'checkin', enabled: true, label: 'Check In', clickedLabel: 'Checked In', defaultColor: '#6b7280', clickedColor: '#22c55e', behavior: 'status_change', statusTarget: 'in_progress', messageTemplate: null, showWhen: { status_in: ['booked'] } },
   { key: 'undo_checkin', enabled: true, label: 'Undo', clickedLabel: 'Undo', defaultColor: '#6b7280', clickedColor: '#6b7280', behavior: 'status_change', statusTarget: 'booked', messageTemplate: null, showWhen: { status_in: ['in_progress'] } },
   { key: 'message', enabled: true, label: 'Message', clickedLabel: 'Messaged', defaultColor: '#3b82f6', clickedColor: '#22c55e', behavior: 'message_modal', statusTarget: null, messageTemplate: 'vehicle_ready', showWhen: null },

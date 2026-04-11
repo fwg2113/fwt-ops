@@ -40,8 +40,8 @@ const TYPE_COLORS: Record<string, string> = {
 const TYPE_LABELS: Record<string, string> = {
   dropoff: 'Drop-Off',
   waiting: 'Waiting',
-  headsup_30: '30m Heads-Up',
-  headsup_60: '60m Heads-Up',
+  headsup_30: 'Flex-Wait (30 min)',
+  headsup_60: 'Flex-Wait (60 min)',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -471,7 +471,7 @@ export default function TimelineView({
                   <TAction label="Edit" compact={false} onClick={() => onEdit(apt)} />
                   {(apt.appointment_type === 'headsup_30' || apt.appointment_type === 'headsup_60') && (
                     <TAction
-                      label="Send Heads-Up"
+                      label="Send Flex-Wait"
                       compact={false}
                       color={isActioned(apt.id, 'headsup') ? '#22c55e' : '#f59e0b'}
                       filled={isActioned(apt.id, 'headsup')}

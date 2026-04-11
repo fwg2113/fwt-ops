@@ -18,8 +18,8 @@ interface Props {
 const TYPE_PILLS: { key: AppointmentType; label: string; configKey: string }[] = [
   { key: 'dropoff', label: 'Drop-Off', configKey: 'enable_dropoff' },
   { key: 'waiting', label: 'Waiting', configKey: 'enable_waiting' },
-  { key: 'headsup_30', label: '30-Min Heads-Up', configKey: 'enable_headsup_30' },
-  { key: 'headsup_60', label: '60-Min Heads-Up', configKey: 'enable_headsup_60' },
+  { key: 'headsup_30', label: 'Flex-Wait (30 min)', configKey: 'enable_headsup_30' },
+  { key: 'headsup_60', label: 'Flex-Wait (60 min)', configKey: 'enable_headsup_60' },
 ];
 
 // Types that require modal acknowledgment before selection
@@ -119,7 +119,7 @@ export default function ScheduleSection({
       onTypeChange(pendingType);
       // Heads-up types auto-set a placeholder time since they don't pick one
       if (pendingType === 'headsup_30' || pendingType === 'headsup_60') {
-        onTimeChange('Heads-Up');
+        onTimeChange('Flex-Wait');
       }
     }
     setPendingType(null);

@@ -203,7 +203,7 @@ export default function HeadsUpModal({ appointments, selectedDate, onClose, onRe
   });
 
   return (
-    <Modal title={`Heads-Up -- ${dateDisplay}`} onClose={onClose} width={600}>
+    <Modal title={`Flex-Wait -- ${dateDisplay}`} onClose={onClose} width={600}>
       {sent ? (
         <div style={{ textAlign: 'center', padding: SPACING.xxl }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 48, height: 48, margin: '0 auto 16px' }}>
@@ -224,10 +224,10 @@ export default function HeadsUpModal({ appointments, selectedDate, onClose, onRe
           {/* Queue list */}
           <div style={{ marginBottom: SPACING.lg }}>
             <div style={{ fontSize: FONT.sizeXs, fontWeight: 700, color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: SPACING.sm }}>
-              Today's Heads-Up Queue ({appointments.length})
+              Today's Flex-Wait Queue ({appointments.length})
             </div>
             {appointments.length === 0 ? (
-              <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, fontStyle: 'italic' }}>No heads-up appointments for today.</div>
+              <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, fontStyle: 'italic' }}>No flex-wait appointments for today.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {appointments.map(apt => {

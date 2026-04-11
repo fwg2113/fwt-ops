@@ -56,8 +56,8 @@ interface LeadData {
 const TYPE_PILLS: { key: AppointmentType; label: string; configKey: string }[] = [
   { key: 'dropoff', label: 'Drop-Off', configKey: 'enable_dropoff' },
   { key: 'waiting', label: 'Waiting', configKey: 'enable_waiting' },
-  { key: 'headsup_30', label: '30-Min Heads-Up', configKey: 'enable_headsup_30' },
-  { key: 'headsup_60', label: '60-Min Heads-Up', configKey: 'enable_headsup_60' },
+  { key: 'headsup_30', label: 'Flex-Wait (30 min)', configKey: 'enable_headsup_30' },
+  { key: 'headsup_60', label: 'Flex-Wait (60 min)', configKey: 'enable_headsup_60' },
 ];
 
 // Types that require modal acknowledgment before selection
@@ -308,7 +308,7 @@ export default function LeadBookingPage() {
       setAppointmentType(pendingType);
       setSelectedTime('');
       if (pendingType === 'headsup_30' || pendingType === 'headsup_60') {
-        setSelectedTime('Heads-Up');
+        setSelectedTime('Flex-Wait');
       }
     }
     setPendingType(null);
@@ -1026,7 +1026,7 @@ export default function LeadBookingPage() {
                   return `${typeLabel} -- ${dateStr}`;
                 })()}
               </div>
-              {selectedTime && selectedTime !== 'Heads-Up' && (
+              {selectedTime && selectedTime !== 'Flex-Wait' && (
                 <div style={{ fontSize: '0.95rem', color: '#166534' }}>
                   {(() => {
                     const [h, m] = selectedTime.split(':').map(Number);

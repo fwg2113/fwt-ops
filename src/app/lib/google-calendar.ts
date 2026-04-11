@@ -190,8 +190,8 @@ export async function createCalendarEvent(
   const isHeadsUp = data.appointmentType === 'headsup_30' || data.appointmentType === 'headsup_60';
   const typeLabel = data.appointmentType === 'dropoff' ? 'Drop-Off'
     : data.appointmentType === 'waiting' ? 'Waiting'
-    : data.appointmentType === 'headsup_30' ? '30m Heads-Up'
-    : data.appointmentType === 'headsup_60' ? '60m Heads-Up'
+    : data.appointmentType === 'headsup_30' ? 'Flex-Wait (30 min)'
+    : data.appointmentType === 'headsup_60' ? 'Flex-Wait (60 min)'
     : data.appointmentType || '';
 
   const summary = `${data.customerName} - ${data.vehicleStr}`;

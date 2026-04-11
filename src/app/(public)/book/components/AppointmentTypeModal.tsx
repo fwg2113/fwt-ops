@@ -33,48 +33,48 @@ const CONTENT: Record<Exclude<AppointmentType, 'dropoff' | 'warranty'>, {
     summary: 'I understand this is an on-site waiting appointment and I will remain at the shop for the duration of the service.',
   },
   headsup_30: {
-    title: 'Heads-Up Appointment — 30 Minute Minimum Notice',
+    title: 'Flex-Wait Appointment -- 30 Minute Notice',
     sections: [
       {
         heading: 'How It Works',
-        body: 'Instead of a fixed appointment time, you select a date and we add you to our priority queue for that day. When a bay opens up, we will text you with at least 30 minutes notice so you can head over.',
+        body: 'Instead of a fixed appointment time, you select a date and we add you to our priority queue. When a bay opens up, we will text you a link with available time slots. You pick the one that works best -- first come, first served.',
       },
       {
         heading: 'No Unnecessary Waiting',
-        body: 'If you arrive at the time we provide, your vehicle is pulled right in and work begins immediately. You will still wait for the duration of your service, but you will not be sitting around due to schedule overlaps or delays from earlier appointments. Your wait is only for your own job.',
+        body: 'If you arrive at the time you selected, your vehicle is pulled right in and work begins immediately. You will still wait for the duration of your service, but you will not be sitting around due to schedule overlaps or delays from earlier appointments. Your wait is only for your own job.',
       },
       {
-        heading: 'Our Goal Is to Get You In Early',
-        body: 'We prioritize heads-up appointments to bring you in as early in the day as possible. In many cases, we will be able to give you significantly more than 30 minutes notice — that is simply the guaranteed minimum. The more flexible you are, the earlier we can typically get you in.',
+        heading: 'Selecting Your Time',
+        body: 'When you receive our text, tap the link to see available times. Select the slot that works for you and confirm. Once confirmed, head to the shop at that time and your vehicle will be pulled right in.',
       },
       {
         heading: 'Ideal For',
-        body: 'This option works best if you are available and flexible during business hours on your selected date. As long as you can come by within 30 minutes of our text, this appointment type offers the most convenient, no-hassle experience.',
+        body: 'This option works best if you are available and flexible during business hours on your selected date. You will receive at least 30 minutes notice before any offered time slot, giving you plenty of time to head over.',
       },
     ],
-    summary: 'I understand that I will not receive a fixed appointment time. I will be contacted via text with at least 30 minutes notice when my vehicle is ready to be pulled in.',
+    summary: 'I understand that I will not receive a fixed appointment time. On my selected date, I will receive a text with a link to choose from available time slots. I will have at least 30 minutes before any offered time.',
   },
   headsup_60: {
-    title: 'Heads-Up Appointment — 60 Minute Minimum Notice',
+    title: 'Flex-Wait Appointment -- 60 Minute Notice',
     sections: [
       {
         heading: 'How It Works',
-        body: 'Instead of a fixed appointment time, you select a date and we add you to our priority queue for that day. When a bay opens up, we will text you with at least 60 minutes notice so you have plenty of time to head over.',
+        body: 'Instead of a fixed appointment time, you select a date and we add you to our priority queue. When a bay opens up, we will text you a link with available time slots. You pick the one that works best -- first come, first served.',
       },
       {
         heading: 'No Unnecessary Waiting',
-        body: 'If you arrive at the time we provide, your vehicle is pulled right in and work begins immediately. You will still wait for the duration of your service, but you will not be sitting around due to schedule overlaps or delays from earlier appointments. Your wait is only for your own job.',
+        body: 'If you arrive at the time you selected, your vehicle is pulled right in and work begins immediately. You will still wait for the duration of your service, but you will not be sitting around due to schedule overlaps or delays from earlier appointments. Your wait is only for your own job.',
       },
       {
-        heading: 'Our Goal Is to Get You In Early',
-        body: 'We prioritize heads-up appointments to bring you in as early in the day as possible. In many cases, we will be able to give you significantly more than 60 minutes notice — that is simply the guaranteed minimum. The more flexible you are, the earlier we can typically get you in.',
+        heading: 'Selecting Your Time',
+        body: 'When you receive our text, tap the link to see available times. Select the slot that works for you and confirm. Once confirmed, head to the shop at that time and your vehicle will be pulled right in.',
       },
       {
         heading: 'Ideal For',
         body: 'This option works best if you need a bit more lead time to get to the shop. You will have at least a full hour from the time we reach out, making it easy to wrap up what you are doing and head over.',
       },
     ],
-    summary: 'I understand that I will not receive a fixed appointment time. I will be contacted via text with at least 60 minutes notice when my vehicle is ready to be pulled in.',
+    summary: 'I understand that I will not receive a fixed appointment time. On my selected date, I will receive a text with a link to choose from available time slots. I will have at least 60 minutes before any offered time.',
   },
 };
 

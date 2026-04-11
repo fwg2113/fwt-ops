@@ -428,8 +428,8 @@ export default function ModulesTab({ data, onSave, onRefresh }: Props) {
             {([
               { key: 'enable_dropoff', label: 'Drop-off' },
               { key: 'enable_waiting', label: 'Waiting' },
-              { key: 'enable_headsup_30', label: 'Heads-Up 30 min' },
-              { key: 'enable_headsup_60', label: 'Heads-Up 60 min' },
+              { key: 'enable_headsup_30', label: 'Flex-Wait (30 min)' },
+              { key: 'enable_headsup_60', label: 'Flex-Wait (60 min)' },
               { key: 'enable_warranty', label: 'Warranty' },
             ] as const).map(item => (
               <label key={item.key} style={{

@@ -116,8 +116,8 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
     const types: { value: string; label: string }[] = [];
     if (config.shopConfig.enable_dropoff) types.push({ value: 'dropoff', label: 'Drop-off' });
     if (config.shopConfig.enable_waiting) types.push({ value: 'waiting', label: 'Waiting' });
-    if (config.shopConfig.enable_headsup_30) types.push({ value: 'headsup_30', label: 'Heads-Up (30 min)' });
-    if (config.shopConfig.enable_headsup_60) types.push({ value: 'headsup_60', label: 'Heads-Up (60 min)' });
+    if (config.shopConfig.enable_headsup_30) types.push({ value: 'headsup_30', label: 'Flex-Wait (30 min)' });
+    if (config.shopConfig.enable_headsup_60) types.push({ value: 'headsup_60', label: 'Flex-Wait (60 min)' });
     return types;
   }, [config]);
 
@@ -495,7 +495,7 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
 
         {!rescheduling && (
           <div style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginTop: SPACING.xs }}>
-            {appointment.appointment_type === 'dropoff' ? 'Drop-off' : appointment.appointment_type === 'waiting' ? 'Waiting' : 'Heads-Up'}
+            {appointment.appointment_type === 'dropoff' ? 'Drop-off' : appointment.appointment_type === 'waiting' ? 'Waiting' : 'Flex-Wait'}
             {' -- '}
             {appointment.appointment_date ? new Date(appointment.appointment_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'No date'}
             {appointment.appointment_time ? ` at ${new Date('2000-01-01T' + appointment.appointment_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}` : ''}
@@ -524,7 +524,7 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
                 <div style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted, marginBottom: 4 }}>Time</div>
                 {newApptType === 'headsup_30' || newApptType === 'headsup_60' ? (
                   <div style={{ padding: '8px 12px', fontSize: FONT.sizeSm, color: COLORS.textMuted, background: COLORS.inputBg, borderRadius: RADIUS.sm, border: `1px solid ${COLORS.borderInput}` }}>
-                    Heads-Up (no time)
+                    Flex-Wait (no time)
                   </div>
                 ) : (
                   <SelectInput value={newTime} onChange={e => setNewTime(e.target.value)} style={{ minHeight: 36, fontSize: FONT.sizeSm }}>

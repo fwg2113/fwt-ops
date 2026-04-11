@@ -582,7 +582,7 @@ function AppointmentsPageInner() {
             </button>
           )}
 
-          {/* Heads Up button -- visible when there are headsup appointments */}
+          {/* Flex-Wait button -- visible when there are headsup appointments */}
           {appointments.some(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60') && (
             <button onClick={() => setShowHeadsUp(true)} style={{
               background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
@@ -595,7 +595,7 @@ function AppointmentsPageInner() {
                 <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.11 2 2 0 0 1 4.11 2h3"/>
                 <polyline points="16 2 22 2 22 8"/><line x1="22" y1="2" x2="16" y2="8"/>
               </svg>
-              Heads Up ({appointments.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60').length})
+              Flex-Wait ({appointments.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60').length})
             </button>
           )}
         </div>
@@ -751,7 +751,7 @@ function AppointmentsPageInner() {
           <SummaryPill label="Total" value={summary.total} isMobile={isMobile} />
           <SummaryPill label="Drop-Off" value={summary.dropoffs} color="#3b82f6" isMobile={isMobile} />
           <SummaryPill label="Waiting" value={summary.waiting} color="#ef4444" isMobile={isMobile} />
-          <SummaryPill label="Heads-Up" value={summary.headsups} color="#f59e0b" isMobile={isMobile} />
+          <SummaryPill label="Flex-Wait" value={summary.headsups} color="#f59e0b" isMobile={isMobile} />
           <SummaryPill label="Paid" value={summary.paid} color="#22c55e" isMobile={isMobile} />
           {summary.cancelled > 0 && (
             <SummaryPill label="Cancelled" value={summary.cancelled} color={COLORS.textMuted} isMobile={isMobile} />
@@ -782,7 +782,7 @@ function AppointmentsPageInner() {
       )}
       </div>{/* end sticky header wrapper */}
 
-      {/* Heads-Up Queue (above timeline) */}
+      {/* Flex-Wait Queue (above timeline) */}
       {headsupQueue.length > 0 && (
         <div style={{ marginBottom: SPACING.lg }}>
           <div style={{
@@ -792,7 +792,7 @@ function AppointmentsPageInner() {
               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
             </svg>
             <span style={{ fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Heads-Up Queue ({headsupQueue.length})
+              Flex-Wait Queue ({headsupQueue.length})
             </span>
             <span style={{ fontSize: FONT.sizeXs, color: COLORS.textMuted }}>
               Waiting for time assignment -- ordered by booking date
@@ -955,7 +955,7 @@ function AppointmentsPageInner() {
         />
       )}
 
-      {/* Heads-Up Command Center */}
+      {/* Flex-Wait Command Center */}
       {showHeadsUp && (
         <HeadsUpModal
           appointments={appointments.filter(a => a.appointment_type === 'headsup_30' || a.appointment_type === 'headsup_60')}

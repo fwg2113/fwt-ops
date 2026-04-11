@@ -123,8 +123,8 @@ export default function AutoTintBookingTab({ data, onSave, onRefresh }: Props) {
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: SPACING.md }}>
           <Toggle label="Drop-Off" checked={enableDropoff} onChange={setEnableDropoff} />
           <Toggle label="Waiting" checked={enableWaiting} onChange={setEnableWaiting} />
-          <Toggle label="30-Min Heads-Up" checked={enableHeadsup30} onChange={setEnableHeadsup30} />
-          <Toggle label="60-Min Heads-Up" checked={enableHeadsup60} onChange={setEnableHeadsup60} />
+          <Toggle label="Flex-Wait (30 min)" checked={enableHeadsup30} onChange={setEnableHeadsup30} />
+          <Toggle label="Flex-Wait (60 min)" checked={enableHeadsup60} onChange={setEnableHeadsup60} />
           <Toggle label="Gift Certificates" checked={enableGC} onChange={setEnableGC} />
         </div>
       </DashboardCard>

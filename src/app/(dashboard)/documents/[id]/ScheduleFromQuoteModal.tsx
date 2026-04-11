@@ -54,8 +54,8 @@ interface SlotConfig {
 const APPOINTMENT_TYPE_OPTIONS: { value: AppointmentType; label: string }[] = [
   { value: 'dropoff', label: 'Drop-Off' },
   { value: 'waiting', label: 'Waiting' },
-  { value: 'headsup_30', label: 'Heads-Up (30 min)' },
-  { value: 'headsup_60', label: 'Heads-Up (60 min)' },
+  { value: 'headsup_30', label: 'Flex-Wait (30 min)' },
+  { value: 'headsup_60', label: 'Flex-Wait (60 min)' },
 ]
 
 const DEFAULT_START_TIME = '09:00'

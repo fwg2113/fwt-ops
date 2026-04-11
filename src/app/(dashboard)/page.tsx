@@ -131,7 +131,7 @@ export default function CommandCenter() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: SPACING.sm, alignItems: 'center' }}>
                 <StatusBadge label={`${data.today.dropoffs ?? 0} Drop-Off`} variant="info" />
                 <StatusBadge label={`${data.today.waiting ?? 0} Waiting`} variant="danger" />
-                {(data.today.headsups ?? 0) > 0 && <StatusBadge label={`${data.today.headsups} Heads-Up`} variant="warning" />}
+                {(data.today.headsups ?? 0) > 0 && <StatusBadge label={`${data.today.headsups} Flex-Wait`} variant="warning" />}
                 {!isMobile && (
                   <span style={{ fontSize: FONT.sizeSm, color: COLORS.textMuted, marginLeft: SPACING.sm }}>
                     Est. ${(data.today.revenue ?? 0).toLocaleString()}

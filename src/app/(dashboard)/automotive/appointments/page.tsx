@@ -177,7 +177,7 @@ export default function AppointmentsPage() {
           <SummaryPill label="Total" value={summary.total} />
           <SummaryPill label="Drop-Off" value={summary.dropoffs} color="#3b82f6" />
           <SummaryPill label="Waiting" value={summary.waiting} color="#ef4444" />
-          <SummaryPill label="Heads-Up" value={summary.headsups} color="#f59e0b" />
+          <SummaryPill label="Flex-Wait" value={summary.headsups} color="#f59e0b" />
           {summary.cancelled > 0 && (
             <SummaryPill label="Cancelled" value={summary.cancelled} color={COLORS.textMuted} />
           )}
