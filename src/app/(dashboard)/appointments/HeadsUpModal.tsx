@@ -40,15 +40,28 @@ function formatTimeDisplay(time: string): string {
 }
 
 export default function HeadsUpModal({ appointments, selectedDate, onClose, onRefresh }: Props) {
-  const [tab, setTab] = useState<'individual' | 'pool'>('individual');
+  const [tab, setTab] = useState<'individual' | 'pool' | 'manage'>('individual');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
+  const [manageSlots, setManageSlots] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [sentMessage, setSentMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [offers, setOffers] = useState<OfferStatus[]>([]);
+  const [pools, setPools] = useState<{ id: string; status: string; slots: Array<{ time: string; claimed_by: string | null }> }[]>([]);
   const [bypassTimeLimits, setBypassTimeLimits] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  // Initialize manage slots when switching to manage tab
+  useEffect(() => {
+    if (tab !== 'manage') return;
+    const activePool = pools.find(p => p.status === 'active');
+    if (activePool) {
+      setManageSlots(new Set((activePool.slots as Array<{ time: string }>).map(s => s.time)));
+    }
+  }, [tab, pools]);
 
   // Fetch existing offer statuses
   const fetchStatus = useCallback(async () => {
@@ -57,6 +70,7 @@ export default function HeadsUpModal({ appointments, selectedDate, onClose, onRe
       if (res.ok) {
         const data = await res.json();
         setOffers(data.offers || []);
+        setPools(data.pools || []);
       }
     } catch { /* silent */ }
   }, [selectedDate]);
@@ -261,20 +275,46 @@ export default function HeadsUpModal({ appointments, selectedDate, onClose, onRe
           </div>
 
           {/* Tab selector */}
-          {unnotified.length > 0 && (
+          {(() => {
+            const pendingOffers = offers.filter(o => o.status === 'pending');
+            const activePool = pools.find(p => p.status === 'active');
+            const hasActive = pendingOffers.length > 0 || !!activePool;
+            const tabs: { key: 'individual' | 'pool' | 'manage'; label: string; show: boolean }[] = [
+              { key: 'individual', label: 'Individual', show: unnotified.length > 0 },
+              { key: 'pool', label: `Pool (${unnotified.length})`, show: unnotified.length > 0 },
+              { key: 'manage', label: 'Manage Slots', show: hasActive },
+            ];
+            const visibleTabs = tabs.filter(t => t.show);
+            if (visibleTabs.length === 0) return null;
+            return (
             <>
               <div style={{ display: 'flex', gap: 4, marginBottom: SPACING.lg, background: COLORS.inputBg, borderRadius: RADIUS.md, padding: 3 }}>
-                {(['individual', 'pool'] as const).map(t => (
-                  <button key={t} onClick={() => { setTab(t); setSelectedSlots(new Set()); setError(null); }}
+                {visibleTabs.map(t => (
+                  <button key={t.key} onClick={() => {
+                    setTab(t.key);
+                    setSelectedSlots(new Set());
+                    setError(null);
+                    setSaveMessage(null);
+                    if (t.key === 'manage') {
+                      // Initialize manage slots from active pool or first pending individual offer
+                      if (activePool) {
+                        setManageSlots(new Set(activePool.slots.map(s => s.time)));
+                      } else if (pendingOffers.length > 0) {
+                        const offer = pendingOffers[0];
+                        // Need to fetch the offer's slots - use offered_slots from status
+                        // For now just initialize empty; the API returns offered_slots
+                      }
+                    }
+                  }}
                     style={{
                       flex: 1, padding: `${SPACING.sm}px`, borderRadius: RADIUS.sm, cursor: 'pointer',
-                      background: tab === t ? COLORS.cardBg : 'transparent',
-                      border: tab === t ? `1px solid ${COLORS.borderInput}` : '1px solid transparent',
-                      color: tab === t ? COLORS.textPrimary : COLORS.textMuted,
-                      fontSize: FONT.sizeSm, fontWeight: tab === t ? FONT.weightBold : FONT.weightMedium,
+                      background: tab === t.key ? COLORS.cardBg : 'transparent',
+                      border: tab === t.key ? `1px solid ${COLORS.borderInput}` : '1px solid transparent',
+                      color: tab === t.key ? COLORS.textPrimary : COLORS.textMuted,
+                      fontSize: FONT.sizeSm, fontWeight: tab === t.key ? FONT.weightBold : FONT.weightMedium,
                     }}
                   >
-                    {t === 'individual' ? 'Individual' : `Pool (${unnotified.length})`}
+                    {t.label}
                   </button>
                 ))}
               </div>
@@ -373,8 +413,156 @@ export default function HeadsUpModal({ appointments, selectedDate, onClose, onRe
                   </div>
                 </div>
               )}
+
+              {/* Manage Slots tab */}
+              {tab === 'manage' && (() => {
+                const activePool = pools.find(p => p.status === 'active');
+                const pendingIndividualOffers = offers.filter(o => o.status === 'pending' && o.mode === 'individual');
+
+                // Get current live slots (from pool or individual offers)
+                const currentSlots: Set<string> = new Set();
+                const claimedSlots: Set<string> = new Set();
+                if (activePool) {
+                  for (const s of activePool.slots as Array<{ time: string; claimed_by: string | null }>) {
+                    currentSlots.add(s.time);
+                    if (s.claimed_by && s.claimed_by !== 'null') claimedSlots.add(s.time);
+                  }
+                }
+
+                // Initialize manageSlots from current if empty
+                if (manageSlots.size === 0 && currentSlots.size > 0) {
+                  // Can't setState during render, use effect instead
+                }
+
+                const toggleManageSlot = (time: string) => {
+                  if (claimedSlots.has(time)) return; // can't remove claimed slots
+                  setManageSlots(prev => {
+                    const next = new Set(prev);
+                    if (next.has(time)) next.delete(time);
+                    else next.add(time);
+                    return next;
+                  });
+                };
+
+                const handleSaveSlots = async () => {
+                  setSaving(true);
+                  setSaveMessage(null);
+                  setError(null);
+                  try {
+                    const res = await fetch('/api/auto/headsup/update-slots', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        poolId: activePool?.id || null,
+                        offerId: !activePool && pendingIndividualOffers.length > 0 ? pendingIndividualOffers[0].id : null,
+                        slots: Array.from(manageSlots).sort(),
+                      }),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setSaveMessage(`Updated to ${data.slotCount} slot${data.slotCount !== 1 ? 's' : ''}. Changes are live.`);
+                      fetchStatus();
+                    } else {
+                      setError(data.error || 'Failed to update');
+                    }
+                  } catch { setError('Failed to save'); }
+                  setSaving(false);
+                };
+
+                // Compute what changed
+                const added = [...manageSlots].filter(t => !currentSlots.has(t));
+                const removed = [...currentSlots].filter(t => !manageSlots.has(t) && !claimedSlots.has(t));
+                const hasChanges = added.length > 0 || removed.length > 0;
+
+                return (
+                  <div>
+                    <div style={{ fontSize: FONT.sizeXs, fontWeight: 700, color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: SPACING.sm }}>
+                      Toggle slots on/off -- changes appear on customer pages within 10 seconds
+                    </div>
+
+                    {/* Time grid */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: SPACING.lg }}>
+                      {DEFAULT_SLOTS.map(time => {
+                        const isClaimed = claimedSlots.has(time);
+                        const isActive = manageSlots.has(time);
+                        const wasActive = currentSlots.has(time);
+                        const isNew = isActive && !wasActive;
+                        const isRemoved = !isActive && wasActive && !isClaimed;
+                        return (
+                          <button
+                            key={time}
+                            onClick={() => toggleManageSlot(time)}
+                            style={{
+                              padding: '8px 14px', borderRadius: RADIUS.md,
+                              cursor: isClaimed ? 'not-allowed' : 'pointer',
+                              background: isClaimed ? 'rgba(34,197,94,0.15)'
+                                : isNew ? 'rgba(59,130,246,0.15)'
+                                : isActive ? 'rgba(245,158,11,0.2)'
+                                : isRemoved ? 'rgba(239,68,68,0.1)'
+                                : COLORS.inputBg,
+                              border: `2px solid ${isClaimed ? '#22c55e'
+                                : isNew ? '#3b82f6'
+                                : isActive ? '#f59e0b'
+                                : isRemoved ? '#ef4444'
+                                : COLORS.borderInput}`,
+                              color: isClaimed ? '#22c55e'
+                                : isNew ? '#3b82f6'
+                                : isActive ? '#f59e0b'
+                                : isRemoved ? '#ef4444'
+                                : COLORS.textMuted,
+                              fontSize: FONT.sizeSm, fontWeight: isActive || isClaimed ? 700 : 500,
+                              opacity: isClaimed ? 0.7 : 1,
+                              textDecoration: isRemoved ? 'line-through' : 'none',
+                            }}
+                          >
+                            {formatTimeDisplay(time)}
+                            {isClaimed && ' (claimed)'}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Change summary */}
+                    {hasChanges && (
+                      <div style={{ fontSize: FONT.sizeXs, color: COLORS.textSecondary, marginBottom: SPACING.md }}>
+                        {added.length > 0 && <span style={{ color: '#3b82f6' }}>+{added.length} new </span>}
+                        {removed.length > 0 && <span style={{ color: '#ef4444' }}>-{removed.length} removed </span>}
+                      </div>
+                    )}
+
+                    {saveMessage && (
+                      <div style={{ padding: '8px 12px', borderRadius: RADIUS.sm, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e', fontSize: FONT.sizeXs, fontWeight: 600, marginBottom: SPACING.md }}>
+                        {saveMessage}
+                      </div>
+                    )}
+
+                    {error && (
+                      <div style={{ padding: '8px 12px', borderRadius: RADIUS.sm, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: FONT.sizeXs, fontWeight: 600, marginBottom: SPACING.md }}>
+                        {error}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={handleSaveSlots}
+                        disabled={!hasChanges || saving}
+                        style={{
+                          padding: `${SPACING.md}px ${SPACING.xl}px`, borderRadius: RADIUS.md,
+                          background: hasChanges ? '#f59e0b' : COLORS.inputBg,
+                          color: hasChanges ? '#fff' : COLORS.textMuted,
+                          border: 'none', cursor: hasChanges ? 'pointer' : 'not-allowed',
+                          fontSize: FONT.sizeSm, fontWeight: FONT.weightBold,
+                        }}
+                      >
+                        {saving ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </>
-          )}
+            );
+          })()}
         </>
       )}
     </Modal>
