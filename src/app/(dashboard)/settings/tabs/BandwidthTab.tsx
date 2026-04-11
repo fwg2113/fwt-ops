@@ -130,11 +130,23 @@ export default function BandwidthTab({ data, onSave, onRefresh }: Props) {
     onRefresh();
   }
 
-  async function handleSaveMaxTinters(serviceKey: string, maxTinters: number) {
-    const svc = services.find(s => s.service_key === serviceKey);
-    if (!svc) return;
-    // Find the service in data to get its id
-    const allServices = (data?.auto_services || []) as Array<{ id: number; service_key: string }>;
+  // Local max_tinters state for edit-then-blur saving
+  const [localMaxTinters, setLocalMaxTinters] = useState<Record<string, number>>({});
+
+  // Initialize local max from services
+  useEffect(() => {
+    const m: Record<string, number> = {};
+    for (const s of services) m[s.service_key] = s.max_tinters;
+    setLocalMaxTinters(m);
+  }, [services]);
+
+  function getLocalMax(serviceKey: string): number {
+    return localMaxTinters[serviceKey] ?? services.find(s => s.service_key === serviceKey)?.max_tinters ?? 1;
+  }
+
+  async function handleSaveMaxTinters(serviceKey: string) {
+    const maxTinters = getLocalMax(serviceKey);
+    const allServices = (data?.services || []) as Array<{ id: number; service_key: string }>;
     const svcRow = allServices.find(s => s.service_key === serviceKey);
     if (svcRow) {
       await onSave('auto_services', svcRow.id, { max_tinters: maxTinters });
@@ -258,8 +270,9 @@ export default function BandwidthTab({ data, onSave, onRefresh }: Props) {
                       <td style={cellStyle}>
                         <input
                           type="number"
-                          value={svc.max_tinters}
-                          onChange={e => handleSaveMaxTinters(svc.service_key, parseInt(e.target.value) || 1)}
+                          value={getLocalMax(svc.service_key)}
+                          onChange={e => setLocalMaxTinters(prev => ({ ...prev, [svc.service_key]: parseInt(e.target.value) || 1 }))}
+                          onBlur={() => handleSaveMaxTinters(svc.service_key)}
                           min={1}
                           max={10}
                           style={{
@@ -273,7 +286,8 @@ export default function BandwidthTab({ data, onSave, onRefresh }: Props) {
                       {Array.from({ length: maxTinterCount }, (_, i) => {
                         const tinterCount = i + 1;
                         const value = getScalingValue(svc.service_key, tinterCount);
-                        const isDisabled = tinterCount > svc.max_tinters;
+                        const localMax = getLocalMax(svc.service_key);
+                        const isDisabled = tinterCount > localMax;
                         return (
                           <td key={i} style={cellStyle}>
                             {isDisabled ? (
