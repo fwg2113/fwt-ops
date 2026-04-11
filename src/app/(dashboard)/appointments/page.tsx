@@ -18,6 +18,7 @@ import InvoiceChoiceModal from './InvoiceChoiceModal';
 import { type ActionButtonConfig, DEFAULT_BUTTONS_CONFIG } from './ConfigurableActions';
 import CreateAppointmentModal from './CreateAppointmentModal';
 import HeadsUpModal from './HeadsUpModal';
+import DailyTinterModal from './DailyTinterModal';
 import NewBookingToastStack, { type NewBookingToastData } from './NewBookingToast';
 
 interface DaySummary {
@@ -72,6 +73,10 @@ function AppointmentsPageInner() {
 
   // Heads-up command center
   const [showHeadsUp, setShowHeadsUp] = useState(false);
+
+  // Daily tinter confirmation
+  const [tinterConfirmed, setTinterConfirmed] = useState(false);
+  const [showTinterModal, setShowTinterModal] = useState(false);
 
   // Assignment gate modals
   const [assignGateTarget, setAssignGateTarget] = useState<Appointment | null>(null); // "assign before check-in" prompt
@@ -178,6 +183,12 @@ function AppointmentsPageInner() {
   useEffect(() => {
     fetchAppointments();
   }, [fetchAppointments]);
+
+  // Check bandwidth engine daily confirmation on date change
+  useEffect(() => {
+    if (tinterConfirmed) return;
+    setShowTinterModal(true); // modal self-dismisses if not enabled or already confirmed
+  }, [selectedDate, tinterConfirmed]);
 
   // Keep the realtime callback's view of fetchAppointments fresh so it always
   // re-fetches against the currently-selected date.
@@ -598,6 +609,23 @@ function AppointmentsPageInner() {
               Flex-Wait ({appointments.filter(a => a.appointment_type === 'flex_wait').length})
             </button>
           )}
+
+          {/* Tinter config button (reopen daily confirmation) */}
+          {tinterConfirmed && (
+            <button onClick={() => setShowTinterModal(true)} style={{
+              background: 'rgba(34,197,94,0.15)', color: '#22c55e',
+              border: '1px solid rgba(34,197,94,0.3)', borderRadius: RADIUS.md,
+              padding: isMobile ? '12px 16px' : '8px 16px', cursor: 'pointer',
+              fontSize: FONT.sizeSm, fontWeight: FONT.weightBold, flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              Tinters
+            </button>
+          )}
         </div>
 
         {/* Row 2: Service module toggle buttons + team filter */}
@@ -952,6 +980,14 @@ function AppointmentsPageInner() {
           appointment={editingAppointment}
           onSave={handleEditSave}
           onClose={() => setEditingAppointment(null)}
+        />
+      )}
+
+      {/* Daily Tinter Confirmation */}
+      {showTinterModal && (
+        <DailyTinterModal
+          selectedDate={selectedDate}
+          onConfirmed={() => { setShowTinterModal(false); setTinterConfirmed(true); }}
         />
       )}
 

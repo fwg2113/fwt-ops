@@ -24,6 +24,7 @@ import CallSettingsTab from './tabs/CallSettingsTab';
 import NotificationSoundsTab from './tabs/NotificationSoundsTab';
 
 // Auto Tint module tabs
+import BandwidthTab from './tabs/BandwidthTab';
 import AutoTintBookingTab from './tabs/AutoTintBookingTab';
 import ServicesTab from './tabs/ServicesTab';
 import FilmsTab from './tabs/FilmsTab';
@@ -33,6 +34,7 @@ import VehicleFixerTab from './tabs/VehicleFixerTab';
 type TabKey =
   | 'shop-info' | 'brands' | 'modules' | 'appearance' | 'team'
   | 'schedule' | 'closed-dates' | 'notifications' | 'alert-sounds' | 'checkout' | 'action-buttons' | 'payment' | 'discounts' | 'calls'
+  | 'bandwidth'
   | 'auto-tint-booking' | 'auto-tint-services' | 'auto-tint-films' | 'auto-tint-vehicles' | 'auto-tint-vehicle-fixer';
 
 interface NavSection {
@@ -88,6 +90,7 @@ export default function SettingsPage() {
         { key: 'payment', label: 'Payment' },
         { key: 'discounts', label: 'Discounts & Warranty' },
         { key: 'calls', label: 'Phone System' },
+        { key: 'bandwidth', label: 'Bandwidth Engine' },
       ],
     },
     {
@@ -312,6 +315,9 @@ export default function SettingsPage() {
               )}
               {activeTab === 'calls' && (
                 <CallSettingsTab />
+              )}
+              {activeTab === 'bandwidth' && (
+                <BandwidthTab data={settingsData} onSave={saveSettings} onRefresh={refreshSettings} />
               )}
 
               {/* Auto Tint */}
