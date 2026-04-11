@@ -375,9 +375,35 @@ export default function HeadsUpSlotPage() {
                 style={slotCardStyle(slot.status, isSelected)}
               >
                 <span style={slotTimeStyle(isSelected)}>{slot.display}</span>
-                <span style={slotStatusStyle(slot.status, isSelected)}>
-                  {slotStatusLabel(slot, isSelected)}
-                </span>
+                {(() => {
+                  // Show circle countdown for holds (own or others)
+                  const seconds = isSelected ? holdCountdown : (slot.status === 'held' ? (slot.holdSecondsLeft || 0) : 0);
+                  if (seconds > 0 && (isSelected || slot.status === 'held' || slot.status === 'your_hold')) {
+                    const isOwn = isSelected || slot.status === 'your_hold';
+                    return (
+                      <div style={{
+                        width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: isOwn ? 'rgba(255,255,255,0.2)' : 'rgba(245,158,11,0.15)',
+                        border: `2px solid ${isOwn ? 'rgba(255,255,255,0.5)' : '#f59e0b'}`,
+                      }}>
+                        <span style={{
+                          fontSize: '1rem', fontWeight: 800,
+                          color: isOwn ? '#fff' : '#f59e0b',
+                          lineHeight: 1,
+                        }}>
+                          {seconds}
+                        </span>
+                      </div>
+                    );
+                  }
+                  // Regular text status
+                  return (
+                    <span style={slotStatusStyle(slot.status, isSelected)}>
+                      {slotStatusLabel(slot, isSelected)}
+                    </span>
+                  );
+                })()}
               </div>
             );
           })}
