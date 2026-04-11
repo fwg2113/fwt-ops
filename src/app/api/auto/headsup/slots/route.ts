@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     const { data: shop } = await supabaseAdmin
       .from('shop_config')
-      .select('shop_name, shop_phone, shop_address, shop_timezone')
+      .select('shop_name, shop_phone, shop_address, shop_timezone, directions_link')
       .eq('id', 1)
       .single();
 
@@ -124,6 +124,7 @@ export async function GET(request: NextRequest) {
       noticeMinutes: noticeMin,
       offerStatus: offer.status,
       claimedTime: offer.claimed_time ? formatTimeDisplay(offer.claimed_time) : null,
+      directionsLink: shop?.directions_link || null,
       slots,
     });
   } catch (err) {

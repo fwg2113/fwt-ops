@@ -20,6 +20,7 @@ interface PageData {
   noticeMinutes: number;
   offerStatus: string;
   claimedTime: string | null;
+  directionsLink: string | null;
   slots: SlotData[];
 }
 
@@ -298,7 +299,25 @@ export default function HeadsUpSlotPage() {
           <div style={{ fontSize: '1.1rem', color: '#374151', marginBottom: 4 }}>
             Your appointment is at <strong>{claimedDisplay}</strong> today.
           </div>
-          <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: 24 }}>Please arrive 5 minutes early.</div>
+          <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: 20 }}>Please arrive 5 minutes early.</div>
+          {data.directionsLink && (
+            <a
+              href={data.directionsLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '12px 24px', borderRadius: 10,
+                background: '#3b82f6', color: '#fff', fontSize: '1rem', fontWeight: 700,
+                textDecoration: 'none', marginBottom: 16,
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+              </svg>
+              Get Directions
+            </a>
+          )}
           {data.shopPhone && (
             <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
               Questions? Call or text: <a href={`tel:${data.shopPhone}`} style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}>{data.shopPhone}</a>
