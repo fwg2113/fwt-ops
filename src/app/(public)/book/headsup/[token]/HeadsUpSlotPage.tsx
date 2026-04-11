@@ -49,7 +49,12 @@ export default function HeadsUpSlotPage() {
   const fetchSlots = useCallback(async () => {
     try {
       const res = await fetch(`/api/auto/headsup/slots?token=${token}`);
-      if (!res.ok) { setError('This link is no longer valid.'); return; }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        console.error('Slot fetch failed:', res.status, errData);
+        setError('This link is no longer valid.');
+        return;
+      }
       const d = await res.json();
       setData(d);
       setFetchedAt(Date.now());

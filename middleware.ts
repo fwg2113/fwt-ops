@@ -35,6 +35,11 @@ const PUBLIC_ROUTES = [
   '/api/voice/', // Twilio voice webhooks (incoming calls, status, transfers)
   '/api/cron/', // Vercel cron jobs
   '/api/google/callback', // Google OAuth callback
+  '/api/auto/headsup/slots',     // public: customer fetches available flex-wait slots
+  '/api/auto/headsup/claim',     // public: customer claims a flex-wait slot
+  '/api/auto/headsup/hold',      // public: customer soft-locks a slot
+  '/api/auto/headsup/reschedule', // public: customer requests reschedule
+  '/api/auto/headsup/request-new-time', // public: customer requests new time after expiry
   '/api/sms/incoming', // Twilio SMS webhook (future)
 ];
 

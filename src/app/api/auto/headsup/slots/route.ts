@@ -17,7 +17,8 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (offerErr || !offer) {
-      return NextResponse.json({ error: 'Invalid or expired link' }, { status: 404 });
+      console.error('Headsup slots lookup failed:', offerErr?.message, offerErr?.details, offerErr?.hint);
+      return NextResponse.json({ error: 'Invalid or expired link', debug: offerErr?.message || 'no offer found' }, { status: 404 });
     }
 
     // Look up booking + shop
