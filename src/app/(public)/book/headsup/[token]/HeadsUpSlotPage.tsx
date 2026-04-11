@@ -476,21 +476,38 @@ export default function HeadsUpSlotPage() {
         </button>
       )}
 
-      {/* Reschedule */}
+      {/* Choose different time (deselect) + Request new time (when all gone) */}
       <div style={rescheduleStyle}>
-        <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: 8 }}>Need to reschedule instead?</div>
-        <button
-          onClick={handleReschedule}
-          disabled={rescheduling}
-          style={{
-            padding: '10px 24px', borderRadius: 8,
-            background: 'transparent', border: '1px solid #d1d5db',
-            color: '#6b7280', fontSize: '0.85rem', fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          {rescheduling ? 'Submitting...' : 'I need to reschedule'}
-        </button>
+        {selectedTime && (
+          <button
+            onClick={() => { setSelectedTime(null); setHoldExpiry(null); setClaimError(null); }}
+            style={{
+              padding: '10px 24px', borderRadius: 8, marginBottom: 12,
+              background: 'transparent', border: '1px solid #d1d5db',
+              color: '#6b7280', fontSize: '0.85rem', fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Choose a Different Time
+          </button>
+        )}
+        {availableSlots.length === 0 && (
+          <>
+            <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: 8 }}>No available slots remaining.</div>
+            <button
+              onClick={handleRequestNewTime}
+              disabled={requestingNewTime}
+              style={{
+                padding: '10px 24px', borderRadius: 8,
+                background: '#f59e0b', border: 'none',
+                color: '#fff', fontSize: '0.85rem', fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              {requestingNewTime ? 'Requesting...' : 'Request a New Time'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
