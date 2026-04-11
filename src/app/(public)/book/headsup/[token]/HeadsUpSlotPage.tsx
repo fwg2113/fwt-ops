@@ -401,7 +401,7 @@ export default function HeadsUpSlotPage() {
                 style={slotCardStyle(effectiveStatus, isSelected)}
               >
                 <span style={slotTimeStyle(isSelected)}>{slot.display}</span>
-                {seconds > 0 && (isSelected || effectiveStatus === 'held' || effectiveStatus === 'your_hold') ? (
+                {(isSelected || (seconds > 0 && (effectiveStatus === 'held' || effectiveStatus === 'your_hold'))) ? (
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
                   }}>
