@@ -403,18 +403,25 @@ export default function HeadsUpSlotPage() {
                 <span style={slotTimeStyle(isSelected)}>{slot.display}</span>
                 {seconds > 0 && (isSelected || effectiveStatus === 'held' || effectiveStatus === 'your_hold') ? (
                   <div style={{
-                    width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: isSelected ? 'rgba(255,255,255,0.2)' : 'rgba(245,158,11,0.15)',
-                    border: `2px solid ${isSelected ? 'rgba(255,255,255,0.5)' : '#f59e0b'}`,
+                    display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
                   }}>
-                    <span style={{
-                      fontSize: '1rem', fontWeight: 800,
-                      color: isSelected ? '#fff' : '#f59e0b',
-                      lineHeight: 1,
+                    {!isSelected && effectiveStatus === 'held' && (
+                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f59e0b' }}>Released in</span>
+                    )}
+                    <div style={{
+                      width: 44, height: 44, borderRadius: '50%',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: isSelected ? 'rgba(255,255,255,0.2)' : 'rgba(245,158,11,0.15)',
+                      border: `2px solid ${isSelected ? 'rgba(255,255,255,0.5)' : '#f59e0b'}`,
                     }}>
-                      {seconds}
-                    </span>
+                      <span style={{
+                        fontSize: '1rem', fontWeight: 800,
+                        color: isSelected ? '#fff' : '#f59e0b',
+                        lineHeight: 1,
+                      }}>
+                        {seconds}
+                      </span>
+                    </div>
                   </div>
                 ) : (
                   <span style={slotStatusStyle(effectiveStatus, isSelected)}>
