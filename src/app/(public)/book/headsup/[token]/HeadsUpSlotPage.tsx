@@ -7,6 +7,7 @@ interface SlotData {
   time: string;
   display: string;
   status: 'available' | 'taken' | 'expired' | 'yours' | 'claimed' | 'held' | 'your_hold';
+  holdSecondsLeft?: number;
 }
 
 interface PageData {
@@ -221,13 +222,13 @@ export default function HeadsUpSlotPage() {
     fontSize: '1.2rem', fontWeight: 700,
     color: isSelected ? '#fff' : '#1a1a1a',
   });
-  const slotStatusLabel = (status: string, isSelected: boolean): string => {
+  const slotStatusLabel = (slot: SlotData, isSelected: boolean): string => {
     if (isSelected) return holdCountdown > 0 ? `Selected -- ${holdCountdown}s` : 'Selected';
-    if (status === 'available') return 'Available';
-    if (status === 'your_hold') return holdCountdown > 0 ? `Selected -- ${holdCountdown}s` : 'Selected';
-    if (status === 'held') return 'Being selected...';
-    if (status === 'taken') return 'Taken';
-    if (status === 'yours') return 'Yours';
+    if (slot.status === 'available') return 'Available';
+    if (slot.status === 'your_hold') return holdCountdown > 0 ? `Selected -- ${holdCountdown}s` : 'Selected';
+    if (slot.status === 'held') return slot.holdSecondsLeft ? `Held -- ${slot.holdSecondsLeft}s` : 'Held';
+    if (slot.status === 'taken') return 'Taken';
+    if (slot.status === 'yours') return 'Yours';
     return 'Expired';
   };
   const slotStatusStyle = (status: string, isSelected: boolean): React.CSSProperties => ({
@@ -375,7 +376,7 @@ export default function HeadsUpSlotPage() {
               >
                 <span style={slotTimeStyle(isSelected)}>{slot.display}</span>
                 <span style={slotStatusStyle(slot.status, isSelected)}>
-                  {slotStatusLabel(slot.status, isSelected)}
+                  {slotStatusLabel(slot, isSelected)}
                 </span>
               </div>
             );

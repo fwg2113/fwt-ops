@@ -60,45 +60,52 @@ export async function GET(request: NextRequest) {
     const nowMs = Date.now();
 
     // Build slot list
-    let slots: { time: string; display: string; status: string }[] = [];
+    let slots: { time: string; display: string; status: string; holdSecondsLeft?: number }[] = [];
 
     if (offer.mode === 'pool' && offer.headsup_pools) {
       const poolSlots = offer.headsup_pools.slots || [];
       slots = poolSlots.map((s: { time: string; claimed_by: string | null; held_by?: string | null; held_at?: string | null }) => {
         let status = 'available';
+        let holdSecondsLeft: number | undefined;
         if (s.claimed_by && s.claimed_by !== 'null') {
           status = s.claimed_by === offer.booking_id ? 'yours' : 'taken';
         } else if (isSlotPast(s.time)) {
           status = 'expired';
         } else if (s.held_by && s.held_by !== 'null') {
-          // Check if hold is still valid (90s TTL)
           const heldAt = s.held_at ? new Date(s.held_at).getTime() : 0;
-          const holdValid = (nowMs - heldAt) < HOLD_TTL_MS;
-          if (holdValid) {
+          const remaining = HOLD_TTL_MS - (nowMs - heldAt);
+          if (remaining > 0) {
             status = s.held_by === offer.booking_id ? 'your_hold' : 'held';
+            holdSecondsLeft = Math.ceil(remaining / 1000);
           }
         }
         return {
           time: s.time,
           display: formatTimeDisplay(s.time),
           status,
+          holdSecondsLeft,
         };
       });
     } else {
       const offeredSlots = offer.offered_slots || [];
       slots = offeredSlots.map((s: { time: string; status: string; held?: string; held_at?: string | null }) => {
         let status = s.status;
+        let holdSecondsLeft: number | undefined;
         if (status === 'available' && isSlotPast(s.time)) {
           status = 'expired';
         } else if (status === 'available' && s.held === 'true') {
           const heldAt = s.held_at ? new Date(s.held_at).getTime() : 0;
-          const holdValid = (nowMs - heldAt) < HOLD_TTL_MS;
-          if (holdValid) status = 'your_hold'; // individual mode = only this customer
+          const remaining = HOLD_TTL_MS - (nowMs - heldAt);
+          if (remaining > 0) {
+            status = 'your_hold';
+            holdSecondsLeft = Math.ceil(remaining / 1000);
+          }
         }
         return {
           time: s.time,
           display: formatTimeDisplay(s.time),
           status,
+          holdSecondsLeft,
         };
       });
     }
