@@ -72,8 +72,8 @@ const TYPE_COLORS: Record<string, string> = {
 const TYPE_LABELS: Record<string, string> = {
   dropoff: 'Drop-Off',
   waiting: 'Waiting',
-  headsup_30: 'Flex-Wait (30 min)',
-  headsup_60: 'Flex-Wait (60 min)',
+  headsup_30: 'FW 30',
+  headsup_60: 'FW 60',
   warranty: 'Warranty',
 };
 
