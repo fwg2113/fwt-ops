@@ -935,7 +935,7 @@ export default function EditAppointmentModal({ appointment, onSave, onClose }: P
               <div style={{ display: 'flex', gap: SPACING.sm }}>
                 <Button variant="secondary" size="sm" onClick={() => { setAddingService(false); setNewServiceKey(''); setNewFilmId(null); setNewShadeFront(null); setNewShadeRear(null); }}>Cancel</Button>
                 <Button variant="primary" size="sm" onClick={confirmAddTintService}
-                  disabled={!newServiceKey || (config?.services.find(s => s.service_key === newServiceKey)?.service_type === 'tint' && !['SUN_STRIP', 'SUNROOF_SINGLE', 'SUNROOF_PANO'].includes(newServiceKey) && (!newFilmId || !newShadeFront))}>
+                  disabled={!newServiceKey || (config?.services.find(s => s.service_key === newServiceKey)?.service_type === 'tint' && !['SUN_STRIP', 'SUNROOF_SINGLE', 'SUNROOF_PANO', 'FULL_WS'].includes(newServiceKey) && (!newFilmId || !newShadeFront))}>
                   Add Service
                 </Button>
               </div>
