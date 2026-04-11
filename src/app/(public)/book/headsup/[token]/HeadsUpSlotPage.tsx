@@ -42,6 +42,8 @@ export default function HeadsUpSlotPage() {
   const [holdingSlot, setHoldingSlot] = useState(false);
   const [holdExpiry, setHoldExpiry] = useState<number | null>(null); // timestamp when hold expires
   const [holdCountdown, setHoldCountdown] = useState(0);
+  const [fetchedAt, setFetchedAt] = useState(0); // timestamp of last fetch, for local countdown interpolation
+  const [tickCounter, setTickCounter] = useState(0); // forces re-render every second
 
   const fetchSlots = useCallback(async () => {
     try {
@@ -49,6 +51,7 @@ export default function HeadsUpSlotPage() {
       if (!res.ok) { setError('This link is no longer valid.'); return; }
       const d = await res.json();
       setData(d);
+      setFetchedAt(Date.now());
       if (d.offerStatus === 'claimed' && d.claimedTime) {
         setClaimed(true);
         setClaimedDisplay(d.claimedTime);
@@ -71,6 +74,13 @@ export default function HeadsUpSlotPage() {
     const interval = setInterval(fetchSlots, 10000);
     return () => clearInterval(interval);
   }, [fetchSlots, claimed, rescheduled, error]);
+
+  // Tick every second to interpolate held countdowns between polls
+  useEffect(() => {
+    if (claimed || rescheduled || error) return;
+    const interval = setInterval(() => setTickCounter(c => c + 1), 1000);
+    return () => clearInterval(interval);
+  }, [claimed, rescheduled, error]);
 
   // Hold countdown timer
   useEffect(() => {
@@ -377,7 +387,16 @@ export default function HeadsUpSlotPage() {
                 <span style={slotTimeStyle(isSelected)}>{slot.display}</span>
                 {(() => {
                   // Show circle countdown for holds (own or others)
-                  const seconds = isSelected ? holdCountdown : (slot.status === 'held' ? (slot.holdSecondsLeft || 0) : 0);
+                  // For own hold: use client-side holdCountdown (ticks every second)
+                  // For others' holds: interpolate from server holdSecondsLeft minus elapsed since fetch
+                  let seconds = 0;
+                  if (isSelected || slot.status === 'your_hold') {
+                    seconds = holdCountdown;
+                  } else if (slot.status === 'held' && slot.holdSecondsLeft) {
+                    const elapsed = Math.floor((Date.now() - fetchedAt) / 1000);
+                    seconds = Math.max(0, slot.holdSecondsLeft - elapsed);
+                    void tickCounter; // reference to trigger re-render
+                  }
                   if (seconds > 0 && (isSelected || slot.status === 'held' || slot.status === 'your_hold')) {
                     const isOwn = isSelected || slot.status === 'your_hold';
                     return (
